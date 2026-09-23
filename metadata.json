@@ -1,0 +1,8 @@
+{
+  "name": "PepPal v2",
+  "description": "An all-in-one peptide assistant featuring a Protocol Creator, Vendor Price Finder, Reconstitution Calculator, Weight/Shot Tracker, and Stock Manager.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

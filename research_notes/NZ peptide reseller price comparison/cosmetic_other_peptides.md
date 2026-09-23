@@ -1,0 +1,138 @@
+# NZ Reseller Pricing: Melanotan 2, PT-141, Oxytocin Acetate, Snap8, GLOW, Bac Water, Lipo-C
+
+**Reference prices being benchmarked (NZD):** Melanotan 2 10mg $60 · PT-141 10mg $70 · Oxytocin Acetate 10mg $75 · Snap8 10mg $70 · GLOW 70mg $180 · Bac Water 3ml $10 / 10ml $20 · Lipo-C 10ml $180.
+
+**Currency note up front:** The three biggest "New Zealand" storefronts that show up in search (Direct SARMS, Direct Peptides, PharmaLabGlobal) are international template networks that run a `new-zealand.` subdomain but do **not** actually price in NZD by default — Direct SARMS's NZ subdomain defaults to USD (currency selector shows 🇺🇸 $ USD, no NZD option seen), and Direct Peptides' NZ subdomain defaults to GBP (£). All conversions below use approximate September 2026 rates: **1 USD ≈ 1.75 NZD**, **1 GBP ≈ 2.33 NZD** ([xe.com](https://www.xe.com/en-us/currencyconverter/convert/?Amount=1&From=USD&To=NZD), [tradingeconomics.com GBP/NZD](https://tradingeconomics.com/gbpnzd:cur)). Genuinely NZ-domiciled sites (BAC Water NZ / NZpeptide.com, Pure Peptides NZ) price natively in NZD.
+
+---
+
+## Which NZ-based (or NZ-shipping) resellers sell these products, and what do they charge per size?
+
+### Takeaway
+There is a two-tier NZ market: (1) large multi-country peptide/SARM chains (Direct SARMS, Direct Peptides, PharmaLabGlobal, Pharmagrade Store) that run NZ-labelled storefronts but price in USD/GBP, generally converting to roughly NZD $40–$160 per 10mg vial depending on product and pack size; and (2) smaller, genuinely NZ-domiciled shops (BAC Water NZ/NZpeptide.com, Pure Peptides NZ, Peptide Lab NZ) pricing natively in NZD, where in-stock data shows Melanotan 2, PT-141 and Oxytocin priced 2–3x higher than the user's reference prices, and Bac Water priced roughly 3x higher per unit than the reference. No NZ reseller was found publicly listing GLOW (BBG70) or Lipo-C/Fat Blaster with an NZD price — this is a significant gap.
+
+### Cited Findings
+
+**Melanotan 2**
+- Direct SARMS NZ: Melanotan 2 Peptide Vial (10mg) listed at $24.03–$81.70 USD (range covers single vial through a kit with bac water/syringes and multi-vial packs) ≈ **NZD $42–$143** — [Direct SARMS NZ Melanotan 2 vial](https://new-zealand.direct-sarms.com/product/melanotan-2-peptide-vial/). Same category page also lists Melanotan 2 Nasal Spray (15ml) $34.03–$61.80 USD ≈ NZD $60–$108, and Melanotan 2 Pre-Mixed Peptide (10mg) $27.25–$73.58 USD ≈ NZD $48–$129 — [Direct SARMS NZ Melanotan category](https://new-zealand.direct-sarms.com/product-category/melanotan/).
+- Direct Peptides NZ: Melanotan 2 Nasal Spray listed at £25.19–£81.68 (15ml/30ml) ≈ **NZD $59–$190** — [Direct Peptides NZ Melanotan II](https://new-zealand.direct-peptides.com/melanotan-ii/). A vial-format product exists on the site but exact mg/price for the vial wasn't rendered in this fetch.
+- PharmaLabGlobal NZ lists a Melanotan 2 product page (`new-zealand.pharmalabglobal.com/melanotan-2/`) and a Melanotan 1+2 combo, but the site returned an HTTP 403 to automated fetch, so no price could be extracted — [PharmaLabGlobal NZ Melanotan 2](https://new-zealand.pharmalabglobal.com/melanotan-2/), [combo product](https://new-zealand.pharmalabglobal.com/product/melanotan-1-melanotan-2-peptide-combo/).
+- Pharmagrade Store (`new.pharmagrade.store`) also lists Melanotan products for NZ but the melanotan category URL 301-redirected to the bare `pharmagrade.store` root during this research and no melanotan-specific price could be confirmed — [Pharmagrade Store NZ](https://new.pharmagrade.store/).
+- Pure Peptides NZ (genuinely NZD-priced, Kiwi storefront): Melanotan 2 (MT2) listed at **NZD $165.00** (was $170.00), but shown **out of stock** at time of research; exact mg size not confirmed in the fetched listing (industry-standard 10mg assumed but unverified) — [Pure Peptides NZ all products](https://www.purepeptidesnz.com/category/all-products).
+- Genuinely NZ .co.nz/.net storefronts NZ Peptides (nzpeptides.co.nz), Buy Peptides NZ (buypeptidesnz.com) and NZ Peptides .net (nzpeptides.net) were identified via search as stocking Melanotan 2 with NZ Post shipping, but their pages returned "socket closed" errors on every fetch attempt during this research, so no confirmed price could be pulled directly from them — [NZ Peptides product listing (search result)](https://nzpeptides.co.nz/products/melanotan-2-mt-2-10mg-research-peptide-purity-99), [Buy Peptides NZ product listing (search result)](https://buypeptidesnz.com/products/melanotan-ii-10mg).
+
+**PT-141 (Bremelanotide)**
+- Direct SARMS NZ: PT-141 Peptide Vial $26.81–$91.15 USD (10mg, multiple variants) ≈ **NZD $47–$160**; PT-141 Nasal Spray (15/30ml) $36.81–$67.38 USD ≈ NZD $64–$118; PT-141 Pre-Mixed Peptide (10mg) $30.04–$81.10 USD ≈ NZD $53–$142; combo "PT-141 Oxytocin Nasal Spray Stack" $76.89–$138.05 USD ≈ NZD $135–$242; "PT-141 Oxytocin Stack" sale price $33.61 USD (was $37.35) ≈ NZD $59 (was $65) — [Direct SARMS NZ PT-141 category](https://new-zealand.direct-sarms.com/product-category/pt-141/).
+- Direct Peptides NZ and PharmaLabGlobal NZ both list PT-141 product pages but exact prices were not captured (PharmaLabGlobal blocked the fetch; Direct Peptides PT-141-specific page wasn't separately fetched) — [Direct Peptides NZ PT-141 category](https://new-zealand.direct-peptides.com/pt-141-category/), [PharmaLabGlobal NZ PT-141](https://new-zealand.pharmalabglobal.com/pt-141/).
+- Pure Peptides NZ: PT-141 listed at **NZD $115.00** (was $200.00), shown out of stock, size not confirmed — [Pure Peptides NZ all products](https://www.purepeptidesnz.com/category/all-products).
+- Peptides Club (peptidesclub.co.nz, redirects to peptidesclub.net) advertises PT-141 (Bremelanotide) "NZ & AU" and states "Local Delivery (UK/CA/AU/NZ)" with same-day dispatch, but the specific PT-141 price was not visible on the fetched homepage — [Peptides Club PT-141](https://peptidesclub.co.nz/product/pt141/) (redirected), [Peptides Club homepage](http://peptidesclub.net/).
+
+**Oxytocin (Acetate)**
+- Direct SARMS NZ: Oxytocin Nasal Spray $20.54–$62.69 USD ≈ **NZD $36–$110**; Oxytocin Peptide Vial $10.54–$21.76 USD ≈ NZD $18–$38; Oxytocin Pre-Mixed Peptide 2mg (marked "TOP SELLER") $13.76–$47.51 USD ≈ NZD $24–$83 — [Direct SARMS NZ Oxytocin category](https://new-zealand.direct-sarms.com/product-category/oxytocin/).
+- Pure Peptides NZ: Oxytocin listed at **NZD $105.00** (was $140.00), out of stock, size not confirmed — [Pure Peptides NZ all products](https://www.purepeptidesnz.com/category/all-products).
+- Direct Peptides NZ also lists an Oxytocin Nasal Spray (15ml/30ml) product and category page, but price wasn't captured in this research pass — [Direct Peptides NZ Oxytocin Nasal Spray](https://new-zealand.direct-peptides.com/product/oxytocin-nasal-spray/).
+- PharmaGrade Store NZ lists an Oxytocin category with a 2mg vial and 15/30ml nasal sprays, but exact prices weren't captured (page not fetched directly) — [PharmaGrade Store NZ Oxytocin](https://new.pharmagrade.store/product-category/oxytocin/).
+
+**Snap8**
+- Direct Peptides NZ: SNAP-8 Topical 200mg £34.25 (was £97.85) ≈ **NZD $80** (was $228); SNAP-8 Peptide Vial 10mg £19.94–£28.92 ≈ NZD $46–$67; SNAP-8 Nasal Spray (15/30ml) £28.34–£51.68 ≈ NZD $66–$120; SNAP-8 Pre-Mixed Pen 10mg £24.98–£67.45 ≈ NZD $58–$157 — [Direct Peptides NZ Snap-8 category](https://new-zealand.direct-peptides.com/snap-8-category/).
+- PharmaLabGlobal NZ and PharmaGrade Store NZ both list SNAP-8 10mg vial and pre-mixed pen products for NZ, but specific prices were not captured — [PharmaLabGlobal NZ SNAP-8](https://new-zealand.pharmalabglobal.com/snap-8-peptide/), [PharmaGrade Store NZ SNAP-8](https://new.pharmagrade.store/product/snap-8/), [PharmaGrade Store SNAP-8 Mixed Pen](https://new.pharmagrade.store/product/snap-8-mixed-pen/).
+- No genuinely NZD-native site (Pure Peptides NZ, BAC Water NZ, etc.) was found stocking Snap8 in this research.
+
+**GLOW (BBG70 cosmetic blend: BPC-157 10mg + TB-500 10mg + GHK-Cu 50mg = 70mg)**
+- No NZ-specific reseller was found publicly listing GLOW/BBG70 with a price. International vendors carrying a "GLOW" or "Glow70" 70mg blend include Stratford Peptides, Kylo Peptides, Improved Peptides, PrimeLab Peptides, PeakForm Peptides, True Research Labs and Verified Peptides, but none of these were confirmed to ship to or price for NZ in this research — [Stratford Peptides Glow70](https://www.stratfordpeptides.com/products/glow70), [Kylo Peptides GLOW](https://kylopeptides.com/product/glow/), [PeakForm Peptides Glow](https://peakformpeptides.com/shop/peptides/glow/), [True Research Labs GLOW Blend](https://trueresearchlabs.com/shop/glow-blend/). **This is a clear gap: no confirmed NZD price for GLOW exists in the sources found.**
+
+**Bac Water (Bacteriostatic Water)**
+- BAC Water NZ (bacwaternz.com, "now ordering at NZpeptide.com," operated by Global Bio Research Limited) — genuinely NZD-native pricing:
+  - 10ml vials: 1 vial $29.99, 3-vial pack $79.99 (≈$26.66/vial), 5-vial pack $129.99 (≈$26/vial), 10-vial pack $269.99 (≈$26.99/vial)
+  - 3ml vials: 1 vial $9.99, 3-pack $25.99 (≈$8.66/vial), 5-pack $44.99 (≈$9/vial), 10-pack $79.99 (≈$8/vial)
+  — [BAC Water NZ](https://bacwaternz.com/)
+- Direct SARMS NZ, Direct Peptides NZ and PharmaLabGlobal NZ each list a Bac Water product page, but none were fetched for exact price in this pass — [Direct SARMS NZ Bac Water](https://new-zealand.direct-sarms.com/product/bac-water/), [Direct Peptides NZ 10ml Bac Water](https://new-zealand.direct-peptides.com/product/10ml-bacteriostatic-water/), [PharmaLabGlobal NZ 10ml Bac Water](https://new-zealand.pharmalabglobal.com/product/bacteriostatic-water/).
+- For context, non-NZ vendors found in general search show wide variance: PSPeptides $14.99 USD/10ml, Rejuven8 Peptides $40–$155 USD depending on volume, Adapt Peptides $75–$385.90 USD depending on volume — [PSPeptides Bac Water](https://pspeptides.com/product/bacteriostatic-water/), [Rejuven8 Peptides Bac Water](https://rejuven8peptides.com/product/bac-water/), [Adapt Peptides Bacteriostatic Water](https://adaptpeptides.com/product/bacteriostatic-water/).
+
+**Lipo-C (Fat Blaster lipotropic blend: L-Carnitine 300mg, Methionine 25mg, Inositol 50mg, Choline 50mg, B12 1mg, B6 50mg, NADH 50mg)**
+- No NZ-based research-chemical reseller was found publicly listing Lipo-C/Fat Blaster with an NZD price. International vendors carrying this exact formulation include The Peptide Co. (ships to Australia/UK/Europe/worldwide — NZ shipping unconfirmed), Northern Peptide Collective (Canada), Voltage Research (US), Elite Edge Biotech, Homopeptide, GXZ Peptides and Prymalab — [The Peptide Co. Lipo-C](https://thepeptideco.com/product/lipo-c-fat-blaster/), [Voltage Research Lipo-C](https://voltagepeptides.com/product/lipo-c-fat-blaster/), [Prymalab Lipotropic Injections](https://prymalab.net/product/lipotropic-injections-fat-loss-lipo-c/). **This is a clear gap: no confirmed NZ reseller or NZD price for Lipo-C/Fat Blaster exists in the sources found.**
+
+### Inferences
+- Once converted to NZD, the international-chain prices (Direct SARMS/Direct Peptides) for Melanotan 2, PT-141, Oxytocin and Snap8 10mg vials mostly cluster in the **NZD $40–$160** range depending on pack size/variant — noticeably higher than the user's reference prices ($60/$70/$75/$70), especially at the lower end of a single small vial where the chain prices are often still $40+ once converted, versus the user's flat $60–$75.
+- The two confirmed genuinely-NZD-native retail data points (Pure Peptides NZ at $165/$115/$105, and BAC Water NZ's bac water at roughly 3x the user's reference per-unit price) suggest local "Kiwi-branded" boutique peptide shops price meaningfully above both the international chains and the user's reference prices — though the Pure Peptides NZ items were out of stock, which may itself inflate list price (no incentive to compete on price for unavailable stock) or reflect a premium/limited-supply positioning.
+- The complete absence of any confirmed NZ-specific GLOW or Lipo-C listing suggests these two products are either newer/niche additions to the NZ market that haven't been indexed yet, or are typically sold under different names/blends by NZ resellers (e.g. bundled into generic "cosmetic peptide blend" or "MIC/lipotropic injection" categories) that weren't surfaced by the exact search terms used.
+
+### Gaps
+- Exact NZD-confirmed prices for PharmaLabGlobal NZ (blocked all fetches with HTTP 403) across every product category.
+- Exact prices for Pharmagrade Store NZ (redirect issues prevented confirming any specific product price).
+- No price data could be pulled directly from nzpeptides.co.nz, buypeptidesnz.com, or nzpeptides.net despite these appearing to be genuine NZ-domiciled sellers (all three returned "socket closed" errors on every fetch attempt) — these are likely important direct comparables and warrant a manual visit.
+- No NZD price found anywhere for GLOW (BBG70) from an NZ reseller.
+- No NZD price found anywhere for Lipo-C/Fat Blaster from an NZ reseller (only international vendors and NZ medical-clinic equivalents, see below).
+- Exact mg/vial sizes for the Pure Peptides NZ Melanotan 2 ($165), PT-141 ($115) and Oxytocin ($105) listings were not confirmed (assumed but not verified to be 10mg equivalents), so like-for-like comparison to the user's 10mg reference prices carries some uncertainty.
+
+---
+
+## Melanotan 2 — what's the going NZ market rate, and are there notably cheap or notably expensive outliers?
+
+### Takeaway
+Converted to NZD, Melanotan 2 10mg-equivalent pricing across the sources found ranges roughly from the low $40s (Direct SARMS NZ base vial price, USD-converted) up to $165–$190 (Pure Peptides NZ list price; Direct Peptides NZ nasal spray top-end). The user's reference price of $60/10mg sits near the cheap end of this observed range, undercutting the boutique NZD-native sellers by more than half.
+
+### Cited Findings
+- Direct SARMS NZ Melanotan 2 Peptide Vial (10mg): $24.03–$81.70 USD ≈ NZD $42–$143 depending on pack/kit size — [source](https://new-zealand.direct-sarms.com/product/melanotan-2-peptide-vial/).
+- Direct Peptides NZ Melanotan 2 Nasal Spray: £25.19–£81.68 (15/30ml) ≈ NZD $59–$190 — [source](https://new-zealand.direct-peptides.com/melanotan-ii/).
+- Pure Peptides NZ: Melanotan 2 listed NZD $165 (was $170), out of stock — [source](https://www.purepeptidesnz.com/category/all-products).
+- Search-only findings (not independently price-verified via fetch) indicate additional genuinely NZ-domiciled sellers — NZ Peptides (nzpeptides.co.nz), Buy Peptides NZ (buypeptidesnz.com), NZ Peptides .net (nzpeptides.net) — all stock Melanotan 2 with NZ Post/domestic courier shipping, positioning themselves as convenient local alternatives to the international chains — [NZ Peptides](https://nzpeptides.co.nz/products/melanotan-2-mt-2-10mg-research-peptide-purity-99), [Buy Peptides NZ](https://buypeptidesnz.com/products/melanotan-ii-10mg).
+- Regulatory framing: Medsafe (NZ) treats melanotan as a substance requiring medicine classification/approval and it is not an approved medicine in NZ — [Medsafe PIEDs classification consultation (PDF)](https://www.medsafe.govt.nz/consultations/MCC-Submission-PIEDs.doc). Australia's TGA issued a safety alert after finding seized Melanotan II nasal sprays labelled "30mg" actually contained between 22mg and 54mg across 5 tested bottles — inconsistent dosing that increases adverse-event risk — [TGA safety alert](https://www.tga.gov.au/safety/safety-monitoring-and-information/safety-alerts/melanotan-ii-tanning-peptide-products-found-be-inconsistently-dosed).
+
+### Inferences
+- The user's reference price ($60/10mg) undercuts every converted NZD price point found for Melanotan 2 in this research, including the cheapest converted international-chain price (~NZD $42 for Direct SARMS NZ's base vial, though that's before considering shipping and is a USD-defaulted site that may not reflect what an NZ buyer actually pays after currency conversion fees). This suggests the user is currently priced competitively-to-cheap in the observed NZ market for Melanotan 2.
+- The wide spread ($42–$190 once converted) is consistent with Melanotan 2 being a "high-volume, well-established" product as the brief describes — multiple sellers compete on it, pack-size bundling (kits, twin-packs, value-packs) is common, and list prices vary heavily by format (vial vs. nasal spray vs. pre-mixed pen).
+
+### Gaps
+- No data was obtained on actual landed/delivered cost to an NZ buyer from the USD/GBP-denominated chains (shipping fees, customs, card FX fees), which would raise the effective NZD cost above the raw currency conversion shown here.
+- No confirmed current price from nzpeptides.co.nz, buypeptidesnz.com, or nzpeptides.net (fetch failures) — these would be the most directly comparable "true NZ boutique" data points and remain a gap.
+- No specific mg-dosing purity/counterfeit test data specific to a named NZ reseller was found (see forum/community section below for related but Australia/UK-focused findings).
+
+---
+
+## How does research-chem pricing for Bac Water and Lipo-C ("fat blaster"/MIC) compare to NZ clinic pricing?
+
+### Takeaway
+On Bac Water, the one confirmed NZ research-chem reseller (BAC Water NZ) prices notably higher per unit than the user's reference ($26–$30 per 10ml vial vs the user's $20, and $8–$10 per 3ml vs the user's $10 — roughly break-even at 3ml but ~30-50% more expensive at 10ml). On Lipo-C, no NZ research-chem reseller price was found at all, but NZ med-spa/clinic pricing for the adjacent "fat dissolving injection" category runs around $300 per clinic session in Auckland — several multiples above a $180 10ml research-chem vial — while a general (non-NZ-specific) reference to compounding-pharmacy Lipo-C vials cited $100–$200 per 30mL vial.
+
+### Cited Findings
+- BAC Water NZ 10ml pricing: $29.99 (1 vial) down to $26.99/vial (10-pack); 3ml pricing: $9.99 (1 vial) down to $8/vial (10-pack) — [source](https://bacwaternz.com/).
+- Auckland fat-dissolving-injection clinics average around **$300** per session when booked with a specialist, per a clinic-booking marketplace listing — [Fresha: fat dissolving injections in Auckland](https://www.fresha.com/lp/en/tt/fat-dissolving-injections/in/nz-auckland).
+- A general (not NZ-specific) claim surfaced in search synthesis states self-administered Lipo-C injections in 30mL vials from compounding pharmacies cost roughly **$100–$200 per vial** — this was not traced to a single identifiable primary source during this research and should be treated as unverified/low-confidence — [Fresha Auckland listing](https://www.fresha.com/lp/en/tt/fat-dissolving-injections/in/nz-auckland) (search synthesis citation; primary source unclear).
+- Lipo-C/Fat Blaster composition (L-Carnitine 300mg, Methionine 25mg, Inositol 50mg, Choline 50mg, B12 1mg, B6 50mg, NADH 50mg) is consistent across research-chem vendors like The Peptide Co. and Prymalab — [The Peptide Co.](https://thepeptideco.com/product/lipo-c-fat-blaster/), [Prymalab](https://prymalab.net/product/lipotropic-injections-fat-loss-lipo-c/).
+- NZ clinics also offer weight-loss injection programs built around GLP-1 medicines (Wegovy, Saxenda, Ozempic/semaglutide) as a separate, medically-supervised and much more expensive category, distinct from lipotropic/MIC "fat blaster" injections — [Well Revolution NZ weight-loss injections guide](https://www.wellrevolution.co.nz/blog/the-complete-guide-to-weight-loss-injections-in-nz-wegovy-saxenda-ozempic).
+- Auckland med-spa Beautiphi offers a "Lipo Dissolve" treatment for fat reduction, and Wellington Anti-Aging and Slim Medical Clinic also list peptide/weight-loss injection services, but exact per-session or per-vial NZD prices were not captured from these pages in this research pass — [Beautiphi Lipo Dissolve](https://www.beautiphi.co.nz/lipo-dissolve/), [Wellington Anti-Aging Peptides](https://www.wellingtonantiaging.com/services/peptides-near-me), [Slim Medical Clinic Peptides](https://www.slimmedicalclinic.com/weightlossinjection).
+
+### Inferences
+- Bac Water research-chem pricing at BAC Water NZ is not dramatically different in kind from the user's reference pricing, but it is meaningfully higher on a per-unit basis at 10ml (roughly 30-50% above the user's $20), while roughly matching at 3ml. This suggests Bac Water is a low-differentiation, price-sensitive add-on product across NZ resellers, and the user's current 10ml price is competitively positioned (cheaper than the one confirmed comparable).
+- Clinic-administered "fat dissolving"/lipotropic injections in NZ carry a large price premium over self-administered research-chem Lipo-C precisely because the clinic price bundles a practitioner's consultation and administration, not just the injectable itself — so the ~$300 Auckland clinic figure is not a true apples-to-apples comparison to a $180 10ml research-chem vial, but it does indicate there is significant price headroom/willingness-to-pay in the NZ market for this product category generally.
+
+### Gaps
+- No NZ research-chem reseller was found selling Lipo-C/Fat Blaster with a published NZD price, so a direct research-chem-vs-research-chem or even research-chem-vs-clinic comparison for Lipo-C specifically could not be completed with high confidence.
+- The $100–$200/30mL vial compounding-pharmacy claim could not be traced to a specific, citable primary source and should be treated with caution — flagged here as a gap rather than a confirmed fact.
+- No NZD pricing was obtained from Beautiphi, Wellington Anti-Aging, or Slim Medical Clinic for their specific lipo/peptide injection services.
+
+---
+
+## What do NZ community members (forums, Facebook groups, Reddit) say about reputable vs overpriced resellers, and quality/purity complaints?
+
+### Takeaway
+Direct NZ-specific community sentiment was hard to source: general web search surfaced only two active discussion threads (both on the Australia/NZ-focused steroid research forum evolutionary.org) referencing NZ peptide sourcing, but their content could not be fetched (blocked/403). The clearest quality-risk signal is regulatory rather than anecdotal: Australia's TGA found grossly inconsistent Melanotan II dosing in seized/tested products, and NZ's Medsafe treats melanotan as an unapproved medicine requiring classification — both indicating the known counterfeit/quality-variance risk called out in the research brief is real and documented, even though NZ-specific consumer complaint threads could not be directly retrieved.
+
+### Cited Findings
+- Two relevant forum threads exist on evolutionary.org: "Peptides New Zealand Sources??" and "BEST SOURCE FOR PEPTIDES IN New Zealand PLEASE" — both titles indicate active community demand for NZ-specific sourcing advice, but page content returned HTTP 403 on fetch attempts and could not be read directly in this research — [Peptides New Zealand Sources??](https://www.evolutionary.org/forums/threads/peptides-new-zealand-sources.110112/), [Best source for peptides in New Zealand please](https://www.evolutionary.org/forums/threads/best-source-for-peptides-in-new-zealand-please.110744/).
+- A search-engine synthesis of forum content (not independently verified by direct fetch) suggested evolutionary.org community members have referenced Domestic-supply.com, UGL OZ, Oxygen Pharma, and "Austar Labs" (described as an NZ domestic supplier) as trusted sources — this is a low-confidence, unverified secondary claim and is flagged accordingly.
+- Peptide Lab NZ (peptidelab.co.nz, now transitioning to PeptideLabNZ.com) has 2 Trustpilot reviews, both 5/5 stars: one reviewer ("Rob," Feb 2026) praised "sweet pricing," fast shipping to a rural address (ordered Monday, received Wednesday), and good product packaging, reporting over $1,000 in purchases in one week; the other ("Jessica Copland," Mar 2026) gave brief positive feedback. Neither review names melanotan, PT-141, or any specific product from this research's scope — [Trustpilot: Peptide Lab NZ](https://nz.trustpilot.com/review/peptidelab.co.nz).
+- On the counterfeit/quality-risk question specifically: the TGA (Australia) found that seized "Pure Tans Triple Strength 30 MG" Melanotan II nasal sprays actually contained between 22mg and 54mg of active peptide across 5 tested bottles — a roughly ±45% dosing variance from label claim — [TGA safety alert](https://www.tga.gov.au/safety/safety-monitoring-and-information/safety-alerts/melanotan-ii-tanning-peptide-products-found-be-inconsistently-dosed). A broader review (cited by TGA/related sources) identifies counterfeiting, cross-contamination with other peptides, microbial contamination, and synthesis impurities as recurring problems in black-market Melanotan II supply generally — [LegitScript: Melanotan emerging threat](https://www.legitscript.com/high-risk-and-problematic-products/melanotan/).
+- Dermatologists (reported via ABC News, Australia) have observed patients developing new, atypical moles after using melanotan-II, which they attribute to the peptide's mechanism combined with uncontrolled product quality — [ABC News: abnormal moles from melanotan-II](https://www.abc.net.au/news/2026-06-05/melanotan-ii-peptides-warning-by-specialists-abormal-moles/106749628).
+- Medsafe (NZ) documentation on classification of peptide-based performance and image-enhancing drugs (PIEDs) indicates melanotan is treated as requiring medicine classification/approval in New Zealand, i.e., it sits in the same "unapproved medicine sold as research chemical" regulatory grey zone as in Australia and the UK — [Medsafe PIEDs classification submission](https://www.medsafe.govt.nz/consultations/MCC-Submission-PIEDs.doc).
+
+### Inferences
+- The near-total absence of retrievable NZ-specific Reddit/Facebook/forum threads in this research (as opposed to the existence of thread titles that couldn't be opened) suggests NZ-specific peptide-reseller discussion is either happening in closed/private Facebook groups (not indexed by search) or is a smaller, less-documented community compared to the broader Australian bodybuilding/steroid forum scene — meaning word-of-mouth reputation signals for NZ resellers specifically are hard to verify from outside those closed groups.
+- Given the TGA's documented ±45% dosing variance in tested Melanotan II product, a buyer/seller benchmarking exercise for melanotan should treat "purity/dosing consistency" as a differentiator that isn't visible in list price alone — two resellers charging the same NZD price per 10mg vial could differ substantially in actual delivered dose, but no source in this research tied a specific NZ reseller name to a specific verified purity/COA test result.
+
+### Gaps
+- No accessible Reddit thread specific to NZ peptide resellers was found (search returned only general/international Melanotan discussion, Wikipedia, and unrelated forum results).
+- No accessible Facebook group content could be retrieved (private groups aren't indexed by search).
+- Both evolutionary.org threads that appear most relevant to "which NZ peptide source is reputable" returned HTTP 403 and could not be read — their actual content (specific reseller names, price comparisons, complaints) remains unknown and would need a manual/logged-in visit to retrieve.
+- No source in this research linked a specific named NZ reseller (from the list identified above) to an independent, third-party Certificate of Analysis or purity test result, or to a specific documented complaint about counterfeit/underdosed product from an NZ customer.

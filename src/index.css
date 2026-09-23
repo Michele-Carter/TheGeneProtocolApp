@@ -1,0 +1,935 @@
+@import "tailwindcss";
+
+@theme {
+  /* Custom brand colors, registered here (not just tailwind.config.ts) so Tailwind actually
+     generates opacity-modifier utilities (e.g. bg-gold-500/10, border-gold-500/60) for them -
+     without a real --color-* CSS variable, Tailwind v4's color-mix()-based opacity variants for
+     a color that only exists in the legacy JS config silently fail to render. */
+  --color-gold-200: #f2d387;
+  --color-gold-300: #e8c05a;
+  --color-gold-400: #dba931;
+  --color-gold-500: #c2911f;
+  --color-gold-600: #9c7419;
+  --color-gold-700: #7a5a14;
+  --color-gold-900: #3a2b0a;
+  --color-gold-950: #241a06;
+
+  --color-ink-950: #0b0f16;
+  --color-ink-900: #0f1623;
+  --color-ink-800: #111827;
+  --color-ink-700: #161f2e;
+  --color-ink-600: #1b2738;
+  --color-ink-500: #243041;
+  --color-ink-400: #334155;
+
+  --color-brand-500: #4f46e5;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Fluid typography scaling proportionally between mobile baseline (320px) and desktop baseline (1440px) using relative units (rem, vw) */
+  --font-size-xs: clamp(0.75rem, 0.70rem + 0.268vw, 0.875rem);
+  /* 12px on mobile -> 14px on desktop (tag size) */
+  --font-size-sm: clamp(0.8125rem, 0.76rem + 0.268vw, 0.9375rem);
+  /* 13px on mobile -> 15px on desktop */
+  --font-size-base: clamp(0.875rem, 0.82rem + 0.268vw, 1rem);
+  /* 14px on mobile -> 16px on desktop (body size) */
+  --font-size-lg: clamp(1rem, 0.95rem + 0.268vw, 1.125rem);
+  /* 16px on mobile -> 18px on desktop (heading size) */
+  --font-size-xl: clamp(1.125rem, 1.05rem + 0.357vw, 1.25rem);
+  /* 18px on mobile -> 20px on desktop */
+  --font-size-2xl: clamp(1.25rem, 1.18rem + 0.357vw, 1.5rem);
+  /* 20px on mobile -> 24px on desktop */
+  --font-size-3xl: clamp(1.5rem, 1.39rem + 0.536vw, 1.875rem);
+  /* 24px on mobile -> 30px on desktop */
+  --font-size-4xl: clamp(1.875rem, 1.73rem + 0.714vw, 2.375rem);
+  /* 30px on mobile -> 38px on desktop */
+  --font-size-5xl: clamp(2.25rem, 2.07rem + 0.893vw, 2.875rem);
+  /* 36px on mobile -> 46px on desktop */
+
+  /* Fluid component spacing variables scaling proportionally between mobile and desktop */
+  --spacing-fluid-xs: clamp(0.5rem, 0.4rem + 0.5vw, 0.75rem);
+  --spacing-fluid-sm: clamp(0.75rem, 0.6rem + 0.75vw, 1.25rem);
+  --spacing-fluid-md: clamp(1rem, 0.8rem + 1vw, 2rem);
+  --spacing-fluid-lg: clamp(1.5rem, 1.2rem + 1.5vw, 3rem);
+  --spacing-fluid-xl: clamp(2rem, 1.6rem + 2vw, 4rem);
+}
+
+/* Defensive Design: Global constraints to prevent layout overflows and broken components */
+*,
+::before,
+::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  scroll-behavior: smooth;
+}
+
+.app-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  color: #94a3b8;
+  background-color: transparent;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.app-action-button svg {
+  color: currentColor;
+}
+
+.app-action-button:hover:not(:disabled),
+.app-action-button:focus-visible:not(:disabled) {
+  border-color: rgba(194, 145, 31, 0.6);
+  color: #c2911f;
+  background-color: rgba(194, 145, 31, 0.08);
+}
+
+.app-action-button-active {
+  border-color: rgba(194, 145, 31, 0.75) !important;
+  color: #c2911f !important;
+  background-color: rgba(194, 145, 31, 0.1) !important;
+}
+
+.app-action-button-active:hover:not(:disabled),
+.app-action-button-active:focus-visible:not(:disabled) {
+  border-color: rgba(219, 169, 49, 0.95) !important;
+  color: #e8c05a !important;
+  background-color: rgba(194, 145, 31, 0.18) !important;
+  box-shadow: 0 0 0 1px rgba(219, 169, 49, 0.12);
+}
+
+.app-action-button:disabled,
+.app-action-button-disabled {
+  border-color: rgba(71, 85, 105, 0.45) !important;
+  color: #64748b !important;
+  background-color: transparent !important;
+  cursor: not-allowed;
+}
+
+/* Slim, dark-themed scrollbar on the main content scroller (kept visible - long pages like Price Finder need it). */
+.app-main-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.5) transparent;
+}
+
+.app-main-scroller::-webkit-scrollbar {
+  width: 10px;
+}
+
+.app-main-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-main-scroller::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.5);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.app-main-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(194, 145, 31, 0.6);
+}
+
+.pricefinder-shipping-option {
+  border-width: 1px;
+}
+
+.pricefinder-shipping-option-active {
+  border-color: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .app-action-button:not(:disabled):active {
+    transform: translateY(1px) scale(0.99);
+    border-color: rgba(219, 169, 49, 0.9);
+    background-color: rgba(194, 145, 31, 0.16);
+  }
+}
+
+/* Fluid image and graphic elements styling */
+img,
+svg,
+canvas {
+  max-width: 100%;
+  height: auto;
+  box-sizing: border-box;
+}
+
+/* Light Theme Styles */
+html.light {
+  --theme-light-shell: #FFFAF5;
+  --theme-light-text: #1e293b;
+  --theme-light-border: #d6d6d6;
+  --theme-light-muted: #64748b;
+  --theme-light-subtle: #94a3b8;
+  --theme-light-hover: #FFE8DC;
+  --theme-light-surface-soft: #FFFBF8;
+  --theme-light-surface-raised: #FFF5EE;
+  background: var(--theme-light-shell) 50% !important;
+  color: var(--theme-light-text);
+}
+
+html.light body {
+  background: var(--theme-light-shell) 50% !important;
+  color: var(--theme-light-text);
+}
+
+html.light .min-h-screen,
+html.light .h-dvh {
+  background: var(--theme-light-shell) 50% !important;
+  color: var(--theme-light-text) !important;
+}
+
+html.light aside {
+  background: var(--theme-light-shell) 50% !important;
+  border-color: var(--theme-light-border) !important;
+  color: var(--theme-light-text) !important;
+}
+
+html.light footer {
+  background: transparent !important;
+  border-color: var(--theme-light-muted) !important;
+  color: var(--theme-light-muted) !important;
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
+  width: 100% !important;
+}
+
+html.light aside .text-slate-500,
+html.light aside .text-slate-600 {
+  color: var(--theme-light-muted) !important;
+}
+
+html.light aside .text-slate-400 {
+  color: var(--theme-light-subtle) !important;
+}
+
+html.light aside .text-gold-400 {
+  color: #000000 !important;
+}
+
+html.light aside .hover\:text-white:hover {
+  color: var(--theme-light-text) !important;
+}
+
+html.light aside .bg-slate-900 {
+  background-color: var(--theme-light-hover) !important;
+  border-color: var(--theme-light-border) !important;
+}
+
+html.light aside button.bg-slate-900 {
+  background-color: #cbd5e1 !important;
+}
+
+html.light aside .hover\:bg-slate-900\/40:hover {
+  background-color: #e2e8f0 !important;
+}
+
+html.light aside .hover\:bg-slate-100:hover {
+  background-color: #e2e8f0 !important;
+}
+
+html.light aside .bg-slate-100 {
+  background-color: var(--theme-light-surface-soft) !important;
+}
+
+html.light aside .bg-slate-900\/75 {
+  background-color: var(--theme-light-surface-soft) !important;
+  border-color: #00D9FF !important;
+}
+
+html.light aside .border-slate-900\/80 {
+  border-color: #FFD9CC !important;
+}
+
+html.light aside .border-slate-800 {
+  border-color: #FFD9CC !important;
+}
+
+/* Mobile header */
+html.light header {
+  background-color: rgba(255, 251, 248, 0.98) !important;
+  border-color: #FFD9CC !important;
+}
+
+html.light header .text-slate-900 {
+  color: #1e293b !important;
+}
+
+html.light header .text-slate-400 {
+  color: var(--theme-light-subtle) !important;
+}
+
+html.light header .hover\:text-slate-900:hover {
+  color: #0f172a !important;
+}
+
+html.light header .hover\:bg-slate-100:hover {
+  background-color: var(--theme-light-hover) !important;
+}
+
+html.light header .hover\:bg-slate-900:hover {
+  background-color: var(--theme-light-hover) !important;
+}
+
+html.light header .text-white {
+  color: #1e293b !important;
+}
+
+/* Main content area */
+html.light main {
+  background: transparent !important;
+  color: var(--theme-light-text) !important;
+}
+
+html.light main .text-slate-300 {
+  color: #475569 !important;
+}
+
+html.light main .pricefinder-vendor-name {
+  color: #1e293b !important;
+}
+
+html.light main .pricefinder-strikethrough {
+  color: var(--theme-light-subtle) !important;
+}
+
+html.light main .order-ledger-product-name {
+  color: #1e293b !important;
+}
+
+html.light main .order-ledger-price {
+  color: #1e293b !important;
+}
+
+html.light main .order-cart-vendor-header {
+  background-color: #ebe2d8 !important;
+}
+
+html.light main .border-slate-900,
+html.light main .border-slate-900\/80 {
+  border-color: rgba(194, 145, 31, 0.2) !important;
+}
+
+html.light main .border-slate-800,
+html.light main .border-slate-800\/80 {
+  border-color: rgba(194, 145, 31, 0.2) !important;
+}
+
+html.light main .border-slate-800\/60,
+html.light main .border-slate-800\/40 {
+  border-color: rgba(194, 145, 31, 0.14) !important;
+}
+
+html.dark :is(.border-slate-900, .border-slate-900\/80, .border-slate-800, .border-slate-800\/80, .border-slate-700, .border-slate-700\/80) {
+  border-color: rgba(71, 85, 105, 0.72) !important;
+}
+
+html.dark :is(.border-slate-800\/60, .border-slate-800\/40, .border-slate-700\/60, .border-slate-700\/40) {
+  border-color: rgba(71, 85, 105, 0.55) !important;
+}
+
+html.light main .bg-slate-900\/80,
+html.light main .bg-slate-900\/60,
+html.light main .bg-slate-900\/50,
+html.light main .bg-slate-900\/40,
+html.light main .bg-slate-900\/35,
+html.light main .bg-slate-900\/30 {
+  background-color: #fff9f5 !important;
+}
+
+html.light main .bg-slate-950\/80,
+html.light main .bg-slate-950\/60,
+html.light main .bg-slate-950\/50,
+html.light main .bg-slate-950\/40 {
+  background-color: #fffaf7 !important;
+}
+
+html.light main .divide-slate-800\/60> :not([hidden])~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+html.light main .divide-slate-800\/40> :not([hidden])~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+html.light main .order-cart-item-list> :not([hidden])~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+html.light main .order-cart-item-row+.order-cart-item-row {
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+html.light main .protocol-search-row+.protocol-search-row {
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+html.light main .protocol-selected-chip {
+  position: relative;
+  overflow: hidden;
+  background-color: transparent !important;
+  border-color: #e2e8f0 !important;
+  color: #1e293b !important;
+  box-shadow: none !important;
+}
+
+html.light main .protocol-selected-chip button {
+  color: #64748b !important;
+}
+
+html.light main .protocol-selected-chip button:hover {
+  color: #1e293b !important;
+}
+
+html.dark main .order-cart-item-row+.order-cart-item-row {
+  border-top: 1px solid rgba(71, 85, 105, 0.35) !important;
+}
+
+html.dark main .protocol-search-row+.protocol-search-row {
+  border-top: 1px solid rgba(71, 85, 105, 0.45) !important;
+}
+
+/* Text colors */
+html.light .text-slate-100 {
+  color: #1e293b !important;
+}
+
+html.light .text-slate-400 {
+  color: #64748b !important;
+}
+
+html.light .text-slate-500 {
+  color: #64748b !important;
+}
+
+html.light .text-slate-600 {
+  color: #475569 !important;
+}
+
+html.light .text-white {
+  color: #1e293b !important;
+}
+
+/* Background colors - Replace greys with soft whites and creams */
+html.light .bg-slate-950 {
+  background-color: #FFFAF5 !important;
+}
+
+html.light .bg-slate-950\/90 {
+  background-color: #FFFAF5 !important;
+}
+
+html.light .bg-slate-900 {
+  background-color: #FFE8DC !important;
+}
+
+html.light .bg-slate-900\/75 {
+  background-color: #FFF5EE !important;
+}
+
+html.light .bg-slate-900\/40 {
+  background-color: #FFFBF8 !important;
+}
+
+html.light .bg-slate-900\/95 {
+  background-color: #FFFEF9 !important;
+}
+
+html.light .bg-slate-100 {
+  background-color: #FFF5EE !important;
+}
+
+/* Card and container backgrounds - light peach */
+html.light [class*="rounded-xl"],
+html.light [class*="rounded-lg"] {
+  background-color: #FFF9F5 !important;
+}
+
+/* Border colors - preserve specific accent colors per card */
+html.light .border-gold-500\/40 {
+  border-color: rgba(194, 145, 31, 0.4) !important;
+}
+
+html.light .border-gold-500\/40 {
+  border-color: rgba(194, 145, 31, 0.4) !important;
+}
+
+html.light .border-gold-500\/40 {
+  border-color: rgba(194, 145, 31, 0.4) !important;
+}
+
+html.light .border-gold-500\/40 {
+  border-color: rgba(194, 145, 31, 0.4) !important;
+}
+
+html.light .border-amber-500\/40 {
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+
+html.light .border-gold-500\/40 {
+  border-color: rgba(194, 145, 31, 0.4) !important;
+}
+
+html.light .focus-within\:border-gold-500:focus-within {
+  border-color: rgb(194, 145, 31) !important;
+}
+
+html.light .focus-within\:border-gold-500:focus-within {
+  border-color: rgb(194, 145, 31) !important;
+}
+
+html.light .focus-within\:border-gold-500:focus-within {
+  border-color: rgb(194, 145, 31) !important;
+}
+
+html.light .focus-within\:border-gold-500:focus-within {
+  border-color: rgb(194, 145, 31) !important;
+}
+
+html.light .focus-within\:border-amber-500:focus-within {
+  border-color: rgb(245, 158, 11) !important;
+}
+
+html.light .focus-within\:border-gold-500:focus-within {
+  border-color: rgb(194, 145, 31) !important;
+}
+
+html.light .hover\:border-gold-500\/70:hover {
+  border-color: rgba(194, 145, 31, 0.7) !important;
+}
+
+html.light .hover\:border-gold-500\/70:hover {
+  border-color: rgba(194, 145, 31, 0.7) !important;
+}
+
+html.light .hover\:border-gold-500\/70:hover {
+  border-color: rgba(194, 145, 31, 0.7) !important;
+}
+
+html.light .hover\:border-gold-500\/70:hover {
+  border-color: rgba(194, 145, 31, 0.7) !important;
+}
+
+html.light .hover\:border-amber-500\/70:hover {
+  border-color: rgba(245, 158, 11, 0.7) !important;
+}
+
+html.light .hover\:border-gold-500\/70:hover {
+  border-color: rgba(194, 145, 31, 0.7) !important;
+}
+
+/* Footer */
+html.light footer {
+  background: transparent !important;
+  border-color: #d6d6d6 !important;
+  color: #64748b !important;
+}
+
+html.light footer .text-slate-500 {
+  color: #64748b !important;
+}
+
+html.light footer .text-slate-600 {
+  color: #475569 !important;
+}
+
+html.light footer .hover\:text-white:hover {
+  color: #1e293b !important;
+}
+
+html.light footer .text-slate-800 {
+  color: #1e293b !important;
+}
+
+footer,
+footer * {
+  box-shadow: none !important;
+}
+
+footer.border-slate-900\/80,
+footer.border-slate-900,
+footer.border-slate-800\/80,
+footer.border-slate-800 {
+  box-shadow: none !important;
+}
+
+/* Welcome banner and gradient elements */
+html.light .from-slate-900 {
+  --tw-gradient-from: #FFF5EE !important;
+}
+
+html.light .to-slate-950 {
+  --tw-gradient-to: #FFE8DC !important;
+}
+
+html.light .bg-gradient-to-br {
+  background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)) !important;
+}
+
+html.light button[aria-label="Toggle theme"] {
+  background-color: #FFF5EE !important;
+  color: #1e293b !important;
+  border-color: #00D9FF !important;
+}
+
+html.light button[aria-label="Toggle theme"]:hover {
+  background-color: #FFE8DC !important;
+}
+
+/* 
+ * Explicit fluid overrides for arbitrary pixel font size classes
+ * using relative units (rem, vw) inside clamp() to satisfy strict design boundaries.
+ * Smallest font size is strictly clamped to 12px (0.75rem) on mobile,
+ * but on desktop the minimum effective font size is 14px.
+ */
+.text-\[8px\],
+.text-\[9px\],
+.text-\[10px\],
+.text-\[11px\],
+.text-\[12px\] {
+  font-size: clamp(0.75rem, 0.72rem + 0.15vw, 0.8125rem) !important;
+}
+
+.text-\[13px\] {
+  font-size: clamp(0.8125rem, 0.78rem + 0.15vw, 0.875rem) !important;
+}
+
+.text-\[14px\] {
+  font-size: clamp(0.875rem, 0.84rem + 0.15vw, 0.9375rem) !important;
+}
+
+.text-\[15px\] {
+  font-size: clamp(0.9375rem, 0.90rem + 0.15vw, 1rem) !important;
+}
+
+.text-\[16px\] {
+  font-size: clamp(1rem, 0.95rem + 0.268vw, 1.125rem) !important;
+}
+
+.text-\[18px\] {
+  font-size: clamp(1.125rem, 1.05rem + 0.357vw, 1.25rem) !important;
+}
+
+.text-\[20px\] {
+  font-size: clamp(1.25rem, 1.18rem + 0.357vw, 1.375rem) !important;
+}
+
+.text-\[22px\] {
+  font-size: clamp(1.375rem, 1.27rem + 0.536vw, 1.5rem) !important;
+}
+
+.text-\[24px\] {
+  font-size: clamp(1.5rem, 1.39rem + 0.536vw, 1.75rem) !important;
+}
+
+.text-\[28px\] {
+  font-size: clamp(1.75rem, 1.61rem + 0.714vw, 2.125rem) !important;
+}
+
+.text-\[30px\] {
+  font-size: clamp(1.875rem, 1.73rem + 0.714vw, 2.25rem) !important;
+}
+
+.text-\[32px\] {
+  font-size: clamp(2rem, 1.85rem + 0.714vw, 2.5rem) !important;
+}
+
+.text-\[36px\] {
+  font-size: clamp(2.25rem, 2.07rem + 0.893vw, 2.875rem) !important;
+}
+
+.text-\[40px\] {
+  font-size: clamp(2.5rem, 2.32rem + 0.893vw, 3.125rem) !important;
+}
+
+.text-\[48px\] {
+  font-size: clamp(3rem, 2.78rem + 1.071vw, 3.75rem) !important;
+}
+
+@media (min-width: 1024px) {
+
+  .text-xs,
+  .text-\[8px\],
+  .text-\[9px\],
+  .text-\[10px\],
+  .text-\[11px\],
+  .text-\[12px\],
+  .text-\[13px\],
+  .md\:text-xs,
+  .md\:text-\[8px\],
+  .md\:text-\[9px\],
+  .md\:text-\[10px\],
+  .md\:text-\[11px\],
+  .md\:text-\[12px\],
+  .md\:text-\[13px\],
+  .lg\:text-xs,
+  .lg\:text-\[8px\],
+  .lg\:text-\[9px\],
+  .lg\:text-\[10px\],
+  .lg\:text-\[11px\],
+  .lg\:text-\[12px\],
+  .lg\:text-\[13px\],
+  .xl\:text-xs,
+  .xl\:text-\[8px\],
+  .xl\:text-\[9px\],
+  .xl\:text-\[10px\],
+  .xl\:text-\[11px\],
+  .xl\:text-\[12px\],
+  .xl\:text-\[13px\] {
+    font-size: 0.875rem !important;
+  }
+}
+
+/* ===== FINAL DARK OVERRIDES ===== */
+html.dark,
+html.dark body,
+html.dark #root,
+html.dark .min-h-screen,
+html.dark .h-dvh {
+  --theme-dark-shell: #1B1B1F;
+  --theme-dark-surface: #232329;
+  --theme-dark-border: #2B2B31;
+  --theme-dark-text: #e5e7eb;
+  --theme-dark-muted: #94a3b8;
+  --theme-dark-muted-hover: #e2e8f0;
+  background: var(--theme-dark-shell) !important;
+  color: var(--theme-dark-text) !important;
+}
+
+/* Sidebar / shell */
+html.dark aside,
+html.dark aside>div,
+html.dark header,
+html.dark nav,
+html.dark footer {
+  background: var(--theme-dark-shell) !important;
+  border-color: var(--theme-dark-border) !important;
+}
+
+/* Main content surfaces (exclude tiny pills/dots) */
+html.dark main :is(.rounded-md,
+  .rounded-lg,
+  .rounded-xl,
+  [class*="rounded-md"],
+  [class*="rounded-lg"],
+  [class*="rounded-xl"]):not(.rounded-full):not([class*="rounded-full"]):not(.protocol-goal-button):not(.protocol-selected-chip):not(.protocol-dose-checkbox):not(.protocol-unit-toggle) {
+  background-color: var(--theme-dark-surface) !important;
+  border-color: var(--theme-dark-border) !important;
+}
+
+/* Utility background/border remap for main surfaces only */
+html.dark main [class*="bg-slate-"]:not([class*="rounded-full"]):not(.protocol-goal-button),
+html.dark main [class*="bg-zinc-"]:not([class*="rounded-full"]):not(.protocol-goal-button),
+html.dark main [class*="bg-neutral-"]:not([class*="rounded-full"]):not(.protocol-goal-button) {
+  background-color: var(--theme-dark-surface) !important;
+}
+
+html.dark main [class*="border-slate-"]:not(.protocol-goal-button),
+html.dark main [class*="border-zinc-"]:not(.protocol-goal-button),
+html.dark main [class*="border-neutral-"]:not(.protocol-goal-button) {
+  border-color: var(--theme-dark-border) !important;
+}
+
+/* Remove gradient cast */
+html.dark [class*="bg-gradient"],
+html.dark [class*="from-slate-"],
+html.dark [class*="to-slate-"] {
+  background-image: none !important;
+}
+
+/* Active nav pills */
+html.dark aside .bg-slate-900,
+html.dark aside .bg-slate-900\/75,
+html.dark aside .bg-slate-900\/40 {
+  background-color: var(--theme-dark-surface) !important;
+}
+
+/* Inputs */
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background: var(--theme-dark-surface) !important;
+  border-color: var(--theme-dark-border) !important;
+  color: var(--theme-dark-text) !important;
+}
+
+/* Keep keyboard/accessibility focus visible */
+html.dark input:focus,
+html.dark select:focus,
+html.dark textarea:focus,
+html.dark button:focus-visible,
+html.dark a:focus-visible {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35) !important;
+}
+
+/* ===== Protocol accents (restore vibrant dots + selected chip left accent) ===== */
+/* Dots in search results/dropdown (use per-compound color only) */
+html.dark main .protocol-search-row [class*="rounded-full"][style*="--chip-accent"],
+html.dark main [role="option"] [class*="rounded-full"][style*="--chip-accent"],
+html.dark main [role="listbox"] [class*="rounded-full"][style*="--chip-accent"] {
+  background-color: var(--chip-accent) !important;
+  /* no fallback */
+  border-color: transparent !important;
+}
+
+/* if a dot is using direct inline background-color, keep it */
+html.dark main .protocol-search-row [class*="rounded-full"][style*="background"],
+html.dark main [role="option"] [class*="rounded-full"][style*="background"],
+html.dark main [role="listbox"] [class*="rounded-full"][style*="background"] {
+  border-color: transparent !important;
+}
+
+/* Selected compound chip */
+html.dark main .protocol-selected-chip {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--theme-dark-border) !important;
+  border-radius: 9999px !important;
+  background-color: var(--theme-dark-surface) !important;
+  color: var(--theme-dark-text) !important;
+  box-shadow: none !important;
+}
+
+html.dark main .protocol-selected-chip::before,
+html.light main .protocol-selected-chip::before {
+  content: none !important;
+}
+
+html.dark main .protocol-selected-chip .protocol-selected-chip-accent,
+html.light main .protocol-selected-chip .protocol-selected-chip-accent {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: 14px;
+  border: 2px solid currentColor;
+  border-right: 0;
+  border-radius: 9999px 0 0 9999px;
+  background: transparent;
+  pointer-events: none;
+}
+
+html.dark main .protocol-selected-chip button {
+  color: var(--theme-dark-muted) !important;
+}
+
+html.dark main .protocol-selected-chip button:hover {
+  color: var(--theme-dark-muted-hover) !important;
+}
+
+/* ===== DARK: Suite Launcher tiles sit on a neutral border at rest (these utility classes are
+   also used by unrelated colored-accent cards elsewhere, like the Orders Ledger group cards and
+   peptide color-coding, which must keep their own border colors — hence scoped to .dashboard-tile).
+   On hover/focus-within the border lights up to match the tile's icon color. Both states need their
+   own !important rule here: Tailwind's own hover:/focus-within: utilities aren't !important, so
+   without this they'd lose to the base mute rule below instead of overriding it. ===== */
+html.dark main .dashboard-tile.border-gold-500\/40,
+html.dark main .dashboard-tile.border-gold-500\/40,
+html.dark main .dashboard-tile.border-gold-500\/40,
+html.dark main .dashboard-tile.border-gold-500\/40,
+html.dark main .dashboard-tile.border-amber-500\/40,
+html.dark main .dashboard-tile.border-gold-500\/40,
+html.dark main .dashboard-tile.border-gold-500\/40 {
+  border-color: var(--theme-dark-border) !important;
+}
+
+html.dark main .dashboard-tile.hover\:border-gold-500\/70:hover,
+html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
+  border-color: color-mix(in oklab, var(--color-gold-500) 70%, transparent) !important;
+}
+html.dark main .dashboard-tile.hover\:border-gold-500\/70:hover,
+html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
+  border-color: color-mix(in oklab, var(--color-gold-500) 70%, transparent) !important;
+}
+html.dark main .dashboard-tile.hover\:border-gold-500\/70:hover,
+html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
+  border-color: color-mix(in oklab, var(--color-gold-500) 70%, transparent) !important;
+}
+html.dark main .dashboard-tile.hover\:border-gold-500\/70:hover,
+html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
+  border-color: color-mix(in oklab, var(--color-gold-500) 70%, transparent) !important;
+}
+html.dark main .dashboard-tile.hover\:border-amber-500\/70:hover,
+html.dark main .dashboard-tile.focus-within\:border-amber-500:focus-within {
+  border-color: color-mix(in oklab, var(--color-amber-500) 70%, transparent) !important;
+}
+html.dark main .dashboard-tile.hover\:border-gold-500\/70:hover,
+html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
+  border-color: color-mix(in oklab, var(--color-gold-500) 70%, transparent) !important;
+}
+html.dark main .dashboard-tile.hover\:border-gold-500\/70:hover,
+html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
+  border-color: color-mix(in oklab, var(--color-gold-500) 70%, transparent) !important;
+}
+
+/* Clerk user menu: force readable dark contrast */
+.cl-userButtonPopoverCard {
+  background-color: #18181b !important;
+  border: 1px solid #3f3f46 !important;
+  color: #e5e7eb !important;
+}
+
+.cl-userPreviewMainIdentifier,
+.cl-userPreviewSecondaryIdentifier,
+.cl-userButtonPopoverActionButtonText,
+.cl-userButtonPopoverFooter {
+  color: #e5e7eb !important;
+}
+
+.cl-userButtonPopoverActionButton {
+  color: #e5e7eb !important;
+}
+
+.cl-userButtonPopoverActionButton:hover {
+  background-color: #27272a !important;
+}
+
+/* Clerk auth modal: improve text contrast in dark mode */
+.cl-card {
+  color: #e5e7eb !important;
+}
+
+.cl-headerTitle {
+  color: #ffffff !important;
+}
+
+.cl-headerSubtitle,
+.cl-formFieldLabel,
+.cl-dividerText,
+.cl-footerActionText,
+.cl-socialButtonsBlockButtonText,
+.cl-identityPreviewText,
+.cl-formResendCodeLink {
+  color: #e5e7eb !important;
+}
+
+.cl-formFieldInput::placeholder {
+  color: #a1a1aa !important;
+  opacity: 1 !important;
+}
+
+.cl-socialButtonsBlockButton {
+  color: #f4f4f5 !important;
+}

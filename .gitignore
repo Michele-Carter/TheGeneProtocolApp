@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+.vercel
+.env*
+
+# Intermediate scrape cache for scripts/scrapePeptideDb.mjs — regenerate via
+# `node scripts/scrapePeptideDb.mjs && node scripts/genPeptideDbData.mjs`
+scripts/.peptide-db-raw/
