@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, PackageCheck, Plus, Save, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, PackageCheck, Pencil, Plus, Save, Trash2, Undo2, X } from "lucide-react";
 import {
   calculateOrder,
   orderTypeOf,
@@ -82,100 +82,147 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
 
   const set = <K extends keyof OrderInput>(key: K, value: OrderInput[K]) => setData((d) => ({ ...d, [key]: value }));
 
-  const updateLine = (lineId: string, patch: Partial<OrderLineInput>) =>
-    setData((d) => ({ ...d, lines: d.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l)) }));
 
-  const addLine = () =>
-    setData((d) => ({
-      ...d,
-      lines: [
-        ...d.lines,
-        orderTypeOf(d) === "supplies"
-          ? {
-              id: newId(),
-              itemId: newId(),
-              kind: "supply",
-              name: "",
-              variant: "",
-              unit: "unit",
-              catalogCode: null,
-              packPrice: 0,
-              packs: 1,
-              unitsPerPack: 1,
-            }
-          : {
-              id: newId(),
-              itemId: "",
-              kind: "peptide",
-              name: "",
-              variant: "",
-              unit: "vial",
-              catalogCode: null,
-              packPrice: 0,
-              packs: 1,
-              unitsPerPack: 10,
-            },
-      ],
-    }));
+  // ---- Item entry: one entry box; added items show as compact rows underneath ----
+  const blankLine = (previous?: OrderLineInput): OrderLineInput =>
+    orderType === "supplies"
+      ? {
+          id: newId(),
+          itemId: newId(),
+          kind: "supply",
+          name: "",
+          variant: "",
+          unit: "unit",
+          catalogCode: null,
+          packPrice: 0,
+          packs: 1,
+          unitsPerPack: 1,
+          use: previous?.use ?? "stock",
+          expenseCategory: previous?.use === "expense" ? previous.expenseCategory ?? "Packaging" : null,
+        }
+      : {
+          id: newId(),
+          itemId: "",
+          kind: "peptide",
+          name: "",
+          variant: "",
+          unit: "vial",
+          catalogCode: null,
+          packPrice: 0,
+          packs: 1,
+          unitsPerPack: previous?.unitsPerPack || 10,
+        };
 
+  const [draft, setDraft] = useState<OrderLineInput>(() => blankLine());
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [expandedLines, setExpandedLines] = useState<Record<string, boolean>>({});
+  const [lineError, setLineError] = useState<string | null>(null);
 
   // Supplies are typed in freely. If the name + variant match something ordered before,
   // the line joins that item's stock; otherwise it becomes a new item.
-  const updateSupplyLine = (line: OrderLineInput, patch: Partial<Pick<OrderLineInput, "name" | "variant" | "unit">>) => {
+  const withSupplyFields = (
+    line: OrderLineInput,
+    patch: Partial<Pick<OrderLineInput, "name" | "variant" | "unit">>
+  ): OrderLineInput => {
     const next = { ...line, ...patch };
-    if (isExpenseLine(next)) {
-      updateLine(line.id, patch);
-      return;
-    }
+    if (isExpenseLine(next)) return next;
     const match = supplyItems.find(
       (item) => normalise(item.name) === normalise(next.name) && normalise(item.variant) === normalise(next.variant)
     );
     if (match) {
       const unitUntouched = !line.unit || line.unit === "unit" || knownIds.has(line.itemId);
-      updateLine(line.id, { ...patch, itemId: match.id, unit: patch.unit ?? (unitUntouched ? match.unit : line.unit) });
-    } else {
-      updateLine(line.id, { ...patch, itemId: knownIds.has(line.itemId) ? newId() : line.itemId });
+      return { ...next, itemId: match.id, unit: patch.unit ?? (unitUntouched ? match.unit : line.unit) };
     }
+    return { ...next, itemId: knownIds.has(line.itemId) ? newId() : line.itemId };
   };
 
-  const chooseItem = (line: OrderLineInput, value: string) => {
+  const withUse = (line: OrderLineInput, use: "stock" | "expense"): OrderLineInput => {
+    if (use === "expense") {
+      return {
+        ...line,
+        use: "expense",
+        expenseCategory: line.expenseCategory ?? "Packaging",
+        itemId: knownIds.has(line.itemId) ? newId() : line.itemId,
+      };
+    }
+    // Back to stock: re-link to an existing item if the name matches.
+    return withSupplyFields({ ...line, use: "stock" }, {});
+  };
+
+  const withChoice = (line: OrderLineInput, value: string): OrderLineInput => {
     if (value === NEW_PEPTIDE) {
-      updateLine(line.id, {
-        itemId: newId(),
-        kind: "peptide",
-        name: "",
-        variant: "",
-        unit: "vial",
-        catalogCode: null,
-        unitsPerPack: line.unitsPerPack || 10,
-      });
-      return;
+      return { ...line, itemId: newId(), kind: "peptide", name: "", variant: "", unit: "vial", catalogCode: null };
     }
     const catalog = CATALOG_OPTIONS.find((o) => o.itemId === value);
     if (catalog) {
-      updateLine(line.id, {
+      return {
+        ...line,
         itemId: catalog.itemId,
         kind: "peptide",
         name: catalog.name,
         variant: catalog.variant,
         unit: "vial",
         catalogCode: catalog.code,
-        unitsPerPack: line.kind === "peptide" && line.unitsPerPack > 1 ? line.unitsPerPack : 10,
-      });
-      return;
+      };
     }
     const item = items.find((i) => i.id === value);
     if (item) {
-      updateLine(line.id, {
-        itemId: item.id,
-        kind: item.kind,
-        name: item.name,
-        variant: item.variant,
-        unit: item.unit,
-        catalogCode: item.catalogCode,
-        unitsPerPack: line.unitsPerPack || 10,
-      });
+      return { ...line, itemId: item.id, kind: item.kind, name: item.name, variant: item.variant, unit: item.unit, catalogCode: item.catalogCode };
     }
+    return line;
+  };
+
+  const draftStarted =
+    draft.name.trim() !== "" || draft.packPrice > 0 || (draft.kind === "peptide" && draft.itemId !== "");
+
+  const commitDraft = () => {
+    const packWord = draft.kind === "peptide" ? "kit" : "pack";
+    if (draft.kind === "peptide" && !draft.itemId) return setLineError("Choose a peptide.");
+    if (!draft.name.trim()) {
+      return setLineError(draft.kind === "peptide" ? "Enter the peptide's name." : "Enter the product name.");
+    }
+    if (!(draft.packs >= 1)) return setLineError(`Enter how many ${packWord}s you ordered.`);
+    if (!(draft.unitsPerPack >= 1)) return setLineError(`Enter how many ${draft.unit || "unit"}s are in each ${packWord}.`);
+    setLineError(null);
+    setData((d) => ({
+      ...d,
+      lines: editingLineId ? d.lines.map((l) => (l.id === editingLineId ? draft : l)) : [...d.lines, draft],
+    }));
+    setEditingLineId(null);
+    setDraft(blankLine(draft));
+  };
+
+  const editLine = (line: OrderLineInput) => {
+    setDraft(line);
+    setEditingLineId(line.id);
+    setLineError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingLineId(null);
+    setDraft(blankLine(draft));
+    setLineError(null);
+  };
+
+  const removeLine = (lineId: string) => {
+    setData((d) => ({ ...d, lines: d.lines.filter((l) => l.id !== lineId) }));
+    if (editingLineId === lineId) cancelEdit();
+  };
+
+  // Landed cost of the item in the entry box, as if it were already on the order.
+  const draftResult = (() => {
+    if (!(draft.packs >= 1 && draft.unitsPerPack >= 1)) return null;
+    const lines = editingLineId ? data.lines.map((l) => (l.id === editingLineId ? draft : l)) : [...data.lines, draft];
+    return calculateOrder({ ...data, lines }).lines.find((l) => l.lineId === draft.id) ?? null;
+  })();
+
+  const quantityText = (line: OrderLineInput, units: number) => {
+    const packWord = line.kind === "peptide" ? "kit" : "pack";
+    const unit = line.unit || "unit";
+    if (line.unitsPerPack > 1) {
+      return `${line.packs} ${packWord}${line.packs === 1 ? "" : "s"} · ${units} ${unit}s`;
+    }
+    return `${units} ${unit}${units === 1 ? "" : "s"}`;
   };
 
   const run = async (fn: () => Promise<void>) => {
@@ -191,6 +238,13 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   };
 
   const persist = async (): Promise<PurchaseOrderRecord> => {
+    if (!received && draftStarted) {
+      throw new Error(
+        editingLineId
+          ? "Finish editing the item in the entry box first — click “Update item” or “Cancel”."
+          : "There's an item in the entry box that hasn't been added — click “Add to order” (or clear it) first."
+      );
+    }
     if (!data.supplier.trim()) throw new Error("Enter the supplier's name.");
     if (data.lines.some((l) => !l.itemId || !l.name.trim())) {
       throw new Error(
@@ -463,16 +517,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
             </div>
           </Card>
 
-          <Card
-            title={`${orderType === "supplies" ? "Supplies" : "Peptides"} ordered (${ccy})`}
-            actions={
-              !received && (
-                <button className={secondaryButton} onClick={addLine}>
-                  <Plus size={13} /> {orderType === "supplies" ? "Add supply" : "Add peptide"}
-                </button>
-              )
-            }
-          >
+          <Card title={`${orderType === "supplies" ? "Supplies" : "Peptides"} ordered (${ccy})`}>
             <datalist id="admin-supply-names">
               {supplyNames.map((name) => (
                 <option key={name} value={name} />
@@ -483,231 +528,308 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                 <option key={unit} value={unit} />
               ))}
             </datalist>
-            {data.lines.length === 0 && (
-              <p className="text-xs text-slate-500 py-4 text-center">
-                {orderType === "supplies" ? "No supplies yet — add what you ordered." : "No peptides yet — add what you ordered."}
-              </p>
-            )}
-            <div className="space-y-3">
-              {data.lines.map((line) => {
-                const result = calc.lines.find((l) => l.lineId === line.id);
-                const isNew = line.itemId !== "" && !isCatalogId(line.itemId) && !knownIds.has(line.itemId);
-                const packWord = line.kind === "peptide" ? "kit" : "pack";
-                return (
-                  <div key={line.id} className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-3 space-y-3">
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 space-y-2 min-w-0">
-                        {line.kind === "supply" ? (
-                          <>
-                            <div className="flex flex-wrap items-center gap-2">
-                              {(
-                                [
-                                  { id: "stock", label: "Stock", hint: "to sell / use" },
-                                  { id: "expense", label: "Expense", hint: "business use" },
-                                ] as const
-                              ).map((option) => {
-                                const active = (line.use ?? "stock") === option.id;
-                                return (
-                                  <button
-                                    key={option.id}
-                                    type="button"
-                                    disabled={received}
-                                    onClick={() => {
-                                      if (active) return;
-                                      if (option.id === "expense") {
-                                        updateLine(line.id, {
-                                          use: "expense",
-                                          expenseCategory: line.expenseCategory ?? "Packaging",
-                                          itemId: knownIds.has(line.itemId) ? newId() : line.itemId,
-                                        });
-                                      } else {
-                                        // Back to stock: re-link to an existing item if the name matches.
-                                        const match = supplyItems.find(
-                                          (item) =>
-                                            normalise(item.name) === normalise(line.name) &&
-                                            normalise(item.variant) === normalise(line.variant)
-                                        );
-                                        updateLine(line.id, { use: "stock", itemId: match?.id ?? line.itemId });
-                                      }
-                                    }}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer disabled:cursor-not-allowed ${
-                                      active
-                                        ? option.id === "expense"
-                                          ? "border-sky-600/60 text-sky-300 bg-sky-500/10"
-                                          : "border-gold-500/60 text-gold-400 bg-gold-500/10"
-                                        : "border-slate-800 text-slate-500 hover:text-white"
-                                    }`}
-                                  >
-                                    {option.label} <span className="font-normal opacity-70">({option.hint})</span>
-                                  </button>
-                                );
-                              })}
-                              {isExpenseLine(line) && (
-                                <select
-                                  className={`${inputClass} w-auto py-1 text-xs`}
-                                  value={line.expenseCategory ?? "Packaging"}
-                                  disabled={received}
-                                  aria-label="Expense category"
-                                  onChange={(e) => updateLine(line.id, { expenseCategory: e.target.value })}
-                                >
-                                  {EXPENSE_CATEGORIES.map((c) => (
-                                    <option key={c} value={c}>
-                                      {c}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
-                              <Field label="Product">
-                                <input
-                                  className={inputClass}
-                                  list="admin-supply-names"
-                                  placeholder="e.g. Reusable Injection Pen"
-                                  value={line.name}
-                                  disabled={received}
-                                  onChange={(e) => updateSupplyLine(line, { name: e.target.value })}
-                                />
-                              </Field>
-                              <Field label="Variant / colour / size">
-                                <input
-                                  className={inputClass}
-                                  list={`admin-supply-variants-${line.id}`}
-                                  placeholder="e.g. Blue, 32G 4mm"
-                                  value={line.variant}
-                                  disabled={received}
-                                  onChange={(e) => updateSupplyLine(line, { variant: e.target.value })}
-                                />
-                                <datalist id={`admin-supply-variants-${line.id}`}>
-                                  {supplyItems
-                                    .filter((i) => normalise(i.name) === normalise(line.name) && i.variant)
-                                    .map((i) => (
-                                      <option key={i.id} value={i.variant} />
-                                    ))}
-                                </datalist>
-                              </Field>
-                              <Field label="Counted as">
-                                <input
-                                  className={inputClass}
-                                  list="admin-supply-units"
-                                  placeholder="pen, needle…"
-                                  value={line.unit}
-                                  disabled={received}
-                                  onChange={(e) => updateSupplyLine(line, { unit: e.target.value })}
-                                />
-                              </Field>
-                            </div>
-                            {line.name.trim() && !received && (
-                              <p className="text-[10px] text-slate-500">
-                                {isExpenseLine(line)
-                                  ? `Goes to Expenses (${line.expenseCategory ?? "Packaging"}) when received, with its share of shipping and fees.`
-                                  : knownIds.has(line.itemId)
-                                    ? "Adds to your existing stock of this item."
-                                    : "New item — it'll be added to your inventory."}
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <select
-                              className={inputClass}
-                              value={isNew ? NEW_PEPTIDE : line.itemId}
-                              disabled={received}
-                              onChange={(e) => chooseItem(line, e.target.value)}
-                            >
-                              <option value="" disabled>
-                                Choose a peptide…
-                              </option>
-                              <optgroup label="Your price list">
-                                {CATALOG_OPTIONS.map((o) => (
-                                  <option key={o.itemId} value={o.itemId}>
-                                    {o.name} {o.variant} ({o.code})
-                                  </option>
-                                ))}
-                              </optgroup>
-                              {knownPeptides.length > 0 && (
-                                <optgroup label="Other peptides you've ordered">
-                                  {knownPeptides.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.name}
-                                      {item.variant ? ` ${item.variant}` : ""}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                              <optgroup label="Not listed?">
-                                <option value={NEW_PEPTIDE}>+ New peptide not on the price list</option>
-                              </optgroup>
-                            </select>
-                            {isNew && (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <input
-                                  className={inputClass}
-                                  placeholder="Peptide name"
-                                  value={line.name}
-                                  onChange={(e) => updateLine(line.id, { name: e.target.value })}
-                                />
-                                <input
-                                  className={inputClass}
-                                  placeholder="Vial size, e.g. 10mg"
-                                  value={line.variant}
-                                  onChange={(e) => updateLine(line.id, { variant: e.target.value })}
-                                />
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      {!received && (
-                        <button
-                          className="p-2 text-slate-500 hover:text-red-400 transition cursor-pointer"
-                          aria-label="Remove item"
-                          onClick={() => set("lines", data.lines.filter((l) => l.id !== line.id))}
+
+            {!received && (
+              <div
+                className={`border rounded-xl p-3 space-y-3 ${
+                  editingLineId ? "border-gold-500/50 bg-gold-500/5" : "border-slate-800/80 bg-slate-950/50"
+                }`}
+              >
+                {editingLineId && (
+                  <div className="text-[11px] font-bold text-gold-400">
+                    Editing {[draft.name, draft.variant].filter(Boolean).join(" ") || "item"}
+                  </div>
+                )}
+
+                {draft.kind === "supply" ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(
+                        [
+                          { id: "stock", label: "Stock", hint: "to sell / use" },
+                          { id: "expense", label: "Expense", hint: "business use" },
+                        ] as const
+                      ).map((option) => {
+                        const active = (draft.use ?? "stock") === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => !active && setDraft((d) => withUse(d, option.id))}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                              active
+                                ? option.id === "expense"
+                                  ? "border-sky-600/60 text-sky-300 bg-sky-500/10"
+                                  : "border-gold-500/60 text-gold-400 bg-gold-500/10"
+                                : "border-slate-800 text-slate-500 hover:text-white"
+                            }`}
+                          >
+                            {option.label} <span className="font-normal opacity-70">({option.hint})</span>
+                          </button>
+                        );
+                      })}
+                      {isExpenseLine(draft) && (
+                        <select
+                          className={`${inputClass} w-auto py-1 text-xs`}
+                          value={draft.expenseCategory ?? "Packaging"}
+                          aria-label="Expense category"
+                          onChange={(e) => setDraft((d) => ({ ...d, expenseCategory: e.target.value }))}
                         >
-                          <X size={15} />
-                        </button>
+                          {EXPENSE_CATEGORIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <Field label={`Price per ${packWord} (${ccy})`}>
-                        <NumberField
-                          value={line.packPrice}
-                          disabled={received}
-                          onChange={(v) => updateLine(line.id, { packPrice: v ?? 0 })}
+                    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2">
+                      <Field label="Product">
+                        <input
+                          className={inputClass}
+                          list="admin-supply-names"
+                          placeholder="e.g. Reusable Injection Pen"
+                          value={draft.name}
+                          onChange={(e) => setDraft((d) => withSupplyFields(d, { name: e.target.value }))}
                         />
                       </Field>
-                      <Field label={`No. of ${packWord}s`}>
-                        <NumberField
-                          integer
-                          value={line.packs}
-                          disabled={received}
-                          onChange={(v) => updateLine(line.id, { packs: v ?? 0 })}
+                      <Field label="Variant / colour / size">
+                        <input
+                          className={inputClass}
+                          list="admin-supply-variants-draft"
+                          placeholder="e.g. Blue, 32G 4mm"
+                          value={draft.variant}
+                          onChange={(e) => setDraft((d) => withSupplyFields(d, { variant: e.target.value }))}
                         />
+                        <datalist id="admin-supply-variants-draft">
+                          {supplyItems
+                            .filter((i) => normalise(i.name) === normalise(draft.name) && i.variant)
+                            .map((i) => (
+                              <option key={i.id} value={i.variant} />
+                            ))}
+                        </datalist>
                       </Field>
-                      <Field label={`${line.unit || "unit"}s per ${packWord}`}>
-                        <NumberField
-                          integer
-                          value={line.unitsPerPack}
-                          disabled={received}
-                          onChange={(v) => updateLine(line.id, { unitsPerPack: v ?? 0 })}
+                      <Field label="Counted as">
+                        <input
+                          className={inputClass}
+                          list="admin-supply-units"
+                          placeholder="pen, needle…"
+                          value={draft.unit}
+                          onChange={(e) => setDraft((d) => withSupplyFields(d, { unit: e.target.value }))}
                         />
                       </Field>
                     </div>
+                  </>
+                ) : (
+                  <>
+                    <select
+                      className={inputClass}
+                      value={
+                        draft.itemId !== "" && !isCatalogId(draft.itemId) && !knownIds.has(draft.itemId)
+                          ? NEW_PEPTIDE
+                          : draft.itemId
+                      }
+                      onChange={(e) => setDraft((d) => withChoice(d, e.target.value))}
+                    >
+                      <option value="" disabled>
+                        Choose a peptide…
+                      </option>
+                      <optgroup label="Your price list">
+                        {CATALOG_OPTIONS.map((o) => (
+                          <option key={o.itemId} value={o.itemId}>
+                            {o.name} {o.variant} ({o.code})
+                          </option>
+                        ))}
+                      </optgroup>
+                      {knownPeptides.length > 0 && (
+                        <optgroup label="Other peptides you've ordered">
+                          {knownPeptides.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                              {item.variant ? ` ${item.variant}` : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="Not listed?">
+                        <option value={NEW_PEPTIDE}>+ New peptide not on the price list</option>
+                      </optgroup>
+                    </select>
+                    {draft.itemId !== "" && !isCatalogId(draft.itemId) && !knownIds.has(draft.itemId) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          className={inputClass}
+                          placeholder="Peptide name"
+                          value={draft.name}
+                          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                        />
+                        <input
+                          className={inputClass}
+                          placeholder="Vial size, e.g. 10mg"
+                          value={draft.variant}
+                          onChange={(e) => setDraft((d) => ({ ...d, variant: e.target.value }))}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-                      <Metric label="Units" value={`${result?.units ?? 0} ${line.unit || "unit"}s`} />
-                      <Metric
-                        label={data.orderDiscountPct ? "Line total after discount" : "Line total"}
-                        value={money(result?.netSupplier, ccy)}
-                      />
-                      <Metric label={`Landed per ${packWord}`} value={nzd(result?.landedPerPackNzd)} />
-                      <Metric label={`Landed per ${line.unit || "unit"}`} value={nzd(result?.landedPerUnitNzd, 3)} highlight />
-                    </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Field label={`Price per ${draft.kind === "peptide" ? "kit" : "pack"} (${ccy})`}>
+                    <NumberField
+                      placeholder="0.00"
+                      value={draft.packPrice || null}
+                      onChange={(v) => setDraft((d) => ({ ...d, packPrice: v ?? 0 }))}
+                    />
+                  </Field>
+                  <Field label={`No. of ${draft.kind === "peptide" ? "kit" : "pack"}s`}>
+                    <NumberField integer value={draft.packs} onChange={(v) => setDraft((d) => ({ ...d, packs: v ?? 0 }))} />
+                  </Field>
+                  <Field label={`${draft.unit || "unit"}s per ${draft.kind === "peptide" ? "kit" : "pack"}`}>
+                    <NumberField
+                      integer
+                      value={draft.unitsPerPack}
+                      onChange={(v) => setDraft((d) => ({ ...d, unitsPerPack: v ?? 0 }))}
+                    />
+                  </Field>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-[11px] text-slate-400 min-w-0">
+                    {draftResult && (draft.name || draft.itemId) ? (
+                      <>
+                        {quantityText(draft, draftResult.units)} · {money(draftResult.netSupplier, ccy)}
+                        {draftResult.landedPerUnitNzd != null && (
+                          <>
+                            {" "}
+                            · landed{" "}
+                            <span className="text-gold-400 font-bold">{nzd(draftResult.landedPerUnitNzd, 3)}</span> per{" "}
+                            {draft.unit || "unit"}
+                          </>
+                        )}
+                        {draft.kind === "supply" && draft.name.trim() && (
+                          <span className="block text-slate-500">
+                            {isExpenseLine(draft)
+                              ? `Goes to Expenses (${draft.expenseCategory ?? "Packaging"}) when received.`
+                              : knownIds.has(draft.itemId)
+                                ? "Adds to your existing stock of this item."
+                                : "New item — it'll be added to your inventory."}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-slate-500">
+                        {orderType === "supplies" ? "Enter an item, then add it to the order." : "Choose a peptide, then add it to the order."}
+                      </span>
+                    )}
                   </div>
-                );
-              })}
-            </div>
+                  <div className="flex gap-2">
+                    {editingLineId && (
+                      <button className={secondaryButton} onClick={cancelEdit}>
+                        Cancel
+                      </button>
+                    )}
+                    <button className={primaryButton} onClick={commitDraft}>
+                      <Plus size={13} /> {editingLineId ? "Update item" : "Add to order"}
+                    </button>
+                  </div>
+                </div>
+                <ErrorNote message={lineError} />
+              </div>
+            )}
+
+            {data.lines.length === 0 ? (
+              received && <p className="text-xs text-slate-500 py-4 text-center">No items on this order.</p>
+            ) : (
+              <div className={`${received ? "" : "mt-4"} border border-slate-800 rounded-xl overflow-hidden`}>
+                <div className="grid grid-cols-[1rem_minmax(0,1fr)_auto_6.5rem] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider font-bold text-slate-500 bg-slate-900/60">
+                  <span />
+                  <span>{orderType === "supplies" ? "Item" : "Peptide"}</span>
+                  <span className="text-right">Quantity</span>
+                  <span className="text-right">Line total</span>
+                </div>
+                <div className="divide-y divide-slate-800/70">
+                  {data.lines.map((line) => {
+                    const result = calc.lines.find((l) => l.lineId === line.id);
+                    const open = Boolean(expandedLines[line.id]);
+                    const packWord = line.kind === "peptide" ? "kit" : "pack";
+                    const unit = line.unit || "unit";
+                    return (
+                      <div key={line.id} className={editingLineId === line.id ? "bg-gold-500/5" : ""}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedLines((m) => ({ ...m, [line.id]: !m[line.id] }))}
+                          className="w-full grid grid-cols-[1rem_minmax(0,1fr)_auto_6.5rem] gap-3 px-3 py-2.5 items-center text-left hover:bg-slate-900/50 transition cursor-pointer"
+                          aria-expanded={open}
+                        >
+                          <ChevronRight size={14} className={`text-slate-500 transition-transform ${open ? "rotate-90" : ""}`} />
+                          <span className="min-w-0 truncate text-sm font-semibold text-slate-100">
+                            {line.name} <span className="font-normal text-slate-400">{line.variant}</span>
+                            {isExpenseLine(line) && (
+                              <span className="ml-2 text-[9px] font-bold uppercase tracking-wide text-sky-300 border border-sky-900/60 rounded-full px-1.5 py-0.5">
+                                Expense
+                              </span>
+                            )}
+                            {editingLineId === line.id && (
+                              <span className="ml-2 text-[9px] font-bold uppercase tracking-wide text-gold-400">Editing</span>
+                            )}
+                          </span>
+                          <span className="text-xs text-slate-300 text-right tabular-nums whitespace-nowrap">
+                            {quantityText(line, result?.units ?? 0)}
+                          </span>
+                          <span className="text-sm text-slate-100 text-right tabular-nums font-semibold">
+                            {money(result?.netSupplier, ccy)}
+                          </span>
+                        </button>
+                        {open && (
+                          <div className="px-3 pb-3 pl-10 space-y-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                              <Metric label={`Price per ${packWord}`} value={money(line.packPrice, ccy)} />
+                              <Metric label={`No. of ${packWord}s`} value={String(line.packs)} />
+                              <Metric label={`${unit}s per ${packWord}`} value={String(line.unitsPerPack)} />
+                              <Metric label="Units" value={`${result?.units ?? 0} ${unit}s`} />
+                              <Metric
+                                label={data.orderDiscountPct ? "Line total after discount" : "Line total"}
+                                value={money(result?.netSupplier, ccy)}
+                              />
+                              <Metric label="Share of shipping & fees" value={nzd(result?.sharedNzd)} />
+                              <Metric label={`Landed per ${packWord}`} value={nzd(result?.landedPerPackNzd)} />
+                              <Metric label={`Landed per ${unit}`} value={nzd(result?.landedPerUnitNzd, 3)} highlight />
+                            </div>
+                            {line.kind === "supply" && (
+                              <p className="text-[11px] text-slate-500">
+                                {isExpenseLine(line)
+                                  ? `Goes to Expenses (${line.expenseCategory ?? "Packaging"}) when received.`
+                                  : "Goes into stock when received."}
+                              </p>
+                            )}
+                            {!received && (
+                              <div className="flex gap-2">
+                                <button className={secondaryButton} onClick={() => editLine(line)}>
+                                  <Pencil size={12} /> Edit
+                                </button>
+                                <button className={dangerButton} onClick={() => removeLine(line.id)}>
+                                  <Trash2 size={12} /> Remove
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 text-xs bg-slate-900/40 border-t border-slate-800">
+                  <span className="text-slate-400">
+                    {data.lines.length} {data.lines.length === 1 ? "item" : "items"} · {calc.totalUnits} units
+                  </span>
+                  <span className="font-bold tabular-nums text-slate-100">
+                    {data.orderDiscountPct ? "After discount " : ""}
+                    {money(calc.productsNetSupplier, ccy)}
+                  </span>
+                </div>
+              </div>
+            )}
           </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
