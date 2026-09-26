@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, Suspense, lazy } from "react";
 import { Show, UserButton, useAuth } from "@clerk/react";
 import ProtocolBuilder from "./components/ProtocolBuilder";
 import MyPricing from "./components/MyPricing";
@@ -13,9 +13,13 @@ import DashboardPage from "./components/DashboardPage";
 import AuthPage from "./components/AuthPage";
 import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { Beaker, Search, Scale, ClipboardList, ShieldAlert, BookOpen, ExternalLink, Menu, X, LayoutGrid } from "lucide-react";
+import { useIsAdmin } from "./hooks/useIsAdmin";
+import { Beaker, Search, Scale, ClipboardList, ShieldAlert, BookOpen, ExternalLink, Menu, X, LayoutGrid, Lock } from "lucide-react";
 
-type ActiveTab = "dashboard" | "protocol" | "pricing" | "recon" | "logs" | "peptideDb";
+// Owner-only; loaded on demand so customers never download it.
+const AdminArea = lazy(() => import("./components/admin/AdminArea"));
+
+type ActiveTab = "dashboard" | "protocol" | "pricing" | "recon" | "logs" | "peptideDb" | "admin";
 
 export default function App() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -69,6 +73,8 @@ export default function App() {
     };
   }, [getToken, isLoaded, isSignedIn]);
 
+  const isAdmin = useIsAdmin(isLoaded && sessionChecked && hasValidSession);
+
   useEffect(() => {
     // Keep each tab landing at the top so page headers are always fully visible.
     if (mainScrollerRef.current) {
@@ -109,6 +115,14 @@ export default function App() {
         return <TrackingManager />;
       case "peptideDb":
         return <PeptideDatabase />;
+      case "admin":
+        return isAdmin ? (
+          <Suspense fallback={<p className="text-xs text-slate-500">Loading admin…</p>}>
+            <AdminArea />
+          </Suspense>
+        ) : (
+          <DashboardPage setActiveTab={navigateTab} />
+        );
       default:
         return <DashboardPage setActiveTab={navigateTab} />;
     }
@@ -228,6 +242,22 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {isAdmin && (
+                  <div>
+                    <button
+                      onClick={() => navigateTab("admin")}
+                      id="sidebar-btn-admin"
+                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "admin"
+                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
+                        }`}
+                    >
+                      <Lock size={14} />
+                      <span>Admin</span>
+                    </button>
+                  </div>
+                )}
               </nav>
             </div>
 
@@ -340,6 +370,21 @@ export default function App() {
                     <span>Pricing</span>
                   </button>
                 </div>
+
+                {isAdmin && (
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => {
+                        navigateTab("admin");
+                      }}
+                      className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "admin" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
+                        }`}
+                    >
+                      <Lock size={14} />
+                      <span>Admin</span>
+                    </button>
+                  </div>
+                )}
               </nav>
             )}
           </header>
