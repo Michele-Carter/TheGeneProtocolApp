@@ -402,9 +402,16 @@ async function handleOrders(req: any, res: any, db: Db) {
                     .for("update");
                 if (lots.some((lot) => lot.qtyRemaining !== lot.qtyReceived)) {
                     throw new InventoryError(
-                        "Some stock from this order has already been sold or adjusted, so it can't be un-received."
+                        "Some stock from this order has already been sold or adjusted, so it can't be changed or un-received."
                     );
                 }
+                // Returned so "Edit order" can receive it again with the same date and lot details.
+                const previousLots = Object.fromEntries(
+                    lots
+                        .filter((lot) => lot.orderLineId)
+                        .map((lot) => [lot.orderLineId!, { lotNumber: lot.lotNumber, expiryDate: lot.expiryDate }])
+                );
+                const previousReceivedDate = order.receivedAt ? order.receivedAt.toISOString().slice(0, 10) : null;
                 const lotIds = lots.map((lot) => lot.id);
                 if (lotIds.length > 0) {
                     await tx.delete(stockMovements).where(inArray(stockMovements.lotId, lotIds));
@@ -416,9 +423,13 @@ async function handleOrders(req: any, res: any, db: Db) {
                     .set({ status: "ordered", receivedAt: null, updatedAt: new Date() })
                     .where(eq(purchaseOrders.id, id))
                     .returning();
-                return updated;
+                return { updated, previousLots, previousReceivedDate };
             });
-            return sendJson(res, 200, orderDto(row));
+            return sendJson(res, 200, {
+                ...orderDto(row.updated),
+                previousLots: row.previousLots,
+                previousReceivedDate: row.previousReceivedDate,
+            });
         } catch (error) {
             if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
             throw error;

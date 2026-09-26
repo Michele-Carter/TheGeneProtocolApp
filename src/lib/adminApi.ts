@@ -159,7 +159,12 @@ export const adminApi = {
       t
     ),
   unreceiveOrder: (id: string, t: GetToken) =>
-    adminFetch<PurchaseOrderRecord>(`orders?id=${q(id)}&action=unreceive`, { method: "POST", body: "{}" }, t),
+    adminFetch<
+      PurchaseOrderRecord & {
+        previousLots: Record<string, { lotNumber: string; expiryDate: string | null }>;
+        previousReceivedDate: string | null;
+      }
+    >(`orders?id=${q(id)}&action=unreceive`, { method: "POST", body: "{}" }, t),
 
   inventory: (t: GetToken) => adminFetch<InventorySummaryRow[]>("inventory", { method: "GET" }, t),
   inventoryItem: (id: string, t: GetToken) => adminFetch<InventoryDetail>(`inventory?id=${q(id)}`, { method: "GET" }, t),
