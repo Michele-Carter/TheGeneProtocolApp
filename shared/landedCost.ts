@@ -177,6 +177,8 @@ export function calculateOrder(order: OrderInput): OrderResult {
   if (base.some((b) => b.units <= 0)) problems.push("Every item needs a quantity and units per kit/pack.");
   if (rateNzdPerSupplier == null) {
     problems.push("Enter the total paid in NZD (or an exchange rate) to work out NZD costs.");
+  } else if (rateSource === "manual") {
+    problems.push("Costs are using an estimated exchange rate — enter the total paid (NZD) to get the exact cost.");
   }
   if (supplierBilledDiff != null && Math.abs(supplierBilledDiff) >= TOLERANCE) {
     const symbol = order.currency === "USD" ? "US$" : "NZ$";

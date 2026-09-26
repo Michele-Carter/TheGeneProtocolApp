@@ -65,6 +65,8 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   const [showReceive, setShowReceive] = useState(false);
   const [receivedDate, setReceivedDate] = useState(todayIso());
   const [lotInfo, setLotInfo] = useState<Record<string, { lotNumber: string; expiryDate: string | null }>>({});
+  // True while a received order has been unlocked with "Edit order" and not yet received again.
+  const [reReceiving, setReReceiving] = useState(false);
 
   const received = current?.status === "received";
   const dirty = JSON.stringify(data) !== savedJson;
@@ -282,6 +284,27 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
       const updated = await adminApi.receiveOrder(saved.id, { receivedDate, lots: lotInfo }, getToken);
       setCurrent(updated);
       setShowReceive(false);
+      setReReceiving(false);
+      onSaved(updated);
+    });
+  };
+
+  // Unlocks a received order: its stock comes out while editing and goes back in on "Save & receive".
+  const editReceived = () => {
+    if (!current) return;
+    if (
+      !window.confirm(
+        "Edit this order?\n\nWhile you edit, its stock is taken out of inventory. When you click “Save & receive”, it goes back in with the updated costs (same received date and lot details)."
+      )
+    ) {
+      return;
+    }
+    run(async () => {
+      const updated = await adminApi.unreceiveOrder(current.id, getToken);
+      setCurrent(updated);
+      if (updated.previousReceivedDate) setReceivedDate(updated.previousReceivedDate);
+      setLotInfo(updated.previousLots ?? {});
+      setReReceiving(true);
       onSaved(updated);
     });
   };
@@ -309,7 +332,15 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   };
 
   const back = () => {
-    if (dirty && !window.confirm("You have unsaved changes. Leave without saving?")) return;
+    if (
+      reReceiving &&
+      !window.confirm(
+        "This order is still unlocked for editing, so its stock is out of inventory. Leave anyway? (Open it again and click “Mark as received” to put the stock back.)"
+      )
+    ) {
+      return;
+    }
+    if (!reReceiving && dirty && !window.confirm("You have unsaved changes. Leave without saving?")) return;
     onBack();
   };
 
@@ -343,7 +374,9 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
             <p className="text-[11px] text-slate-500">
               {received
                 ? `Received ${current?.receivedAt ? new Date(current.receivedAt).toLocaleDateString("en-NZ") : ""} — stock and costs are locked. Order number, tracking and notes can still be edited.`
-                : "Costs update as you type. Save, then mark as received when it arrives to add it to inventory."}
+                : reReceiving
+                  ? "Editing a received order — its stock is out of inventory until you click “Save & receive”."
+                  : "Costs update as you type. Save, then mark as received when it arrives to add it to inventory."}
             </p>
           </div>
         </div>
@@ -356,7 +389,14 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
               <button className={secondaryButton} onClick={unreceive} disabled={busy}>
                 <Undo2 size={13} /> Undo received
               </button>
+              <button className={primaryButton} onClick={editReceived} disabled={busy}>
+                <Pencil size={13} /> Edit order
+              </button>
             </>
+          ) : reReceiving ? (
+            <button className={primaryButton} onClick={receive} disabled={busy || calc.totalLandedNzd == null}>
+              <PackageCheck size={13} /> Save & receive
+            </button>
           ) : (
             <>
               <button className={dangerButton} onClick={remove} disabled={busy}>
@@ -367,9 +407,16 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
               </button>
             </>
           )}
-          <button className={primaryButton} onClick={save} disabled={busy || (!dirty && Boolean(current))}>
-            <Save size={13} /> {dirty || !current ? "Save" : "Saved"}
-          </button>
+          {!received && !reReceiving && (
+            <button className={primaryButton} onClick={save} disabled={busy || (!dirty && Boolean(current))}>
+              <Save size={13} /> {dirty || !current ? "Save" : "Saved"}
+            </button>
+          )}
+          {received && dirty && (
+            <button className={primaryButton} onClick={save} disabled={busy}>
+              <Save size={13} /> Save
+            </button>
+          )}
         </div>
       </div>
 
@@ -1031,7 +1078,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
           </Card>
           <p className="text-[11px] text-slate-500 leading-relaxed px-1">
             Each product's own price (after discount) is converted at the effective rate. Freight, fees, taxes and
-            every other cost are split equally across every individual unit — each vial in a kit counts as one.
+            every other cost are split equally across every individual unit — each vial in a kit counts as one unit.
           </p>
         </div>
       </div>
