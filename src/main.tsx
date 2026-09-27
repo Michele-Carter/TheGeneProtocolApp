@@ -7,6 +7,22 @@ import './index.css';
 document.documentElement.classList.remove('light');
 document.documentElement.classList.add('dark');
 
+// Each deploy renames the lazy-loaded files, so a tab opened before a deploy asks for files that no
+// longer exist (e.g. opening Admin). Reload once to pick up the new version instead of showing an
+// error - but not again within a minute, so a genuinely missing file can't cause a reload loop.
+window.addEventListener('vite:preloadError', (event) => {
+  const key = 'peppal-reloaded-for-new-version';
+  try {
+    const last = Number(sessionStorage.getItem(key) || 0);
+    if (Date.now() - last < 60_000) return;
+    sessionStorage.setItem(key, String(Date.now()));
+  } catch {
+    return; // no storage to guard against a loop, so leave it to the error screen
+  }
+  event.preventDefault();
+  window.location.reload();
+});
+
 const clerkAppearance = {
   variables: {
     colorPrimary: '#c2911f',
