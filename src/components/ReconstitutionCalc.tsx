@@ -6,9 +6,11 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@clerk/react";
 import { getUserState, putUserState } from "../lib/userStateApi";
-import { Info, AlertTriangle, Calculator, CheckCircle2, ChevronDown, Plus, X } from "lucide-react";
+import { Info, AlertTriangle, Calculator, CheckCircle2, Plus, X } from "lucide-react";
 
 type VialContentType = "mass" | "blend" | "potency";
+
+type DeviceType = "30u" | "50u" | "100u" | "1mL" | "3mL" | "60u-pen" | "80u-pen";
 
 // One peptide in a blend vial. The anchor is the compound the entered dose refers to.
 type BlendCompound = { id: string; name: string; mg: number };
@@ -47,7 +49,7 @@ type ReconstitutionPersistedState = {
   bacWaterMl: number;
   doseValue: number;
   doseUnit: "MG" | "MCG" | "IU";
-  syringeType: "30u" | "50u" | "100u" | "1mL" | "3mL" | "pen";
+  syringeType: DeviceType;
 };
 
 // Side-on auto-injector pen in the same style as SyringeIllustration: the dose window shows the
@@ -259,8 +261,7 @@ export default function ReconstitutionCalc() {
   const [dosesByTab, setDosesByTab] = useState<Partial<Record<VialContentType, TabDose>>>({});
 
   // Syringe Type Selector on the right recipe card
-  const [syringeType, setSyringeType] = useState<"30u" | "50u" | "100u" | "1mL" | "3mL" | "pen">("100u");
-  const [showCalculationDetails, setShowCalculationDetails] = useState(false);
+  const [syringeType, setSyringeType] = useState<DeviceType>("100u");
   const [hasHydratedPersistedState, setHasHydratedPersistedState] = useState(false);
   const persistTimeoutRef = useRef<number | null>(null);
 
@@ -361,17 +362,17 @@ export default function ReconstitutionCalc() {
           setDosesByTab(restoredDoses);
         }
         const rawSyringeType = parsed.syringeType as string;
-        if (rawSyringeType === "60u-pen" || rawSyringeType === "80u-pen") {
-          // Pre-simplification builds stored a pen size; the size no longer matters (click count
-          // is identical either way), so collapse both onto the single "pen" device type.
-          setSyringeType("pen");
+        if (rawSyringeType === "pen") {
+          // Some builds had a single size-less "pen"; map it to the 60-unit pen (the smaller limit).
+          setSyringeType("60u-pen");
         } else if (
           parsed.syringeType === "30u" ||
           parsed.syringeType === "50u" ||
           parsed.syringeType === "100u" ||
           parsed.syringeType === "1mL" ||
           parsed.syringeType === "3mL" ||
-          parsed.syringeType === "pen"
+          parsed.syringeType === "60u-pen" ||
+          parsed.syringeType === "80u-pen"
         ) {
           setSyringeType(parsed.syringeType);
         }
@@ -663,18 +664,20 @@ export default function ReconstitutionCalc() {
           isPen: false,
           cartridgeMl: undefined as number | undefined
         };
-      case "pen":
-        // Pen click count only depends on the 100-units/mL reconstitution math, not which
-        // pen (60 or 80 click) someone owns, so there's no size to pick. 60 is used as the
-        // capacity-warning threshold since it's the more conservative of the two.
+      case "60u-pen":
+      case "80u-pen": {
+        // Clicks come from the same 100-units/mL maths for both pens; the size only sets how far
+        // the dial goes, i.e. the biggest single dose the pen can give.
+        const maxUnits = syringeType === "80u-pen" ? 80 : 60;
         return {
-          maxUnits: 60,
-          maxVolumeMl: 0.6,
-          label: "Auto-injector pen (3 mL cartridge)",
-          ticks: [0, 10, 20, 30, 40, 50, 60],
+          maxUnits,
+          maxVolumeMl: maxUnits / 100,
+          label: `${maxUnits}-unit auto-injector pen (3 mL cartridge)`,
+          ticks: Array.from({ length: maxUnits / 10 + 1 }, (_, i) => i * 10),
           isPen: true,
           cartridgeMl: 3 as number | undefined
         };
+      }
       case "100u":
       default:
         return {
@@ -700,6 +703,15 @@ export default function ReconstitutionCalc() {
   // actually usable, so that stays precise.
   const fillPercentage = Math.min(100, (calculations.drawVolumeMl / syringeConfig.maxVolumeMl) * 100);
   const unitsDisplay = isPenSelected ? String(Math.round(calculations.insulinUnits)) : calculations.insulinUnits.toFixed(1);
+  // A dose the chosen device can't hold in one go isn't a usable answer, so it's flagged as an error
+  // everywhere instead of being shown as a draw. Pens dial whole clicks, so they're judged on the rounded number.
+  const unitsNeeded = isPenSelected ? Math.round(calculations.insulinUnits) : calculations.insulinUnits;
+  const overCapacity = unitsNeeded > syringeConfig.maxUnits + 1e-9;
+  const deviceName = isPenSelected ? `${syringeConfig.maxUnits}-unit pen` : syringeConfig.label;
+  const biggestDevice = syringeType === "80u-pen" || syringeType === "3mL";
+  const overCapacityMessage = `This dose needs ${unitsDisplay} ${unitLabel}, but your ${deviceName} holds ${syringeConfig.maxUnits} ${unitLabel}. Lower the dose, use less BAC water (a stronger mix), or ${
+    biggestDevice ? "split it into two injections" : `choose a bigger ${isPenSelected ? "pen" : "syringe"}`
+  }.`;
   const cartridgeFillsNeeded =
     isPenSelected && syringeConfig.cartridgeMl ? Math.max(1, Math.ceil(bacWaterMl / syringeConfig.cartridgeMl)) : null;
 
@@ -1025,7 +1037,11 @@ export default function ReconstitutionCalc() {
                   value={doseValue || ""}
                   onFocus={clearZeroOnFocus}
                   onChange={(e) => setDoseValue(Math.max(0, Number(e.target.value)))}
-                  className="w-full bg-slate-950 border border-slate-800/80 rounded-xl py-3 px-4 text-slate-400 font-mono text-sm focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50 transition"
+                  aria-invalid={overCapacity}
+                  className={`w-full bg-slate-950 border rounded-xl py-3 px-4 text-slate-400 font-mono text-sm focus:outline-none focus:ring-1 transition ${overCapacity
+                    ? "border-red-500/70 focus:border-red-500 focus:ring-red-500/50"
+                    : "border-slate-800/80 focus:border-gold-500/50 focus:ring-gold-500/50"
+                    }`}
                   placeholder="0"
                 />
               </div>
@@ -1097,6 +1113,12 @@ export default function ReconstitutionCalc() {
                 </div>
               </div>
             ) : null}
+            {overCapacity ? (
+              <div role="alert" className="p-3 bg-red-950/20 border border-red-900/40 rounded-xl text-[12px] text-red-400 font-medium flex items-start gap-1.5 leading-normal">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>{overCapacityMessage}</span>
+              </div>
+            ) : null}
             {vialContentType === "potency" ? (
               <p className="text-[12px] text-slate-500 leading-relaxed">
                 {potencyRatioKnown
@@ -1121,15 +1143,26 @@ export default function ReconstitutionCalc() {
               <div className="text-[11px] font-mono text-white uppercase tracking-widest">
                 Calculated draw amount
               </div>
-              <div className="flex items-end justify-center gap-2">
-                <span className="text-5xl font-black text-gold-400 font-mono leading-none">
-                  {unitsDisplay}
-                </span>
-                <span className="text-sm font-bold text-slate-400 pb-1.5">
-                  {isPenSelected ? unitLabel : "syringe units"}
-                </span>
-              </div>
-              <div className="text-xs text-slate-500 font-mono">{calculations.drawVolumeMl.toFixed(3)} mL</div>
+              {overCapacity ? (
+                <>
+                  <div className="text-2xl font-black text-red-400 leading-tight">Too much for your {isPenSelected ? "pen" : "syringe"}</div>
+                  <div className="text-xs text-slate-500 font-mono">
+                    Needs {unitsDisplay} {unitLabel} · max {syringeConfig.maxUnits}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-end justify-center gap-2">
+                    <span className="text-5xl font-black text-gold-400 font-mono leading-none">
+                      {unitsDisplay}
+                    </span>
+                    <span className="text-sm font-bold text-slate-400 pb-1.5">
+                      {isPenSelected ? unitLabel : "syringe units"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 font-mono">{calculations.drawVolumeMl.toFixed(3)} mL</div>
+                </>
+              )}
             </div>
 
             {/* Recipe outcome summary */}
@@ -1203,7 +1236,7 @@ export default function ReconstitutionCalc() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { if (!isPenSelected) setSyringeType("pen"); }}
+                  onClick={() => { if (!isPenSelected) setSyringeType("60u-pen"); }}
                   className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${isPenSelected
                     ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
                     : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
@@ -1212,6 +1245,23 @@ export default function ReconstitutionCalc() {
                   Auto-Injector Pen
                 </button>
               </div>
+              {isPenSelected ? (
+                <div className="grid grid-cols-2 gap-1">
+                  {(["60u-pen", "80u-pen"] as const).map((pen) => (
+                    <button
+                      key={pen}
+                      type="button"
+                      onClick={() => setSyringeType(pen)}
+                      className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${syringeType === pen
+                        ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
+                        : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
+                        }`}
+                    >
+                      {pen === "60u-pen" ? "60 unit pen" : "80 unit pen"}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               {!isPenSelected ? (
                 <div className="grid grid-cols-5 gap-1">
                   {(["30u", "50u", "100u", "1mL", "3mL"] as const).map((s) => (
@@ -1234,8 +1284,12 @@ export default function ReconstitutionCalc() {
               </span>
             </div>
 
-            <div className="text-center text-gold-400 font-black font-mono text-base">
-              {isPenSelected ? `Dial to ${unitsDisplay} ${unitLabel}` : `${unitsDisplay} ${unitLabel}`}
+            <div className={`text-center font-black font-mono text-base ${overCapacity ? "text-red-400" : "text-gold-400"}`}>
+              {overCapacity
+                ? `Over the ${syringeConfig.maxUnits}-${isPenSelected ? "click" : "unit"} limit`
+                : isPenSelected
+                  ? `Dial to ${unitsDisplay} ${unitLabel}`
+                  : `${unitsDisplay} ${unitLabel}`}
             </div>
             {isPenSelected ? (
               <PenIllustration clicks={Number(unitsDisplay)} ticks={syringeConfig.ticks} maxUnits={syringeConfig.maxUnits} />
@@ -1263,10 +1317,10 @@ export default function ReconstitutionCalc() {
             ) : null}
 
             {/* Validation alerts */}
-            {calculations.insulinUnits > syringeConfig.maxUnits ? (
-              <div className="p-3 bg-red-950/20 border border-red-900/40 rounded-xl text-[12px] text-red-400 font-medium flex items-center space-x-1.5 text-left leading-normal">
-                <AlertTriangle size={14} className="shrink-0" />
-                <span>Dose exceeds device capacity! Split into multiple injections or reduce BAC diluent.</span>
+            {overCapacity ? (
+              <div className="p-3 bg-red-950/20 border border-red-900/40 rounded-xl text-[12px] text-red-400 font-medium flex items-start gap-1.5 text-left leading-normal">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>{overCapacityMessage}</span>
               </div>
             ) : calculations.insulinUnits < 3 && calculations.insulinUnits > 0 ? (
               <div className="p-3 bg-amber-950/20 border border-amber-900/40 rounded-xl text-[12px] text-amber-400 font-medium flex items-center space-x-1.5 text-left leading-normal">
@@ -1276,112 +1330,104 @@ export default function ReconstitutionCalc() {
             ) : null}
           </div>
 
-          {/* Calculation breakdown */}
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5 space-y-0.5">
-            <div className="flex items-center justify-between py-2.5">
-              <span className="text-sm text-slate-300">Dose amount</span>
-              <span className="text-sm font-bold text-white font-mono">{calculations.doseAmountDisplay}</span>
+        </div>
+
+      </div>
+
+      {/* DOSE CALCULATIONS + HOW IT WORKS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5">
+          <h2 className="text-xs font-black text-white uppercase tracking-wide pb-2">Dose calculations</h2>
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-sm text-white">Dose amount</span>
+              <span className="text-sm font-bold text-slate-400 font-mono text-right">{calculations.doseAmountDisplay}</span>
             </div>
             <div className="h-px bg-slate-800/70" />
-            <div className="flex items-center justify-between py-2.5">
-              <span className="text-sm text-slate-300">Water / solution volume</span>
-              <span className="text-sm font-bold text-white font-mono">{bacWaterMl.toFixed(2)} mL</span>
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-sm text-white">Water / solution volume</span>
+              <span className="text-sm font-bold text-slate-400 font-mono text-right">{bacWaterMl.toFixed(2)} mL</span>
             </div>
             <div className="h-px bg-slate-800/70" />
-            <div className="flex items-center justify-between py-2.5">
-              <span className="text-sm text-slate-300">Concentration</span>
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-sm text-white">Concentration</span>
               <div className="text-right">
-                <div className="text-sm font-bold text-white font-mono">{calculations.concentrationDisplay}</div>
+                <div className="text-sm font-bold text-slate-400 font-mono">{calculations.concentrationDisplay}</div>
                 {calculations.concentrationSecondaryDisplay ? (
                   <div className="text-[11px] text-slate-500 font-mono">{calculations.concentrationSecondaryDisplay}</div>
                 ) : null}
               </div>
             </div>
             <div className="h-px bg-slate-800/70" />
-            <div className="flex items-center justify-between py-2.5">
-              <span className="text-sm text-slate-300">Full doses per vial</span>
-              <span className="text-sm font-bold text-white font-mono">
-                {calculations.dosesPerVial > 0 ? calculations.dosesPerVial : "—"}
-              </span>
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-sm text-white">Full doses per vial</span>
+              <span className="text-sm font-bold text-slate-400 font-mono text-right">{calculations.dosesPerVial > 0 ? calculations.dosesPerVial : "—"}</span>
             </div>
             <div className="h-px bg-slate-800/70" />
-            <div className="flex items-center justify-between py-2.5">
-              <span className="text-sm text-slate-300">Remaining after full doses</span>
-              <span className="text-sm font-bold text-white font-mono">{calculations.remainingAfterFullDosesDisplay}</span>
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-sm text-white">Remaining after full doses</span>
+              <span className="text-sm font-bold text-slate-400 font-mono text-right">{calculations.remainingAfterFullDosesDisplay}</span>
             </div>
             <div className="h-px bg-slate-800/70" />
-            <div className="flex items-center justify-between py-2.5">
-              <span className="text-sm text-slate-300">Vial used per dose</span>
-              <span className="text-sm font-bold text-white font-mono">
-                {calculations.vialUsedPercent > 0 ? `${calculations.vialUsedPercent.toFixed(1)}%` : "—"}
-              </span>
-            </div>
-
-            <p className="text-[11px] text-slate-500 leading-relaxed pt-3">
-              Theoretical amounts before device losses. Values are rounded only for display — no dose is rounded to a
-              device marking.
-            </p>
-
-            <div className="pt-2 border-t border-slate-800/70 mt-1">
-              <button
-                type="button"
-                onClick={() => setShowCalculationDetails((v) => !v)}
-                className="flex items-center gap-1.5 text-[12px] font-mono font-bold text-gold-400 hover:text-gold-300 transition cursor-pointer py-2.5"
-              >
-                <ChevronDown size={14} className={`transition-transform ${showCalculationDetails ? "rotate-180" : ""}`} />
-                How the calculation works
-              </button>
-              {showCalculationDetails ? (
-                <div className="text-[12px] text-slate-400 leading-relaxed space-y-2 pb-1">
-                  {vialContentType === "potency" ? (
-                    <>
-                      <p>
-                        Concentration = vial potency (IU) ÷ water added (mL). Draw volume = your dose (converted to
-                        IU) ÷ that concentration, shown in syringe units at 100 units per mL.
-                      </p>
-                      <p>
-                        Full doses per vial = vial potency ÷ dose (IU), rounded down — a partial dose is never counted
-                        as a full one. Remaining and vial-used-per-dose come from that same division, before any
-                        rounding to a device marking.
-                      </p>
-                    </>
-                  ) : vialContentType === "blend" ? (
-                    <>
-                      <p>
-                        All the peptides dissolve in the same water, so the draw is worked out from the peptide your dose
-                        is for: its concentration = its mg ÷ water added (mL), and draw volume = your dose ÷ that
-                        concentration, shown in syringe units at 100 units per mL.
-                      </p>
-                      <p>
-                        That draw takes the same share of every peptide in the vial, so each one's amount per draw = its mg
-                        × (your dose ÷ the dosed peptide's mg). Full doses per vial, remaining and vial-used-per-dose all
-                        follow from that share.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p>
-                        Concentration = vial amount (mg, converted to mcg) ÷ water added (mL). Draw volume = your dose
-                        (converted to mcg) ÷ that concentration, shown in syringe units at 100 units per mL.
-                      </p>
-                      <p>
-                        Full doses per vial = total product ÷ dose amount, rounded down — a partial dose is never
-                        counted as a full one. Remaining and vial-used-per-dose come from that same division, before
-                        any rounding to a device marking.
-                      </p>
-                    </>
-                  )}
-                </div>
-              ) : null}
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-sm text-white">Vial used per dose</span>
+              <span className="text-sm font-bold text-slate-400 font-mono text-right">{calculations.vialUsedPercent > 0 ? `${calculations.vialUsedPercent.toFixed(1)}%` : "—"}</span>
             </div>
           </div>
-
-          {/* Research Use Only Caption */}
-          <div className="text-center text-[12px] text-slate-500/80 font-mono tracking-wide uppercase font-semibold select-none">
-            Research use only • not medical advice
-          </div>
+          <p className="text-[11px] text-slate-500 leading-relaxed pt-3">
+            Theoretical amounts before device losses. Values are rounded only for display — no dose is rounded to a
+            device marking.
+          </p>
         </div>
 
+        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5">
+          <h2 className="text-xs font-black text-white uppercase tracking-wide pb-3">How the calculation works</h2>
+          <div className="text-sm text-slate-400 leading-relaxed space-y-3">
+            {vialContentType === "potency" ? (
+              <>
+                <p>
+                  Concentration = vial potency (IU) ÷ water added (mL). Draw volume = your dose (converted to
+                  IU) ÷ that concentration, shown in syringe units at 100 units per mL.
+                </p>
+                <p>
+                  Full doses per vial = vial potency ÷ dose (IU), rounded down — a partial dose is never counted
+                  as a full one. Remaining and vial-used-per-dose come from that same division, before any
+                  rounding to a device marking.
+                </p>
+              </>
+            ) : vialContentType === "blend" ? (
+              <>
+                <p>
+                  All the peptides dissolve in the same water, so the draw is worked out from the peptide your dose
+                  is for: its concentration = its mg ÷ water added (mL), and draw volume = your dose ÷ that
+                  concentration, shown in syringe units at 100 units per mL.
+                </p>
+                <p>
+                  That draw takes the same share of every peptide in the vial, so each one's amount per draw = its mg
+                  × (your dose ÷ the dosed peptide's mg). Full doses per vial, remaining and vial-used-per-dose all
+                  follow from that share.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  Concentration = vial amount (mg, converted to mcg) ÷ water added (mL). Draw volume = your dose
+                  (converted to mcg) ÷ that concentration, shown in syringe units at 100 units per mL.
+                </p>
+                <p>
+                  Full doses per vial = total product ÷ dose amount, rounded down — a partial dose is never
+                  counted as a full one. Remaining and vial-used-per-dose come from that same division, before
+                  any rounding to a device marking.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Research Use Only Caption */}
+      <div className="text-center text-[12px] text-slate-500/80 font-mono tracking-wide uppercase font-semibold select-none">
+        Research use only • not medical advice
       </div>
 
     </div>

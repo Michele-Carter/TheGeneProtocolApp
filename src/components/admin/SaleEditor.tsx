@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Pencil, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
 import { fifoEstimate, saleProfit, saleTotals, type SaleInput, type SaleLine, type ShippingStatus } from "../../../shared/sales";
 import { MY_PRODUCTS } from "../../data/myProducts";
 import { adminApi, nzd, todayIso, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
@@ -30,6 +30,10 @@ const SHIPPING_STATUSES: { id: ShippingStatus; label: string }[] = [
   { id: "delivered", label: "Delivered" },
   { id: "collected", label: "Collected" },
 ];
+
+function blankLine(): SaleLine {
+  return { id: newId(), itemId: "", kind: "peptide", name: "", variant: "", unit: "vial", qty: 1, unitPriceNzd: 0 };
+}
 
 interface Props {
   record: SaleRecord | null;
@@ -68,21 +72,64 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
   const supplies = inventory.filter((row) => row.item.kind === "supply");
 
   const set = <K extends keyof SaleInput>(key: K, value: SaleInput[K]) => setData((d) => ({ ...d, [key]: value }));
-  const updateLine = (lineId: string, patch: Partial<SaleLine>) =>
-    setData((d) => ({ ...d, lines: d.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l)) }));
 
-  const chooseItem = (line: SaleLine, itemId: string) => {
+  // One entry box for adding (or editing) an item; the order's items are listed below it.
+  const [draft, setDraft] = useState<SaleLine>(() => blankLine());
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [expandedLines, setExpandedLines] = useState<Record<string, boolean>>({});
+  const [lineError, setLineError] = useState<string | null>(null);
+  const draftStarted = draft.itemId !== "";
+
+  const chooseItem = (itemId: string) => {
     const row = stockById[itemId];
     if (!row) return;
-    updateLine(line.id, {
+    setDraft((d) => ({
+      ...d,
       itemId,
       kind: row.item.kind,
       name: row.item.name,
       variant: row.item.variant,
       unit: row.item.unit,
       unitPriceNzd: PRICE_LIST[itemId] ?? lastPrices[itemId] ?? 0,
-    });
+    }));
   };
+
+  const commitDraft = () => {
+    if (!draft.itemId) return setLineError("Choose an item.");
+    if (!(draft.qty >= 1)) return setLineError("Enter a quantity of at least 1.");
+    setLineError(null);
+    setData((d) => ({
+      ...d,
+      lines: editingLineId ? d.lines.map((l) => (l.id === editingLineId ? draft : l)) : [...d.lines, draft],
+    }));
+    setEditingLineId(null);
+    setDraft(blankLine());
+  };
+
+  const editLine = (line: SaleLine) => {
+    setDraft(line);
+    setEditingLineId(line.id);
+    setLineError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingLineId(null);
+    setDraft(blankLine());
+    setLineError(null);
+  };
+
+  const removeLine = (lineId: string) => {
+    setData((d) => ({ ...d, lines: d.lines.filter((l) => l.id !== lineId) }));
+    if (editingLineId === lineId) cancelEdit();
+  };
+
+  // Cost and stock check for the item in the entry box, as if it were already on the order.
+  const draftEstimate = useMemo(() => {
+    if (!draft.itemId || !(draft.qty >= 1)) return null;
+    const lines = editingLineId ? data.lines.map((l) => (l.id === editingLineId ? draft : l)) : [...data.lines, draft];
+    const result = fifoEstimate(lines, Object.fromEntries(inventory.map((row) => [row.item.id, row.fifo])));
+    return { cost: result.byLine[draft.id] ?? null, short: result.short.includes(draft.id) };
+  }, [draft, editingLineId, data.lines, inventory]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -104,6 +151,13 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
   };
 
   const persist = async (): Promise<SaleRecord> => {
+    if (!completed && draftStarted) {
+      throw new Error(
+        editingLineId
+          ? "Finish editing the item in the entry box first — click “Update item” or “Cancel”."
+          : "There's an item in the entry box that hasn't been added — click “Add to order” (or clear it) first."
+      );
+    }
     if (!data.customerName.trim()) throw new Error("Enter the customer's name.");
     if (data.lines.some((l) => !l.itemId)) throw new Error("Choose an item on every line.");
     if (data.lines.some((l) => !(l.qty >= 1))) throw new Error("Every item needs a quantity of at least 1.");
@@ -117,6 +171,14 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
   const save = () => run(async () => void (await persist()));
 
   const complete = () => {
+    if (draftStarted) {
+      setError(
+        editingLineId
+          ? "Finish editing the item in the entry box first — click “Update item” or “Cancel”."
+          : "There's an item in the entry box that hasn't been added — click “Add to order” (or clear it) first."
+      );
+      return;
+    }
     if (data.lines.length === 0) {
       setError("Add at least one item before completing.");
       return;
@@ -245,124 +307,196 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
             </div>
           </Card>
 
-          <Card
-            title="Items"
-            actions={
-              !completed && (
-                <button
-                  className={secondaryButton}
-                  onClick={() =>
-                    set("lines", [
-                      ...data.lines,
-                      { id: newId(), itemId: "", kind: "peptide", name: "", variant: "", unit: "vial", qty: 1, unitPriceNzd: 0 },
-                    ])
-                  }
-                >
-                  <Plus size={13} /> Add item
-                </button>
-              )
-            }
-          >
-            {data.lines.length === 0 && (
-              <p className="text-xs text-slate-500 py-4 text-center">No items yet — add what the customer ordered.</p>
-            )}
-            {inventory.length === 0 && (
+          <Card title="Items">
+            {inventory.length === 0 && !completed && (
               <p className="text-xs text-amber-300/90 pb-3">
                 Nothing is in inventory yet. Receive a supply order first so there's stock to sell.
               </p>
             )}
-            <div className="space-y-3">
-              {data.lines.map((line) => {
-                const row = stockById[line.itemId];
-                const short = !completed && estimate.short.includes(line.id);
-                const cost = lineCost(line.id);
-                const lineTotal = line.qty * line.unitPriceNzd;
-                const listPrice = PRICE_LIST[line.itemId];
-                return (
-                  <div key={line.id} className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-3 space-y-3">
-                    <div className="flex items-start gap-2">
-                      <select
-                        className={inputClass}
-                        value={line.itemId}
-                        disabled={completed}
-                        onChange={(e) => chooseItem(line, e.target.value)}
-                      >
-                        {completed || (line.itemId && !row) ? (
-                          <option value={line.itemId}>
-                            {line.name} {line.variant}
-                          </option>
-                        ) : (
-                          <option value="" disabled>
-                            Choose an item…
-                          </option>
-                        )}
-                        {!completed &&
-                          [
-                            { label: "Peptides", rows: peptides },
-                            { label: "Supplies", rows: supplies },
-                          ]
-                            .filter((group) => group.rows.length > 0)
-                            .map((group) => (
-                              <optgroup key={group.label} label={group.label}>
-                                {group.rows.map((r) => (
-                                  <option key={r.item.id} value={r.item.id} disabled={r.onHand === 0 && r.item.id !== line.itemId}>
-                                    {r.item.name} {r.item.variant} — {r.onHand} {r.item.unit}s in stock
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                      </select>
-                      {!completed && (
-                        <button
-                          className="flex-shrink-0 p-2 text-slate-500 hover:text-red-400 transition cursor-pointer"
-                          aria-label="Remove item"
-                          onClick={() => set("lines", data.lines.filter((l) => l.id !== line.id))}
-                        >
-                          <X size={15} />
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Field label={`Quantity (${line.unit || "unit"}s)`}>
-                        <NumberField
-                          integer
-                          value={line.qty}
-                          disabled={completed}
-                          onChange={(v) => updateLine(line.id, { qty: v ?? 0 })}
-                        />
-                      </Field>
-                      <Field
-                        label={`Price per ${line.unit || "unit"} (NZD)`}
-                        hint={
-                          listPrice != null && listPrice !== line.unitPriceNzd
-                            ? `Price list: ${nzd(listPrice)}`
-                            : listPrice == null && line.itemId && !completed
-                              ? "Not on the price list — last price you charged."
-                              : undefined
-                        }
-                      >
-                        <NumberField
-                          value={line.unitPriceNzd}
-                          disabled={completed}
-                          onChange={(v) => updateLine(line.id, { unitPriceNzd: v ?? 0 })}
-                        />
-                      </Field>
-                    </div>
-                    {short && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-red-400">
-                        <AlertTriangle size={12} /> Only {row?.onHand ?? 0} in stock
-                        {data.lines.filter((l) => l.itemId === line.itemId).length > 1 ? " (across all lines for this item)" : ""}.
-                      </div>
-                    )}
-                    <div className="grid grid-cols-3 gap-2 text-[11px]">
-                      <Metric label="Line total" value={nzd(lineTotal)} />
-                      <Metric label={completed ? "Cost of stock" : "Est. cost of stock"} value={nzd(cost)} />
-                      <Metric label="Gross profit" value={cost == null ? "—" : nzd(lineTotal - cost)} highlight />
-                    </div>
+
+            {!completed && (
+              <div
+                className={`border rounded-xl p-3 space-y-3 ${
+                  editingLineId ? "border-gold-500/50 bg-gold-500/5" : "border-slate-800/80 bg-slate-950/50"
+                }`}
+              >
+                {editingLineId && (
+                  <div className="text-[11px] font-bold text-gold-400">
+                    Editing {[draft.name, draft.variant].filter(Boolean).join(" ") || "item"}
                   </div>
-                );
-              })}
-            </div>
+                )}
+                <select className={inputClass} value={draft.itemId} onChange={(e) => chooseItem(e.target.value)}>
+                  {draft.itemId && !stockById[draft.itemId] ? (
+                    <option value={draft.itemId}>
+                      {draft.name} {draft.variant}
+                    </option>
+                  ) : (
+                    <option value="" disabled>
+                      Choose an item…
+                    </option>
+                  )}
+                  {[
+                    { label: "Peptides", rows: peptides },
+                    { label: "Supplies", rows: supplies },
+                  ]
+                    .filter((group) => group.rows.length > 0)
+                    .map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.rows.map((r) => (
+                          <option key={r.item.id} value={r.item.id} disabled={r.onHand === 0 && r.item.id !== draft.itemId}>
+                            {r.item.name} {r.item.variant} — {r.onHand} {r.item.unit}s in stock
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label={`Quantity (${draft.unit || "unit"}s)`}>
+                    <NumberField integer value={draft.qty} onChange={(v) => setDraft((d) => ({ ...d, qty: v ?? 0 }))} />
+                  </Field>
+                  <Field
+                    label={`Price per ${draft.unit || "unit"} (NZD)`}
+                    hint={
+                      draft.itemId && PRICE_LIST[draft.itemId] != null && PRICE_LIST[draft.itemId] !== draft.unitPriceNzd
+                        ? `Price list: ${nzd(PRICE_LIST[draft.itemId])}`
+                        : draft.itemId && PRICE_LIST[draft.itemId] == null
+                          ? "Not on the price list — last price you charged."
+                          : undefined
+                    }
+                  >
+                    <NumberField
+                      placeholder="0.00"
+                      value={draft.unitPriceNzd || null}
+                      onChange={(v) => setDraft((d) => ({ ...d, unitPriceNzd: v ?? 0 }))}
+                    />
+                  </Field>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-[11px] text-slate-400 min-w-0">
+                    {draftEstimate ? (
+                      <>
+                        {draft.qty} {draft.unit || "unit"}
+                        {draft.qty === 1 ? "" : "s"} · {nzd(draft.qty * draft.unitPriceNzd)}
+                        {draftEstimate.cost != null && (
+                          <>
+                            {" "}
+                            · est. cost {nzd(draftEstimate.cost)} · profit{" "}
+                            <span className="text-gold-400 font-bold">
+                              {nzd(draft.qty * draft.unitPriceNzd - draftEstimate.cost)}
+                            </span>
+                          </>
+                        )}
+                        {draftEstimate.short && (
+                          <span className="flex items-center gap-1.5 text-red-400 pt-0.5">
+                            <AlertTriangle size={12} /> Only {stockById[draft.itemId]?.onHand ?? 0} in stock
+                            {data.lines.some((l) => l.itemId === draft.itemId && l.id !== draft.id)
+                              ? " (across all lines for this item)"
+                              : ""}
+                            .
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-slate-500">Choose an item, then add it to the order.</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {editingLineId && (
+                      <button className={secondaryButton} onClick={cancelEdit}>
+                        Cancel
+                      </button>
+                    )}
+                    <button className={primaryButton} onClick={commitDraft}>
+                      <Plus size={13} /> {editingLineId ? "Update item" : "Add to order"}
+                    </button>
+                  </div>
+                </div>
+                <ErrorNote message={lineError} />
+              </div>
+            )}
+
+            {data.lines.length === 0 ? (
+              completed && <p className="text-xs text-slate-500 py-4 text-center">No items on this order.</p>
+            ) : (
+              <div className={`${completed ? "" : "mt-4"} border border-slate-800 rounded-xl overflow-hidden`}>
+                <div className="grid grid-cols-[1rem_minmax(0,1fr)_auto_6.5rem] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider font-bold text-white bg-slate-900/60">
+                  <span />
+                  <span>Item</span>
+                  <span className="text-right">Quantity</span>
+                  <span className="text-right">Line total</span>
+                </div>
+                <div className="divide-y divide-slate-800/70">
+                  {data.lines.map((line) => {
+                    const row = stockById[line.itemId];
+                    const short = !completed && estimate.short.includes(line.id);
+                    const cost = lineCost(line.id);
+                    const lineTotal = line.qty * line.unitPriceNzd;
+                    const open = Boolean(expandedLines[line.id]);
+                    const unit = line.unit || "unit";
+                    return (
+                      <div key={line.id} className={editingLineId === line.id ? "bg-gold-500/5" : ""}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedLines((m) => ({ ...m, [line.id]: !m[line.id] }))}
+                          className="w-full grid grid-cols-[1rem_minmax(0,1fr)_auto_6.5rem] gap-3 px-3 py-2.5 items-center text-left hover:bg-slate-900/50 transition cursor-pointer"
+                          aria-expanded={open}
+                        >
+                          <ChevronRight size={14} className={`text-slate-500 transition-transform ${open ? "rotate-90" : ""}`} />
+                          <span className="min-w-0 truncate text-sm font-semibold text-slate-100">
+                            {line.name} <span className="font-normal text-slate-400">{line.variant}</span>
+                            {short && (
+                              <span className="ml-2 text-[9px] font-bold uppercase tracking-wide text-red-400 border border-red-900/60 rounded-full px-1.5 py-0.5">
+                                Short
+                              </span>
+                            )}
+                            {editingLineId === line.id && (
+                              <span className="ml-2 text-[9px] font-bold uppercase tracking-wide text-gold-400">Editing</span>
+                            )}
+                          </span>
+                          <span className="text-xs text-slate-300 text-right tabular-nums whitespace-nowrap">
+                            {line.qty} {unit}
+                            {line.qty === 1 ? "" : "s"}
+                          </span>
+                          <span className="text-sm text-slate-100 text-right tabular-nums font-semibold">{nzd(lineTotal)}</span>
+                        </button>
+                        {open && (
+                          <div className="px-3 pb-3 pl-10 space-y-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                              <Metric label={`Price per ${unit}`} value={nzd(line.unitPriceNzd)} />
+                              <Metric label="Line total" value={nzd(lineTotal)} />
+                              <Metric label={completed ? "Cost of stock" : "Est. cost of stock"} value={nzd(cost)} />
+                              <Metric label="Gross profit" value={cost == null ? "—" : nzd(lineTotal - cost)} highlight />
+                            </div>
+                            {short && (
+                              <div className="flex items-center gap-1.5 text-[11px] text-red-400">
+                                <AlertTriangle size={12} /> Only {row?.onHand ?? 0} in stock
+                                {data.lines.filter((l) => l.itemId === line.itemId).length > 1 ? " (across all lines for this item)" : ""}.
+                              </div>
+                            )}
+                            {!completed && (
+                              <div className="flex gap-2">
+                                <button className={secondaryButton} onClick={() => editLine(line)}>
+                                  <Pencil size={12} /> Edit
+                                </button>
+                                <button className={dangerButton} onClick={() => removeLine(line.id)}>
+                                  <Trash2 size={12} /> Remove
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 text-xs bg-slate-900/40 border-t border-slate-800">
+                  <span className="text-slate-400">
+                    {data.lines.length} {data.lines.length === 1 ? "item" : "items"} · {totals.units} units
+                  </span>
+                  <span className="font-bold tabular-nums text-slate-100">{nzd(totals.itemsSubtotal)}</span>
+                </div>
+              </div>
+            )}
           </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
