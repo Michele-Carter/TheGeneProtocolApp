@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, PackageCheck, Pencil, Plus, Save, Trash2, Undo2, X } from "lucide-react";
 import {
@@ -194,10 +194,20 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
     setDraft(blankLine(draft));
   };
 
+  // Edit loads the line into the entry box at the top of the Items card, which may be scrolled
+  // out of view - so bring it into view and put the cursor in the price.
+  const entryBoxRef = useRef<HTMLDivElement>(null);
+  const showEntryBox = () =>
+    requestAnimationFrame(() => {
+      entryBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      entryBoxRef.current?.querySelector<HTMLInputElement>("input[data-price]")?.focus({ preventScroll: true });
+    });
+
   const editLine = (line: OrderLineInput) => {
     setDraft(line);
     setEditingLineId(line.id);
     setLineError(null);
+    showEntryBox();
   };
 
   const cancelEdit = () => {
@@ -578,6 +588,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
 
             {!received && (
               <div
+                ref={entryBoxRef}
                 className={`border rounded-xl p-3 space-y-3 ${
                   editingLineId ? "border-gold-500/50 bg-gold-500/5" : "border-slate-800/80 bg-slate-950/50"
                 }`}
@@ -724,6 +735,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                 <div className="grid grid-cols-3 gap-2">
                   <Field label={`Price per ${draft.kind === "peptide" ? "kit" : "pack"} (${ccy})`}>
                     <NumberField
+                      price
                       placeholder="0.00"
                       value={draft.packPrice || null}
                       onChange={(v) => setDraft((d) => ({ ...d, packPrice: v ?? 0 }))}
