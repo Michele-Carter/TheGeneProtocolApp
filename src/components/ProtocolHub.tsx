@@ -98,7 +98,7 @@ export default function ProtocolHub({
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-slate-500 pr-1">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-white pr-1">
           <Users size={13} /> Protocols
         </span>
 
@@ -131,7 +131,7 @@ export default function ProtocolHub({
                               if (e.key === "Enter") void submitEdit();
                               if (e.key === "Escape") setEditingId(null);
                             }}
-                            className="flex-1 min-w-0 bg-slate-950 border border-gold-500/50 rounded-lg px-2 py-1 text-xs text-white outline-none"
+                            className="flex-1 min-w-0 bg-slate-950 border border-gold-500/50 rounded-lg px-2 py-1 text-xs text-slate-400 outline-none"
                           />
                           <button type="button" onClick={() => void submitEdit()} disabled={isSaving} className="text-gold-400 hover:text-gold-300 p-1 cursor-pointer outline-none flex-shrink-0">
                             <Check size={13} />
@@ -254,7 +254,7 @@ export default function ProtocolHub({
                         if (e.key === "Enter") void submitEdit();
                         if (e.key === "Escape") setEditingId(null);
                       }}
-                      className="bg-transparent text-xs text-white outline-none w-24"
+                      className="bg-transparent text-xs text-slate-400 outline-none w-24"
                     />
                     <button type="button" onClick={() => void submitEdit()} disabled={isSaving} className="text-gold-400 hover:text-gold-300 p-1 cursor-pointer outline-none">
                       <Check size={13} />
@@ -374,7 +374,7 @@ export default function ProtocolHub({
         <button
           type="button"
           onClick={() => onNavigate("create")}
-          className="group text-left p-5 bg-slate-900/60 border border-slate-800/80 rounded-2xl space-y-4 hover:border-gold-500/50 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex flex-col"
+          className="group text-left p-5 bg-slate-900/60 border border-slate-800/80 rounded-2xl space-y-4 hover:border-gold-500/70 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex flex-col"
         >
           <div className="flex items-center justify-between">
             <div className="h-9 w-9 rounded-lg bg-gold-500/10 border border-gold-500/30 flex items-center justify-center text-gold-400 group-hover:scale-105 transition-transform">
@@ -395,7 +395,7 @@ export default function ProtocolHub({
         <button
           type="button"
           onClick={() => onNavigate("current")}
-          className="group text-left p-5 bg-slate-900/60 border border-slate-800/80 rounded-2xl space-y-4 hover:border-gold-500/50 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex flex-col"
+          className="group text-left p-5 bg-slate-900/60 border border-slate-800/80 rounded-2xl space-y-4 hover:border-gold-500/70 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex flex-col"
         >
           <div className="flex items-center justify-between">
             <div className="h-9 w-9 rounded-lg bg-gold-500/10 border border-gold-500/30 flex items-center justify-center text-gold-400 group-hover:scale-105 transition-transform">
@@ -419,7 +419,7 @@ export default function ProtocolHub({
         <button
           type="button"
           onClick={() => onNavigate("stack")}
-          className="group text-left p-5 bg-slate-900/60 border border-slate-800/80 rounded-2xl space-y-4 hover:border-gold-500/50 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex flex-col"
+          className="group text-left p-5 bg-slate-900/60 border border-slate-800/80 rounded-2xl space-y-4 hover:border-gold-500/70 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex flex-col"
         >
           <div className="flex items-center justify-between">
             <div className="h-9 w-9 rounded-lg bg-gold-500/10 border border-gold-500/30 flex items-center justify-center text-gold-400 group-hover:scale-105 transition-transform">

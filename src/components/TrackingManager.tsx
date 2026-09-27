@@ -509,8 +509,8 @@ export default function TrackingManager() {
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           {/* current weight */}
           <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-2xl space-y-1">
-            <span className="text-[12px] font-mono tracking-wider uppercase text-slate-500 block">CURRENT WEIGHT</span>
-            <div className="text-2xl font-black text-white font-mono flex items-baseline space-x-1">
+            <span className="text-[12px] font-mono tracking-wider uppercase text-white block">CURRENT WEIGHT</span>
+            <div className="text-2xl font-black text-slate-400 font-mono flex items-baseline space-x-1">
               <span>{currentWeight ? kgToDisplay(currentWeight) : "--"}</span>
               <span className="text-xs text-slate-400 font-normal">{weightUnit}</span>
             </div>
@@ -518,7 +518,7 @@ export default function TrackingManager() {
 
           {/* weight loss change */}
           <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-2xl space-y-1">
-            <span className="text-[12px] font-mono tracking-wider uppercase text-slate-500 block">WEIGHT LOSS</span>
+            <span className="text-[12px] font-mono tracking-wider uppercase text-white block">WEIGHT LOSS</span>
             <div className="text-2xl font-black text-gold-400 font-mono flex items-center space-x-1.5">
               <TrendingDown size={20} />
               <span>{weightChange ? kgToDisplay(weightChange) : "0"} {weightUnit}</span>
@@ -527,8 +527,8 @@ export default function TrackingManager() {
 
           {/* active shots total */}
           <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-2xl space-y-1">
-            <span className="text-[12px] font-mono tracking-wider uppercase text-slate-500 block">SHOTS LOGGED</span>
-            <div className="text-2xl font-black text-white font-mono flex items-baseline space-x-1">
+            <span className="text-[12px] font-mono tracking-wider uppercase text-white block">SHOTS LOGGED</span>
+            <div className="text-2xl font-black text-slate-400 font-mono flex items-baseline space-x-1">
               <span>{shotEntries.length}</span>
               <span className="text-xs text-slate-400 font-normal">injections</span>
             </div>
@@ -536,7 +536,7 @@ export default function TrackingManager() {
 
           {/* protein target */}
           <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-2xl space-y-1">
-            <span className="text-[12px] font-mono tracking-wider uppercase text-slate-500 block">PROTEIN TARGET</span>
+            <span className="text-[12px] font-mono tracking-wider uppercase text-white block">PROTEIN TARGET</span>
             <div className="text-2xl font-black text-amber-400 font-mono flex items-baseline space-x-1">
               <span>{macros.protein} / {macroGoals.protein}</span>
               <span className="text-xs text-slate-400 font-normal">g</span>
@@ -671,7 +671,7 @@ export default function TrackingManager() {
                 <div className="overflow-x-auto border-t border-slate-800/40 pt-3">
                   <table className="w-full text-left text-xs text-slate-400 divide-y divide-slate-800/80">
                     <thead>
-                      <tr className="text-[12px] font-mono uppercase tracking-wider text-slate-500">
+                      <tr className="text-[12px] font-mono uppercase tracking-wider text-white">
                         <th className="pb-2">DATE</th>
                         <th className="pb-2">WEIGHT ({weightUnit.toUpperCase()})</th>
                         <th className="pb-2 text-right">ACTION</th>
@@ -690,7 +690,7 @@ export default function TrackingManager() {
                                     type="date"
                                     value={entry.date}
                                     onChange={(e) => handleUpdateWeight(entry.id, { date: e.target.value })}
-                                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-gold-500"
+                                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-400 outline-none focus:border-gold-500"
                                   />
                                 ) : (
                                   entry.date
@@ -703,7 +703,7 @@ export default function TrackingManager() {
                                     inputMode="decimal"
                                     value={kgToDisplay(entry.weight)}
                                     onChange={(e) => handleUpdateWeight(entry.id, { weight: displayToKg(Number(e.target.value) || 0) })}
-                                    className="w-20 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-gold-500"
+                                    className="w-20 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-400 outline-none focus:border-gold-500"
                                   />
                                 ) : (
                                   `${kgToDisplay(entry.weight)} ${weightUnit}`
@@ -738,7 +738,7 @@ export default function TrackingManager() {
               {/* Add weight entry inline form */}
               <form onSubmit={handleAddWeight} className="pt-2 border-t border-slate-800/40 grid grid-cols-1 sm:grid-cols-3 gap-3 overflow-visible">
                 <div className="flex flex-col space-y-1.5 relative overflow-visible">
-                  <label className="text-[12px] font-mono uppercase text-slate-400">RESEARCH DATE</label>
+                  <label className="text-[12px] font-mono uppercase text-white">RESEARCH DATE</label>
                   <div ref={weightPickerContainerRef} className="relative">
                     <button
                       type="button"
@@ -761,13 +761,13 @@ export default function TrackingManager() {
                   </div>
                 </div>
                 <div className="flex flex-col space-y-1.5">
-                  <label className="text-[12px] font-mono uppercase text-slate-400">BODY WEIGHT ({weightUnit.toUpperCase()})</label>
+                  <label className="text-[12px] font-mono uppercase text-white">BODY WEIGHT ({weightUnit.toUpperCase()})</label>
                   <input
                     type="text"
                     placeholder={weightUnit === "lbs" ? "e.g. 188.5" : "e.g. 85.5"}
                     value={newWeight}
                     onChange={(e) => setNewWeight(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-gold-500 font-mono"
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400 outline-none focus:border-gold-500 font-mono"
                   />
                 </div>
                 <button
@@ -790,7 +790,7 @@ export default function TrackingManager() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-slate-400 divide-y divide-slate-800/80">
                   <thead>
-                    <tr className="text-[12px] font-mono uppercase tracking-wider text-slate-500">
+                    <tr className="text-[12px] font-mono uppercase tracking-wider text-white">
                       <th className="pb-2">DATE</th>
                       <th className="pb-2">COMPOUND</th>
                       <th className="pb-2">DOSE</th>
@@ -827,7 +827,7 @@ export default function TrackingManager() {
               {/* Log shot builder form */}
               <form onSubmit={handleAddShot} className="pt-4 border-t border-slate-800/60 grid grid-cols-1 sm:grid-cols-4 gap-3 overflow-visible">
                 <div className="flex flex-col space-y-1 relative overflow-visible">
-                  <label className="text-[12px] font-mono uppercase text-slate-500">DATE</label>
+                  <label className="text-[12px] font-mono uppercase text-white">DATE</label>
                   <div ref={shotPickerContainerRef} className="relative">
                     <button
                       type="button"
@@ -850,11 +850,11 @@ export default function TrackingManager() {
                   </div>
                 </div>
                 <div className="flex flex-col space-y-1">
-                  <label className="text-[12px] font-mono uppercase text-slate-500">COMPOUND</label>
+                  <label className="text-[12px] font-mono uppercase text-white">COMPOUND</label>
                   <select
                     value={logPeptide}
                     onChange={(e) => setLogPeptide(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:border-gold-500 outline-none"
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-400 focus:border-gold-500 outline-none"
                   >
                     <option value="Retatrutide">Retatrutide</option>
                     <option value="Tirzepatide">Tirzepatide</option>
@@ -867,21 +867,21 @@ export default function TrackingManager() {
                   </select>
                 </div>
                 <div className="flex flex-col space-y-1">
-                  <label className="text-[12px] font-mono uppercase text-slate-500">DOSE (AMOUNT)</label>
+                  <label className="text-[12px] font-mono uppercase text-white">DOSE (AMOUNT)</label>
                   <input
                     type="text"
                     placeholder="e.g. 500 mcg"
                     value={logDose}
                     onChange={(e) => setLogDose(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:border-gold-500 outline-none font-mono"
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-400 focus:border-gold-500 outline-none font-mono"
                   />
                 </div>
                 <div className="flex flex-col space-y-1">
-                  <label className="text-[12px] font-mono uppercase text-slate-500">ROTATION SITE</label>
+                  <label className="text-[12px] font-mono uppercase text-white">ROTATION SITE</label>
                   <select
                     value={logSite}
                     onChange={(e) => setLogSite(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:border-gold-500 outline-none"
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-400 focus:border-gold-500 outline-none"
                   >
                     <option value="Abdomen Left Flank">Abdomen Left Flank</option>
                     <option value="Abdomen Right Flank">Abdomen Right Flank</option>
@@ -893,13 +893,13 @@ export default function TrackingManager() {
                   </select>
                 </div>
                 <div className="sm:col-span-3 flex flex-col space-y-1">
-                  <label className="text-[12px] font-mono uppercase text-slate-500">DOSE NOTES / SAFETY REMINDERS</label>
+                  <label className="text-[12px] font-mono uppercase text-white">DOSE NOTES / SAFETY REMINDERS</label>
                   <input
                     type="text"
                     placeholder="e.g. Stinging was mild. Avoided vessel."
                     value={logNotes}
                     onChange={(e) => setLogNotes(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:border-gold-500 outline-none"
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-400 focus:border-gold-500 outline-none"
                   />
                 </div>
                 <button
@@ -981,43 +981,43 @@ export default function TrackingManager() {
 
               {/* Macro tuners */}
               <div className="pt-4 border-t border-slate-800/50 space-y-3">
-                <div className="text-[12px] font-mono uppercase text-slate-500">TUNE TODAY'S MACRO TRACKS</div>
+                <div className="text-[12px] font-mono uppercase text-white">TUNE TODAY'S MACRO TRACKS</div>
                 <div className="grid grid-cols-2 gap-3.5">
                   <div className="space-y-1">
-                    <span className="text-[12px] text-slate-400">Calories (kcal)</span>
+                    <span className="text-[12px] text-white">Calories (kcal)</span>
                     <input
                       type="number"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1 px-2.5 text-xs text-white outline-none"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1 px-2.5 text-xs text-slate-400 outline-none"
                       value={macros.calories}
                       onFocus={clearZeroOnFocus}
                       onChange={(e) => setMacros({ ...macros, calories: Number(e.target.value) })}
                     />
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[12px] text-slate-400">Protein (g)</span>
+                    <span className="text-[12px] text-white">Protein (g)</span>
                     <input
                       type="number"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1 px-2.5 text-xs text-white outline-none"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1 px-2.5 text-xs text-slate-400 outline-none"
                       value={macros.protein}
                       onFocus={clearZeroOnFocus}
                       onChange={(e) => setMacros({ ...macros, protein: Number(e.target.value) })}
                     />
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[12px] text-slate-400">Carbs (g)</span>
+                    <span className="text-[12px] text-white">Carbs (g)</span>
                     <input
                       type="number"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1 px-2.5 text-xs text-white outline-none"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1 px-2.5 text-xs text-slate-400 outline-none"
                       value={macros.carbs}
                       onFocus={clearZeroOnFocus}
                       onChange={(e) => setMacros({ ...macros, carbs: Number(e.target.value) })}
                     />
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[12px] text-slate-400">Fat (g)</span>
+                    <span className="text-[12px] text-white">Fat (g)</span>
                     <input
                       type="number"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1 px-2.5 text-xs text-white outline-none"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1 px-2.5 text-xs text-slate-400 outline-none"
                       value={macros.fat}
                       onFocus={clearZeroOnFocus}
                       onChange={(e) => setMacros({ ...macros, fat: Number(e.target.value) })}

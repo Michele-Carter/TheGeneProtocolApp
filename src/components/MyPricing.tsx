@@ -34,7 +34,7 @@ export default function MyPricing() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search products or codes..."
-          className="w-full bg-slate-900/60 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-gold-500/60 transition"
+          className="w-full bg-slate-900/60 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-400 placeholder:text-slate-600 focus:outline-none focus:border-gold-500/60 transition"
         />
       </div>
 

@@ -23,7 +23,7 @@ export default function ProtocolMonthView({ state }: { state: ProtocolBuilderSta
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+      <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-mono font-bold text-white uppercase tracking-wider">
         {DAY_HEADERS.map((d) => (
           <div key={d}>{d}</div>
         ))}

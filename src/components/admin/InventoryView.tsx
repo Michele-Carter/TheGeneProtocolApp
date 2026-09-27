@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { AlertTriangle, ArrowLeft, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Pencil, RefreshCw, Search, Trash2 } from "lucide-react";
 import {
   adminApi,
   nzd,
   todayIso,
   type InventoryDetail,
   type InventorySummaryRow,
+  type StockMovement,
 } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, StatRow, inputClass, primaryButton, secondaryButton } from "./ui";
 
@@ -17,6 +18,47 @@ const ADJUST_REASONS_IN = ["Stocktake correction", "Found stock", "Returned by c
 
 function isLowStock(row: InventorySummaryRow) {
   return row.item.reorderLevel != null && row.onHand <= row.item.reorderLevel;
+}
+
+// One line of an item's history. A removal can come out of several batches; those movements
+// share an adjustment id and are shown (and edited) as one adjustment.
+interface HistoryEntry {
+  key: string;
+  adjustmentId: string | null;
+  type: StockMovement["type"];
+  qty: number;
+  unitCostNzd: number;
+  reason: string;
+  note: string;
+  occurredAt: string;
+}
+
+function historyEntries(movements: StockMovement[]): HistoryEntry[] {
+  const entries: HistoryEntry[] = [];
+  const byAdjustment = new Map<string, { entry: HistoryEntry; cost: number }>();
+  for (const m of movements) {
+    if (m.type !== "adjust") {
+      entries.push({ key: m.id, adjustmentId: null, ...m });
+      continue;
+    }
+    const adjustmentId = m.refId ?? m.id;
+    const group = byAdjustment.get(adjustmentId);
+    if (group) {
+      group.entry.qty += m.qty;
+      group.cost += m.qty * m.unitCostNzd;
+      group.entry.unitCostNzd = group.entry.qty !== 0 ? group.cost / group.entry.qty : m.unitCostNzd;
+      continue;
+    }
+    const entry: HistoryEntry = { key: adjustmentId, adjustmentId, ...m };
+    byAdjustment.set(adjustmentId, { entry, cost: m.qty * m.unitCostNzd });
+    entries.push(entry);
+  }
+  return entries;
+}
+
+// The yyyy-mm-dd a timestamp falls on in NZ (matches how the server stores adjustment dates).
+function nzDateString(iso: string) {
+  return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Pacific/Auckland" });
 }
 
 export default function InventoryView() {
@@ -130,7 +172,7 @@ export default function InventoryView() {
         <div className="border border-slate-800 rounded-2xl overflow-x-auto">
           <table className="w-full text-xs min-w-[40rem]">
             <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wider text-slate-500 bg-slate-900/60">
+              <tr className="text-left text-[10px] uppercase tracking-wider text-white bg-slate-900/60">
                 <th className="px-4 py-2.5 font-bold">Item</th>
                 <th className="px-3 py-2.5 font-bold text-right">On hand</th>
                 <th className="px-3 py-2.5 font-bold text-right" title="Cost of the next unit sold (oldest batch)">
@@ -199,7 +241,9 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
   const [note, setNote] = useState("");
   const [unitCost, setUnitCost] = useState<number | null>(null);
   const [date, setDate] = useState(todayIso());
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [reorderLevel, setReorderLevel] = useState<number | null>(null);
+  const adjustCardRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -218,6 +262,31 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
   const onHand = detail?.lots.reduce((t, l) => t + l.qtyRemaining, 0) ?? 0;
   const value = detail?.lots.reduce((t, l) => t + l.qtyRemaining * l.unitCostNzd, 0) ?? 0;
 
+  const history = useMemo(() => historyEntries(detail?.movements ?? []), [detail]);
+
+  const resetAdjustForm = () => {
+    setEditingId(null);
+    setDirection("out");
+    setReason(ADJUST_REASONS_OUT[0]);
+    setQty(null);
+    setNote("");
+    setUnitCost(null);
+    setDate(todayIso());
+  };
+
+  const startEdit = (entry: HistoryEntry) => {
+    const d = entry.qty < 0 ? "out" : "in";
+    setEditingId(entry.adjustmentId);
+    setDirection(d);
+    setQty(Math.abs(entry.qty));
+    setReason(entry.reason);
+    setNote(entry.note);
+    setUnitCost(d === "in" ? entry.unitCostNzd : null);
+    setDate(nzDateString(entry.occurredAt));
+    setError(null);
+    adjustCardRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
   const submitAdjust = async () => {
     if (!qty || qty <= 0) {
       setError("Enter how many units to adjust.");
@@ -225,21 +294,37 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
     }
     setBusy(true);
     setError(null);
+    const payload = {
+      qty: direction === "out" ? -qty : qty,
+      reason,
+      note,
+      unitCostNzd: direction === "in" ? unitCost : null,
+      date,
+    };
     try {
-      await adminApi.adjust(
-        {
-          itemId,
-          qty: direction === "out" ? -qty : qty,
-          reason,
-          note,
-          unitCostNzd: direction === "in" ? unitCost : null,
-          date,
-        },
-        getToken
-      );
-      setQty(null);
-      setNote("");
-      setUnitCost(null);
+      if (editingId) {
+        await adminApi.updateAdjustment(editingId, payload, getToken);
+      } else {
+        await adminApi.adjust({ itemId, ...payload }, getToken);
+      }
+      resetAdjustForm();
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteAdjustment = async (entry: HistoryEntry) => {
+    if (!entry.adjustmentId) return;
+    const change = entry.qty > 0 ? `+${entry.qty}` : String(entry.qty);
+    if (!window.confirm(`Delete this adjustment (${change} ${item?.unit}s)? The stock will be put back as it was.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await adminApi.deleteAdjustment(entry.adjustmentId, getToken);
+      if (editingId === entry.adjustmentId) resetAdjustForm();
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -262,7 +347,9 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
   };
 
   const item = detail?.item;
-  const reasons = direction === "out" ? ADJUST_REASONS_OUT : ADJUST_REASONS_IN;
+  const baseReasons = direction === "out" ? ADJUST_REASONS_OUT : ADJUST_REASONS_IN;
+  // Keep an edited adjustment's reason selectable even if it isn't in this direction's list.
+  const reasons = baseReasons.includes(reason) ? baseReasons : [reason, ...baseReasons];
 
   return (
     <div className="space-y-5">
@@ -295,7 +382,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs min-w-[32rem]">
                     <thead>
-                      <tr className="text-left text-[10px] uppercase tracking-wider text-slate-500">
+                      <tr className="text-left text-[10px] uppercase tracking-wider text-white">
                         <th className="py-1.5 pr-3 font-bold">Received</th>
                         <th className="py-1.5 pr-3 font-bold">Source</th>
                         <th className="py-1.5 pr-3 font-bold">Lot / expiry</th>
@@ -331,12 +418,17 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
             </Card>
 
             <Card title="History">
-              {detail.movements.length === 0 ? (
+              {history.length === 0 ? (
                 <p className="text-xs text-slate-500">No stock movements yet.</p>
               ) : (
                 <div className="divide-y divide-slate-800/70">
-                  {detail.movements.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between gap-3 py-2 text-xs">
+                  {history.map((m) => (
+                    <div
+                      key={m.key}
+                      className={`flex items-center justify-between gap-3 py-2 text-xs ${
+                        editingId && m.adjustmentId === editingId ? "bg-gold-500/5 -mx-2 px-2 rounded-lg" : ""
+                      }`}
+                    >
                       <div className="min-w-0">
                         <div className="text-slate-200 font-semibold">
                           {m.type === "receive" ? "Received" : m.type === "sale" ? "Sold" : "Adjusted"}
@@ -347,11 +439,38 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
                           {m.note ? ` · ${m.note}` : ""}
                         </div>
                       </div>
-                      <div className="text-right tabular-nums">
-                        <div className={`font-black ${m.qty > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                          {m.qty > 0 ? `+${m.qty}` : m.qty}
+                      <div className="flex items-center gap-3">
+                        <div className="text-right tabular-nums">
+                          <div className={`font-black ${m.qty > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            {m.qty > 0 ? `+${m.qty}` : m.qty}
+                          </div>
+                          <div className="text-[10px] text-slate-500">@ {nzd(m.unitCostNzd, 3)}</div>
                         </div>
-                        <div className="text-[10px] text-slate-500">@ {nzd(m.unitCostNzd, 3)}</div>
+                        {m.adjustmentId ? (
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => startEdit(m)}
+                              disabled={busy}
+                              className="p-1.5 rounded-md text-slate-500 hover:text-gold-400 hover:bg-slate-800 transition cursor-pointer disabled:opacity-40"
+                              aria-label="Edit adjustment"
+                              title="Edit adjustment"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => void deleteAdjustment(m)}
+                              disabled={busy}
+                              className="p-1.5 rounded-md text-slate-500 hover:text-red-400 hover:bg-slate-800 transition cursor-pointer disabled:opacity-40"
+                              aria-label="Delete adjustment"
+                              title="Delete adjustment"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          // Keeps amounts lined up with the adjustment rows.
+                          <div className="w-[3.25rem]" />
+                        )}
                       </div>
                     </div>
                   ))}
@@ -381,7 +500,11 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
               </div>
             </Card>
 
-            <Card title="Adjust stock">
+            <div ref={adjustCardRef}>
+            <Card
+              title={editingId ? "Edit adjustment" : "Adjust stock"}
+              className={editingId ? "border-gold-500/40" : ""}
+            >
               <div className="space-y-3">
                 <div className="flex gap-2">
                   {(["out", "in"] as const).map((d) => (
@@ -419,7 +542,10 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
                   </select>
                 </Field>
                 {direction === "in" && (
-                  <Field label="Cost per unit (NZD)" hint="Leave blank to use the most recent batch cost.">
+                  <Field
+                    label="Cost per unit (NZD)"
+                    hint={editingId ? "Leave blank to keep the current cost." : "Leave blank to use the most recent batch cost."}
+                  >
                     <NumberField value={unitCost} onChange={setUnitCost} />
                   </Field>
                 )}
@@ -432,11 +558,19 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
                     Removed from the oldest batch first.
                   </p>
                 )}
-                <button className={primaryButton} onClick={submitAdjust} disabled={busy}>
-                  {direction === "out" ? "Remove from stock" : "Add to stock"}
-                </button>
+                <div className="flex gap-2">
+                  <button className={primaryButton} onClick={submitAdjust} disabled={busy}>
+                    {editingId ? "Save changes" : direction === "out" ? "Remove from stock" : "Add to stock"}
+                  </button>
+                  {editingId && (
+                    <button className={secondaryButton} onClick={resetAdjustForm} disabled={busy}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </Card>
+            </div>
           </div>
         </div>
       )}

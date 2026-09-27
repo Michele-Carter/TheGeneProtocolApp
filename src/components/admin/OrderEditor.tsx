@@ -789,7 +789,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
               received && <p className="text-xs text-slate-500 py-4 text-center">No items on this order.</p>
             ) : (
               <div className={`${received ? "" : "mt-4"} border border-slate-800 rounded-xl overflow-hidden`}>
-                <div className="grid grid-cols-[1rem_minmax(0,1fr)_auto_6.5rem] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider font-bold text-slate-500 bg-slate-900/60">
+                <div className="grid grid-cols-[1rem_minmax(0,1fr)_auto_6.5rem] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider font-bold text-white bg-slate-900/60">
                   <span />
                   <span>{orderType === "supplies" ? "Item" : "Peptide"}</span>
                   <span className="text-right">Quantity</span>

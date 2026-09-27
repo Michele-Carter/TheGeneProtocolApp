@@ -6,10 +6,39 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@clerk/react";
 import { getUserState, putUserState } from "../lib/userStateApi";
-import { Info, AlertTriangle, Calculator, CheckCircle2, ChevronDown } from "lucide-react";
+import { Info, AlertTriangle, Calculator, CheckCircle2, ChevronDown, Plus, X } from "lucide-react";
+
+type VialContentType = "mass" | "blend" | "potency";
+
+// One peptide in a blend vial. The anchor is the compound the entered dose refers to.
+type BlendCompound = { id: string; name: string; mg: number };
+
+const DEFAULT_BLEND: BlendCompound[] = [
+  { id: "blend-1", name: "BPC-157", mg: 5 },
+  { id: "blend-2", name: "TB-500", mg: 5 },
+];
+
+type DoseUnit = "MG" | "MCG" | "IU";
+type TabDose = { value: number; unit: DoseUnit };
+
+// Each calculator tab keeps its own dose, so e.g. 250 mcg on Single peptide never turns into 250 IU.
+const DEFAULT_DOSES: Record<VialContentType, TabDose> = {
+  mass: { value: 250, unit: "MCG" },
+  blend: { value: 250, unit: "MCG" },
+  potency: { value: 2, unit: "IU" },
+};
+
+const CALCULATOR_TABS: { key: VialContentType; label: string; sub: string }[] = [
+  { key: "mass", label: "Single peptide", sub: "One peptide, labelled in mg" },
+  { key: "blend", label: "Blend", sub: "2+ peptides in one vial" },
+  { key: "potency", label: "IU peptides", sub: "HGH, HCG — labelled in IU" },
+];
 
 type ReconstitutionPersistedState = {
-  vialContentType?: "mass" | "potency";
+  vialContentType?: VialContentType;
+  dosesByTab?: Partial<Record<VialContentType, TabDose>>;
+  blendCompounds?: BlendCompound[];
+  blendAnchorId?: string;
   vialWeightMg: number;
   vialPotencyIu?: number;
   potencyCompound?: "hgh" | "hcg" | "other";
@@ -18,68 +47,112 @@ type ReconstitutionPersistedState = {
   bacWaterMl: number;
   doseValue: number;
   doseUnit: "MG" | "MCG" | "IU";
-  frequency: "daily" | "twice" | "weekly" | "custom";
-  customFrequencyType: "perDay" | "perWeek";
-  customFrequencyValue: number;
   syringeType: "30u" | "50u" | "100u" | "1mL" | "3mL" | "pen";
 };
 
-// Semicircle "speedometer" dial: needle sweeps left (0 clicks) to right (max clicks), matching
-// the physical dial on an auto-injector pen. Uses pathLength=100 on both arcs so the progress
-// arc's dash offset is just "100 - fillPercentage", no arc-length trig required.
-function PenDialGauge({
-  clicksToShow,
-  maxUnits,
-  fillPercentage
+// Side-on auto-injector pen in the same style as SyringeIllustration: the dose window shows the
+// number to dial (with its neighbours on the drum, faded), and the dial sleeve + grip slide out of
+// the end of the pen in proportion to the clicks dialled, like the real pen.
+function PenIllustration({
+  clicks,
+  ticks,
+  maxUnits
 }: {
-  clicksToShow: number;
+  clicks: number;
+  ticks: number[];
   maxUnits: number;
-  fillPercentage: number;
 }) {
-  const needleRotation = -90 + (fillPercentage / 100) * 180;
+  const clipId = `pen-window-${React.useId().replace(/:/g, "")}`;
+  const centerY = 55;
+  const bodyX = 40;
+  const bodyEnd = 340;
+  const bodyY = 31;
+  const bodyHeight = 48;
+  const maxTravel = 150; // how far the grip sits out at the pen's maximum clicks
+  const shown = Math.max(0, Math.round(clicks));
+  const travel = (Math.min(shown, maxUnits) / maxUnits) * maxTravel;
+  const sleeveY = 39;
+  const sleeveHeight = 32;
+  const windowX = 250;
+  const windowY = 35;
+  const windowWidth = 64;
+  const windowHeight = 40;
+  const windowCenter = windowX + windowWidth / 2;
+  const slide = { transform: `translateX(${travel}px)`, transition: "transform 300ms ease" };
 
   return (
-    <div className="flex items-center gap-3">
-      <svg viewBox="0 0 200 115" className="w-[92px] shrink-0">
-        <path
-          d="M 15 105 A 85 85 0 0 1 185 105"
-          fill="none"
-          stroke="#1e293b"
-          strokeWidth={16}
-          strokeLinecap="round"
-          pathLength={100}
-        />
-        <path
-          d="M 15 105 A 85 85 0 0 1 185 105"
-          fill="none"
-          stroke="#dba931"
-          strokeWidth={16}
-          strokeLinecap="round"
-          pathLength={100}
-          strokeDasharray={100}
-          strokeDashoffset={100 - fillPercentage}
-          style={{ filter: "drop-shadow(0 0 4px rgba(219,169,49,0.55))", transition: "stroke-dashoffset 300ms ease" }}
-        />
-        <line
-          x1={100}
-          y1={105}
-          x2={100}
-          y2={26}
-          stroke="#e2e8f0"
-          strokeWidth={4}
-          strokeLinecap="round"
-          style={{ transform: `rotate(${needleRotation}deg)`, transformOrigin: "100px 105px", transition: "transform 300ms ease" }}
-        />
-        <circle cx={100} cy={105} r={7} fill="#e2e8f0" />
-        <text x={15} y={112} fontSize={11} fill="#64748b" fontFamily="monospace">0</text>
-        <text x={185} y={112} fontSize={11} fill="#64748b" fontFamily="monospace" textAnchor="end">
-          {maxUnits}
+    <svg viewBox="0 0 560 120" className="w-full">
+      <defs>
+        <clipPath id={clipId}>
+          <rect x={windowX} y={windowY} width={windowWidth} height={windowHeight} rx={6} />
+        </clipPath>
+      </defs>
+
+      {/* Needle + hub */}
+      <line x1={0} y1={centerY} x2={22} y2={centerY} stroke="#94a3b8" strokeWidth={2} />
+      <path d={`M 22 ${centerY - 6} L ${bodyX} ${centerY - 12} L ${bodyX} ${centerY + 12} L 22 ${centerY + 6} Z`} fill="#c2911f" />
+
+      {/* Dial sleeve + grip: drawn first so they slide out from behind the pen body */}
+      <g style={slide}>
+        <rect x={bodyEnd - maxTravel} y={sleeveY} width={maxTravel + 4} height={sleeveHeight} fill="#1e293b" stroke="#334155" strokeWidth={1.5} />
+        {Array.from({ length: 12 }, (_, i) => bodyEnd - maxTravel + 8 + i * 12).map((x) => (
+          <line key={x} x1={x} y1={sleeveY + 8} x2={x} y2={sleeveY + sleeveHeight - 8} stroke="#475569" strokeWidth={1.5} />
+        ))}
+        {/* Grip */}
+        <rect x={bodyEnd} y={bodyY - 4} width={36} height={bodyHeight + 8} rx={8} fill="#1f2937" stroke="#475569" strokeWidth={2} />
+        {Array.from({ length: 5 }, (_, i) => bodyEnd + 6 + i * 5).map((x) => (
+          <line key={x} x1={x} y1={bodyY + 2} x2={x} y2={bodyY + bodyHeight - 2} stroke="#334155" strokeWidth={1.5} />
+        ))}
+        <rect x={bodyEnd + 31} y={bodyY - 4} width={5} height={bodyHeight + 8} rx={2} fill="#c2911f" />
+      </g>
+
+      {/* Pen body */}
+      <rect x={bodyX} y={bodyY} width={bodyEnd - bodyX} height={bodyHeight} rx={10} fill="#0b1220" stroke="#334155" strokeWidth={2} />
+      {/* Cartridge holder: window onto the reconstituted solution, then the join to the dosing body */}
+      <rect x={bodyX + 14} y={centerY - 11} width={92} height={22} rx={5} fill="#111827" stroke="#475569" strokeWidth={1.5} />
+      <rect x={bodyX + 16} y={centerY - 9} width={88} height={18} rx={4} fill="#c2911f" opacity={0.5} />
+      <line x1={bodyX + 124} y1={bodyY + 1} x2={bodyX + 124} y2={bodyY + bodyHeight - 1} stroke="#334155" strokeWidth={2} />
+
+      {/* Dose window: the number to dial, with the drum's neighbouring numbers faded */}
+      <rect x={windowX} y={windowY} width={windowWidth} height={windowHeight} rx={6} fill="#111827" stroke="#475569" strokeWidth={1.5} />
+      <g clipPath={`url(#${clipId})`}>
+        {shown >= 2 ? (
+          <text x={windowCenter} y={windowY + 10} fontSize={11} fill="#64748b" fontFamily="monospace" textAnchor="middle">
+            {shown - 2}
+          </text>
+        ) : null}
+        <text x={windowCenter} y={centerY + 6} fontSize={18} fontWeight={700} fill="#dba931" fontFamily="monospace" textAnchor="middle">
+          {shown}
         </text>
-      </svg>
-      <div className="min-w-0 text-base font-bold text-white">
-        Dial to <span className="text-gold-400 font-mono">{clicksToShow}</span> on your pen
-      </div>
-    </div>
+        <text x={windowCenter} y={windowY + windowHeight + 5} fontSize={11} fill="#64748b" fontFamily="monospace" textAnchor="middle">
+          {shown + 2}
+        </text>
+      </g>
+      {/* Pointer beside the window */}
+      <path d={`M ${windowX - 9} ${centerY - 5} L ${windowX - 3} ${centerY} L ${windowX - 9} ${centerY + 5} Z`} fill="#e8c05a" />
+
+      {/* Travel scale: where the grip sits for each click count, gold mark = your dose */}
+      {ticks.map((t) => {
+        const x = bodyEnd + (t / maxUnits) * maxTravel;
+        return (
+          <g key={t}>
+            <line x1={x} y1={bodyY + bodyHeight + 10} x2={x} y2={bodyY + bodyHeight + 16} stroke="#64748b" strokeWidth={1.5} />
+            <text x={x} y={bodyY + bodyHeight + 30} fontSize={10} fill="#94a3b8" fontFamily="monospace" textAnchor="middle">
+              {t}
+            </text>
+          </g>
+        );
+      })}
+      <line
+        x1={bodyEnd}
+        y1={bodyY + bodyHeight + 7}
+        x2={bodyEnd}
+        y2={bodyY + bodyHeight + 19}
+        stroke="#e8c05a"
+        strokeWidth={2.5}
+        style={slide}
+      />
+    </svg>
   );
 }
 
@@ -159,8 +232,13 @@ export default function ReconstitutionCalc() {
   // are labeled by potency instead (IU per vial). Whether a mass equivalent even exists depends
   // on the specific compound (HGH: yes, a real standard; HCG: no, never) - see potencyCompound -
   // so this needs its own concentration math rather than being forced through one fake ratio.
-  const [vialContentType, setVialContentType] = useState<"mass" | "potency">("mass");
+  const [vialContentType, setVialContentType] = useState<VialContentType>("mass");
   const [vialWeightMg, setVialWeightMg] = useState<number>(10);
+  // A blend vial holds several peptides. Blend protocols are dosed by one compound (e.g. "250 mcg
+  // BPC-157"), so the draw is worked out from that anchor's own concentration and the others
+  // simply come along in the same draw, in proportion to their mg in the vial.
+  const [blendCompounds, setBlendCompounds] = useState<BlendCompound[]>(DEFAULT_BLEND);
+  const [blendAnchorId, setBlendAnchorId] = useState<string>(DEFAULT_BLEND[0].id);
   const [vialPotencyIu, setVialPotencyIu] = useState<number>(5000);
   // Which IU-to-mg ratio applies depends entirely on which compound this is - HGH has a
   // well-established standard (3 IU = 1mg), HCG has none at all (potency-only, no fixed mass
@@ -176,12 +254,9 @@ export default function ReconstitutionCalc() {
 
   // 3. What's your dose per injection?
   const [doseValue, setDoseValue] = useState<number>(250);
-  const [doseUnit, setDoseUnit] = useState<"MG" | "MCG" | "IU">("MCG");
-
-  // 4. How often will you inject?
-  const [frequency, setFrequency] = useState<"daily" | "twice" | "weekly" | "custom">("daily");
-  const [customFrequencyType, setCustomFrequencyType] = useState<"perDay" | "perWeek">("perWeek");
-  const [customFrequencyValue, setCustomFrequencyValue] = useState<number>(3);
+  const [doseUnit, setDoseUnit] = useState<DoseUnit>("MCG");
+  // Doses of the tabs that aren't showing (the showing tab's dose is doseValue/doseUnit).
+  const [dosesByTab, setDosesByTab] = useState<Partial<Record<VialContentType, TabDose>>>({});
 
   // Syringe Type Selector on the right recipe card
   const [syringeType, setSyringeType] = useState<"30u" | "50u" | "100u" | "1mL" | "3mL" | "pen">("100u");
@@ -200,32 +275,35 @@ export default function ReconstitutionCalc() {
     return token;
   }, [getToken]);
 
-  // Switching vial type changes which dose units are even meaningful: a potency (IU) vial can
-  // only be dosed in IU (that's what's on the label), and a mass (mg) vial has no safe universal
-  // IU conversion, so dose unit must follow the vial type rather than being picked independently.
-  const handleVialContentTypeChange = (nextType: "mass" | "potency") => {
+  // Each tab is its own calculator with its own dose: the leaving tab's dose is kept and the
+  // arriving tab's comes back. A potency (IU) vial is dosed in IU and a mass (mg) vial has no safe
+  // universal IU conversion, so a dose never carries across tabs.
+  const handleVialContentTypeChange = (nextType: VialContentType) => {
+    if (nextType === vialContentType) return;
+    const next = dosesByTab[nextType] ?? DEFAULT_DOSES[nextType];
+    setDosesByTab((saved) => ({ ...saved, [vialContentType]: { value: doseValue, unit: doseUnit } }));
     setVialContentType(nextType);
-    if (nextType === "potency") {
-      setDoseUnit("IU");
-    } else if (doseUnit === "IU") {
-      setDoseUnit("MCG");
-    }
+    setDoseValue(next.value);
+    setDoseUnit(next.unit);
   };
 
   // Reset to default states
+  // Resets the calculator you're looking at; the other tabs keep what's entered in them.
   const handleReset = () => {
-    setVialContentType("mass");
-    setVialWeightMg(10);
-    setVialPotencyIu(5000);
-    setPotencyCompound("hgh");
-    setVialMgEquivalent(0);
+    if (vialContentType === "mass") setVialWeightMg(10);
+    if (vialContentType === "blend") {
+      setBlendCompounds(DEFAULT_BLEND);
+      setBlendAnchorId(DEFAULT_BLEND[0].id);
+    }
+    if (vialContentType === "potency") {
+      setVialPotencyIu(5000);
+      setPotencyCompound("hgh");
+      setVialMgEquivalent(0);
+    }
     setVialSizeMl(3);
     setBacWaterMl(2);
-    setDoseValue(250);
-    setDoseUnit("MCG");
-    setFrequency("daily");
-    setCustomFrequencyType("perWeek");
-    setCustomFrequencyValue(3);
+    setDoseValue(DEFAULT_DOSES[vialContentType].value);
+    setDoseUnit(DEFAULT_DOSES[vialContentType].unit);
     setSyringeType("100u");
   };
 
@@ -241,8 +319,20 @@ export default function ReconstitutionCalc() {
         const parsed = await getUserState<ReconstitutionPersistedState>("reconstitution", getClientToken);
         if (!parsed || cancelled) return;
 
-        const restoredVialContentType = parsed.vialContentType === "potency" ? "potency" : "mass";
+        const restoredVialContentType: VialContentType =
+          parsed.vialContentType === "potency" || parsed.vialContentType === "blend" ? parsed.vialContentType : "mass";
         setVialContentType(restoredVialContentType);
+        const restoredBlend = Array.isArray(parsed.blendCompounds)
+          ? parsed.blendCompounds.filter(
+              (c): c is BlendCompound => c && typeof c.id === "string" && typeof c.name === "string" && typeof c.mg === "number"
+            )
+          : [];
+        if (restoredBlend.length >= 2) {
+          setBlendCompounds(restoredBlend);
+          setBlendAnchorId(
+            restoredBlend.some((c) => c.id === parsed.blendAnchorId) ? parsed.blendAnchorId! : restoredBlend[0].id
+          );
+        }
         if (typeof parsed.vialWeightMg === "number") setVialWeightMg(parsed.vialWeightMg);
         if (typeof parsed.vialPotencyIu === "number") setVialPotencyIu(parsed.vialPotencyIu);
         if (parsed.potencyCompound === "hgh" || parsed.potencyCompound === "hcg" || parsed.potencyCompound === "other") {
@@ -251,7 +341,7 @@ export default function ReconstitutionCalc() {
         if (typeof parsed.vialMgEquivalent === "number") setVialMgEquivalent(parsed.vialMgEquivalent);
         if (typeof parsed.vialSizeMl === "number") setVialSizeMl(parsed.vialSizeMl);
         if (typeof parsed.bacWaterMl === "number") setBacWaterMl(parsed.bacWaterMl);
-        if (restoredVialContentType === "mass" && parsed.doseUnit === "IU") {
+        if (restoredVialContentType !== "potency" && parsed.doseUnit === "IU") {
           // Pre-fix saves used a flat, incorrect "1 IU = 10 mcg" rule for a mass (mg) vial.
           // Migrate the stored dose to its old numeric mcg equivalent so the draw volume a
           // returning user sees doesn't silently change, while dropping the unsafe IU label.
@@ -261,13 +351,15 @@ export default function ReconstitutionCalc() {
           if (typeof parsed.doseValue === "number") setDoseValue(parsed.doseValue);
           if (parsed.doseUnit === "MG" || parsed.doseUnit === "MCG" || parsed.doseUnit === "IU") setDoseUnit(parsed.doseUnit);
         }
-        if (parsed.frequency === "daily" || parsed.frequency === "twice" || parsed.frequency === "weekly" || parsed.frequency === "custom") {
-          setFrequency(parsed.frequency);
+        if (parsed.dosesByTab && typeof parsed.dosesByTab === "object") {
+          const restoredDoses: Partial<Record<VialContentType, TabDose>> = {};
+          for (const key of ["mass", "blend", "potency"] as const) {
+            const d = parsed.dosesByTab[key];
+            const unitOk = key === "potency" ? d?.unit === "IU" || d?.unit === "MG" || d?.unit === "MCG" : d?.unit === "MG" || d?.unit === "MCG";
+            if (d && typeof d.value === "number" && unitOk) restoredDoses[key] = { value: d.value, unit: d.unit };
+          }
+          setDosesByTab(restoredDoses);
         }
-        if (parsed.customFrequencyType === "perDay" || parsed.customFrequencyType === "perWeek") {
-          setCustomFrequencyType(parsed.customFrequencyType);
-        }
-        if (typeof parsed.customFrequencyValue === "number") setCustomFrequencyValue(parsed.customFrequencyValue);
         const rawSyringeType = parsed.syringeType as string;
         if (rawSyringeType === "60u-pen" || rawSyringeType === "80u-pen") {
           // Pre-simplification builds stored a pen size; the size no longer matters (click count
@@ -304,6 +396,9 @@ export default function ReconstitutionCalc() {
 
     const payload: ReconstitutionPersistedState = {
       vialContentType,
+      dosesByTab,
+      blendCompounds,
+      blendAnchorId,
       vialWeightMg,
       vialPotencyIu,
       potencyCompound,
@@ -312,9 +407,6 @@ export default function ReconstitutionCalc() {
       bacWaterMl,
       doseValue,
       doseUnit,
-      frequency,
-      customFrequencyType,
-      customFrequencyValue,
       syringeType,
     };
 
@@ -335,11 +427,11 @@ export default function ReconstitutionCalc() {
     };
   }, [
     bacWaterMl,
-    customFrequencyType,
-    customFrequencyValue,
+    blendAnchorId,
+    blendCompounds,
+    dosesByTab,
     doseUnit,
     doseValue,
-    frequency,
     getClientToken,
     hasHydratedPersistedState,
     isLoaded,
@@ -362,16 +454,6 @@ export default function ReconstitutionCalc() {
     if (doseUnit === "MG") return val * 1000;
     return val; // MCG
   }, [doseValue, doseUnit, vialContentType]);
-
-  // Injections per day implied by the selected frequency, so duration math works the same way
-  // for the daily/twice/weekly presets and a custom "N times per day/week" entry.
-  const dosesPerDay = useMemo(() => {
-    if (frequency === "daily") return 1;
-    if (frequency === "twice") return 2;
-    if (frequency === "weekly") return 1 / 7;
-    const val = Number(customFrequencyValue) || 0;
-    return customFrequencyType === "perDay" ? val : val / 7;
-  }, [frequency, customFrequencyType, customFrequencyValue]);
 
   // The IU-to-mg ratio depends on which compound is selected: HGH always has the accepted
   // 3 IU = 1mg potency standard, HCG never has a fixed mass equivalent at all, and "other"
@@ -449,7 +531,6 @@ export default function ReconstitutionCalc() {
       const drawVolumeMl = concentrationIuPerMl > 0 ? doseIu / concentrationIuPerMl : 0;
       const insulinUnits = drawVolumeMl * 100;
       const dosesPerVial = doseIu > 0 ? Math.floor(vialIu / doseIu) : 0;
-      const durationDays = dosesPerDay > 0 ? dosesPerVial / dosesPerDay : 0;
       const remainingIu = Math.max(0, vialIu - dosesPerVial * doseIu);
       const vialUsedPercent = vialIu > 0 ? (doseIu / vialIu) * 100 : 0;
 
@@ -459,14 +540,51 @@ export default function ReconstitutionCalc() {
         drawVolumeMl,
         insulinUnits,
         dosesPerVial,
-        durationDays,
         // Forward: dosed in IU, show the mg/mcg equivalent (null if no ratio supplied).
         doseMassDisplay: doseUnit === "IU" && doseMg !== null ? formatMg(doseMg) : null,
         // Reverse: dosed in mg/mcg, show the IU equivalent the draw math actually used.
         doseIuEquivalentDisplay: doseUnit !== "IU" && ratioKnown ? `${doseIu.toFixed(2)} IU` : null,
         doseAmountDisplay: `${rawDoseValue.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${doseUnit}`,
         remainingAfterFullDosesDisplay: `${remainingIu.toFixed(2)} IU`,
-        vialUsedPercent
+        vialUsedPercent,
+        blendBreakdown: null as { name: string; mgPerMl: number; doseMcg: number }[] | null
+      };
+    }
+
+    if (vialContentType === "blend") {
+      const compounds = blendCompounds.map((c) => ({ ...c, mg: Number(c.mg) || 0 }));
+      const anchor = compounds.find((c) => c.id === blendAnchorId) ?? compounds[0];
+      const anchorMg = anchor?.mg ?? 0;
+      const totalMg = compounds.reduce((total, c) => total + c.mg, 0);
+      const tDoseMcg = targetDoseMcg; // dose of the anchor compound
+
+      // Everything is dissolved in the same water, so the anchor's concentration alone decides the draw.
+      const anchorMcgPerMl = (anchorMg * 1000) / bWater;
+      const drawVolumeMl = anchorMcgPerMl > 0 ? tDoseMcg / anchorMcgPerMl : 0;
+      const insulinUnits = drawVolumeMl * 100;
+      // Each draw takes the same share of every compound, so the anchor runs out exactly when the vial does.
+      const share = anchorMg > 0 ? tDoseMcg / (anchorMg * 1000) : 0;
+      const dosesPerVial = share > 0 ? Math.floor(1 / share + 1e-9) : 0;
+      const remainingMg = Math.max(0, totalMg - dosesPerVial * share * totalMg);
+      const blendBreakdown = compounds.map((c) => ({
+        name: c.name.trim() || "Unnamed",
+        mgPerMl: c.mg / bWater,
+        doseMcg: share * c.mg * 1000,
+      }));
+      const anchorName = anchor?.name.trim() || "anchor";
+
+      return {
+        concentrationDisplay: `${(totalMg / bWater).toFixed(3)} mg/mL total`,
+        concentrationSecondaryDisplay: `${anchorName} ${(anchorMg / bWater).toFixed(3)} mg/mL`,
+        drawVolumeMl,
+        insulinUnits,
+        dosesPerVial,
+        doseMassDisplay: `${formatMg(tDoseMcg / 1000)} ${anchorName}`,
+        doseIuEquivalentDisplay: null as string | null,
+        doseAmountDisplay: `${formatMg(share * totalMg)} total blend`,
+        remainingAfterFullDosesDisplay: `${formatMg(remainingMg)} total blend`,
+        vialUsedPercent: share * 100,
+        blendBreakdown
       };
     }
 
@@ -486,9 +604,6 @@ export default function ReconstitutionCalc() {
     // Doses per vial
     const dosesPerVial = tDoseMcg > 0 ? Math.floor(totalMcgInVial / tDoseMcg) : 0;
 
-    // Duration in days
-    const durationDays = dosesPerDay > 0 ? dosesPerVial / dosesPerDay : 0;
-
     // Leftover product after the last full dose is drawn, and what share of the whole vial
     // a single dose represents - both purely theoretical (no device-marking rounding applied).
     const remainingMcg = Math.max(0, totalMcgInVial - dosesPerVial * tDoseMcg);
@@ -500,23 +615,14 @@ export default function ReconstitutionCalc() {
       drawVolumeMl,
       insulinUnits,
       dosesPerVial,
-      durationDays,
       doseMassDisplay: formatMg(tDoseMcg / 1000),
       doseIuEquivalentDisplay: null as string | null,
       doseAmountDisplay: formatMg(tDoseMcg / 1000),
       remainingAfterFullDosesDisplay: formatMg(remainingMcg / 1000),
-      vialUsedPercent
+      vialUsedPercent,
+      blendBreakdown: null as { name: string; mgPerMl: number; doseMcg: number }[] | null
     };
-  }, [vialContentType, vialWeightMg, vialPotencyIu, potencyCompound, vialMgEquivalent, bacWaterMl, doseValue, doseUnit, targetDoseMcg, dosesPerDay]);
-
-  // Human-readable label for the FREQUENCY stat cell.
-  const frequencyDisplayLabel = useMemo(() => {
-    if (frequency === "daily") return "Daily";
-    if (frequency === "twice") return "Twice";
-    if (frequency === "weekly") return "Weekly";
-    const val = customFrequencyValue || 0;
-    return customFrequencyType === "perDay" ? `${val}×/day` : `${val}×/wk`;
-  }, [frequency, customFrequencyType, customFrequencyValue]);
+  }, [vialContentType, blendCompounds, blendAnchorId, vialWeightMg, vialPotencyIu, potencyCompound, vialMgEquivalent, bacWaterMl, doseValue, doseUnit, targetDoseMcg]);
 
   // Configuration values for the syringe/pen gauge based on device type
   const syringeConfig = useMemo(() => {
@@ -582,6 +688,10 @@ export default function ReconstitutionCalc() {
     }
   }, [syringeType]);
 
+  const blendAnchorName =
+    (blendCompounds.find((c) => c.id === blendAnchorId) ?? blendCompounds[0])?.name.trim() || "anchor peptide";
+  const blendTotalMg = Number(blendCompounds.reduce((total, c) => total + (Number(c.mg) || 0), 0).toFixed(3));
+
   const isPenSelected = syringeConfig.isPen;
   const unitLabel = isPenSelected ? "clicks" : "units";
 
@@ -610,6 +720,29 @@ export default function ReconstitutionCalc() {
         </p>
       </div>
 
+      {/* CALCULATOR TABS */}
+      <div role="tablist" aria-label="Calculator type" className="grid grid-cols-3 gap-2">
+        {CALCULATOR_TABS.map((t) => {
+          const isActive = vialContentType === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => handleVialContentTypeChange(t.key)}
+              className={`p-3 sm:px-4 rounded-xl border text-left flex flex-col gap-0.5 transition cursor-pointer ${isActive
+                ? "bg-gold-500/10 border-gold-500 ring-1 ring-gold-500/30"
+                : "bg-slate-950 border-slate-800 hover:border-gold-500/50"
+                }`}
+            >
+              <span className={`text-sm font-black ${isActive ? "text-gold-400" : "text-white"}`}>{t.label}</span>
+              <span className="text-[11px] sm:text-[12px] font-mono text-slate-500 leading-snug">{t.sub}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* TWO-COLUMN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
@@ -634,39 +767,102 @@ export default function ReconstitutionCalc() {
             </span>
 
             <div className="space-y-1.5">
-              <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
-                VIAL LABEL TYPE
-              </label>
-              <div className="flex border border-slate-800 rounded-xl overflow-hidden bg-slate-950 h-[46px]">
-                <button
-                  type="button"
-                  onClick={() => handleVialContentTypeChange("mass")}
-                  className={`flex-1 text-xs font-mono font-bold transition cursor-pointer border-r border-slate-800/40 ${vialContentType === "mass" ? "bg-gold-500/10 text-gold-400" : "text-slate-400 hover:text-white"
-                    }`}
-                >
-                  Mass (mg) — most peptides
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleVialContentTypeChange("potency")}
-                  className={`flex-1 text-xs font-mono font-bold transition cursor-pointer ${vialContentType === "potency" ? "bg-gold-500/10 text-gold-400" : "text-slate-400 hover:text-white"
-                    }`}
-                >
-                  Potency (IU) — HGH, HCG
-                </button>
-              </div>
               {vialContentType === "potency" ? (
-                <p className="text-[12px] text-slate-500 leading-relaxed pt-0.5">
+                <p className="text-[12px] text-slate-500 leading-relaxed">
                   Some vials (HGH, HCG) are labeled by IU potency instead of mg. The math stays in IU
                   throughout — a mg equivalent is only ever shown when one actually exists for the selected
                   product below, never guessed.
                 </p>
-              ) : null}
+              ) : vialContentType === "blend" ? (
+                <p className="text-[12px] text-slate-500 leading-relaxed">
+                  Enter each peptide in the vial and tick the one your dose is written for (the anchor, e.g. "250 mcg
+                  BPC-157"). Every draw also gives you the other peptides, in proportion to their mg.
+                </p>
+              ) : (
+                <p className="text-[12px] text-slate-500 leading-relaxed">
+                  For a vial holding one peptide, labelled in mg. Got two or more peptides in the vial? Use the Blend tab.
+                </p>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {vialContentType === "blend" ? (
               <div className="space-y-1.5">
-                <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
+                <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_3.5rem_2rem] gap-2 items-end">
+                  <label className="text-[12px] font-mono tracking-wider uppercase text-white">PEPTIDE</label>
+                  <label className="text-[12px] font-mono tracking-wider uppercase text-white">AMOUNT</label>
+                  <label className="text-[12px] font-mono tracking-wider uppercase text-white text-center">DOSE BY</label>
+                  <span />
+                </div>
+                {blendCompounds.map((c, index) => (
+                  <div key={c.id} className="grid grid-cols-[minmax(0,1fr)_6.5rem_3.5rem_2rem] gap-2 items-center">
+                    <input
+                      type="text"
+                      value={c.name}
+                      onChange={(e) =>
+                        setBlendCompounds((list) => list.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)))
+                      }
+                      aria-label={`Peptide ${index + 1} name`}
+                      className="w-full bg-slate-950 border border-slate-800/80 rounded-xl py-3 px-4 text-slate-400 font-mono text-sm focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50 transition"
+                      placeholder="e.g. BPC-157"
+                    />
+                    <div className="relative flex items-center bg-slate-950 border border-slate-800/80 rounded-xl focus-within:border-gold-500/50 focus-within:ring-1 focus-within:ring-gold-500/50 transition">
+                      <input
+                        type="number"
+                        value={c.mg || ""}
+                        onFocus={clearZeroOnFocus}
+                        onChange={(e) =>
+                          setBlendCompounds((list) =>
+                            list.map((x) => (x.id === c.id ? { ...x, mg: Math.max(0, Number(e.target.value)) } : x))
+                          )
+                        }
+                        aria-label={`${c.name || `Peptide ${index + 1}`} amount in mg`}
+                        className="w-full bg-transparent border-0 py-3 pl-3 pr-9 text-slate-400 font-mono text-sm focus:outline-none"
+                        placeholder="0"
+                      />
+                      <span className="absolute right-3 text-xs font-mono font-bold text-slate-500">mg</span>
+                    </div>
+                    <label className="flex justify-center cursor-pointer" title="Your dose is for this peptide">
+                      <input
+                        type="radio"
+                        name="blend-anchor"
+                        checked={blendAnchorId === c.id}
+                        onChange={() => setBlendAnchorId(c.id)}
+                        aria-label={`Dose is for ${c.name || `peptide ${index + 1}`}`}
+                        className="h-4 w-4 accent-[#c2911f] cursor-pointer"
+                      />
+                    </label>
+                    {blendCompounds.length > 2 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = blendCompounds.filter((x) => x.id !== c.id);
+                          setBlendCompounds(next);
+                          if (blendAnchorId === c.id) setBlendAnchorId(next[0].id);
+                        }}
+                        className="h-8 w-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-800/60 transition cursor-pointer"
+                        aria-label={`Remove ${c.name || "peptide"}`}
+                      >
+                        <X size={14} />
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setBlendCompounds((list) => [...list, { id: `blend-${Date.now()}`, name: "", mg: 0 }])}
+                  className="inline-flex items-center gap-1 text-[12px] font-mono font-bold text-slate-400 hover:text-gold-400 transition cursor-pointer pt-1"
+                >
+                  <Plus size={13} /> Add peptide
+                </button>
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {vialContentType !== "blend" ? (
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-mono tracking-wider uppercase text-white block">
                   {vialContentType === "potency" ? "VIAL POTENCY" : "PEPTIDE AMOUNT"}
                 </label>
                 {vialContentType === "potency" ? (
@@ -676,7 +872,7 @@ export default function ReconstitutionCalc() {
                       value={vialPotencyIu || ""}
                       onFocus={clearZeroOnFocus}
                       onChange={(e) => setVialPotencyIu(Math.max(0, Number(e.target.value)))}
-                      className="w-full bg-transparent border-0 py-3 pl-4 pr-12 text-white font-mono text-sm focus:outline-none"
+                      className="w-full bg-transparent border-0 py-3 pl-4 pr-12 text-slate-400 font-mono text-sm focus:outline-none"
                       placeholder="0"
                     />
                     <span className="absolute right-4 text-xs font-mono font-bold text-slate-500">
@@ -690,7 +886,7 @@ export default function ReconstitutionCalc() {
                       value={vialWeightMg || ""}
                       onFocus={clearZeroOnFocus}
                       onChange={(e) => setVialWeightMg(Math.max(0, Number(e.target.value)))}
-                      className="w-full bg-transparent border-0 py-3 pl-4 pr-12 text-white font-mono text-sm focus:outline-none"
+                      className="w-full bg-transparent border-0 py-3 pl-4 pr-12 text-slate-400 font-mono text-sm focus:outline-none"
                       placeholder="0"
                     />
                     <span className="absolute right-4 text-xs font-mono font-bold text-slate-500">
@@ -699,9 +895,10 @@ export default function ReconstitutionCalc() {
                   </div>
                 )}
               </div>
+              ) : null}
 
               <div className="space-y-1.5">
-                <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
+                <label className="text-[12px] font-mono tracking-wider uppercase text-white block">
                   VIAL SIZE
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -725,7 +922,7 @@ export default function ReconstitutionCalc() {
 
             {vialContentType === "potency" ? (
               <div className="space-y-1.5">
-                <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
+                <label className="text-[12px] font-mono tracking-wider uppercase text-white block">
                   WHICH PRODUCT?
                 </label>
                 <div className="flex border border-slate-800 rounded-xl overflow-hidden bg-slate-950 h-[46px]">
@@ -768,7 +965,7 @@ export default function ReconstitutionCalc() {
                         value={vialMgEquivalent || ""}
                         onFocus={clearZeroOnFocus}
                         onChange={(e) => setVialMgEquivalent(Math.max(0, Number(e.target.value)))}
-                        className="w-full bg-transparent border-0 py-3 pl-4 pr-12 text-white font-mono text-sm focus:outline-none"
+                        className="w-full bg-transparent border-0 py-3 pl-4 pr-12 text-slate-400 font-mono text-sm focus:outline-none"
                         placeholder="e.g. 3.3"
                       />
                       <span className="absolute right-4 text-xs font-mono font-bold text-slate-500">
@@ -792,7 +989,7 @@ export default function ReconstitutionCalc() {
             </span>
 
             <div className="space-y-1.5">
-              <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
+              <label className="text-[12px] font-mono tracking-wider uppercase text-white block">
                 BAC WATER TO ADD
               </label>
               <div className="relative flex items-center bg-slate-950 border border-slate-800/80 rounded-xl focus-within:border-gold-500/50 focus-within:ring-1 focus-within:ring-gold-500/50 transition">
@@ -802,7 +999,7 @@ export default function ReconstitutionCalc() {
                   value={bacWaterMl || ""}
                   onFocus={clearZeroOnFocus}
                   onChange={(e) => setBacWaterMl(Math.max(0, Number(e.target.value)))}
-                  className="w-full bg-transparent border-0 py-3 pl-4 pr-12 text-white font-mono text-sm focus:outline-none"
+                  className="w-full bg-transparent border-0 py-3 pl-4 pr-12 text-slate-400 font-mono text-sm focus:outline-none"
                   placeholder="0.0"
                 />
                 <span className="absolute right-4 text-xs font-mono font-bold text-slate-500">
@@ -813,28 +1010,28 @@ export default function ReconstitutionCalc() {
           </div>
 
           {/* SECTION 3 */}
-          <div className="space-y-4 py-6 border-b border-slate-800/70">
+          <div className="space-y-4 pt-6">
             <span className="text-xs md:text-sm font-black text-white tracking-wide uppercase font-mono block">
               What's your dose per injection?
             </span>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
               <div className="sm:col-span-8 space-y-1.5">
-                <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
-                  YOUR DOSE
+                <label className="text-[12px] font-mono tracking-wider uppercase text-white block">
+                  {vialContentType === "blend" ? `YOUR ${blendAnchorName} DOSE` : "YOUR DOSE"}
                 </label>
                 <input
                   type="number"
                   value={doseValue || ""}
                   onFocus={clearZeroOnFocus}
                   onChange={(e) => setDoseValue(Math.max(0, Number(e.target.value)))}
-                  className="w-full bg-slate-950 border border-slate-800/80 rounded-xl py-3 px-4 text-white font-mono text-sm focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50 transition"
+                  className="w-full bg-slate-950 border border-slate-800/80 rounded-xl py-3 px-4 text-slate-400 font-mono text-sm focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50 transition"
                   placeholder="0"
                 />
               </div>
 
               <div className="sm:col-span-4 space-y-1.5">
-                <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
+                <label className="text-[12px] font-mono tracking-wider uppercase text-white block">
                   UNIT
                 </label>
                 {vialContentType === "potency" ? (
@@ -880,7 +1077,7 @@ export default function ReconstitutionCalc() {
             </div>
             {dosePresets ? (
               <div className="space-y-1.5">
-                <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
+                <label className="text-[12px] font-mono tracking-wider uppercase text-white block">
                   COMMON DOSES
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -909,80 +1106,6 @@ export default function ReconstitutionCalc() {
             ) : null}
           </div>
 
-          {/* SECTION 4 */}
-          <div className="space-y-4 pt-6">
-            <span className="text-xs md:text-sm font-black text-white tracking-wide uppercase font-mono block">
-              How often will you inject?
-            </span>
-
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { key: "daily", label: "Daily", sub: "1×/day" },
-                { key: "twice", label: "Twice", sub: "2×/day" },
-                { key: "weekly", label: "Weekly", sub: "1×/wk" },
-                { key: "custom", label: "Custom", sub: "Set your own" }
-              ].map((f) => (
-                (() => {
-                  const isActive = frequency === f.key;
-                  return (
-                    <button
-                      key={f.key}
-                      type="button"
-                      onClick={() => setFrequency(f.key as "daily" | "twice" | "weekly" | "custom")}
-                      className={`p-3.5 rounded-xl border text-left flex flex-col space-y-1 transition cursor-pointer ${isActive
-                        ? "bg-gold-500/10 border-gold-500 ring-1 ring-gold-500/30"
-                        : "bg-slate-950 border-slate-800 hover:border-slate-700"
-                        }`}
-                    >
-                      <span className={`text-xs font-bold ${isActive ? "text-gold-300" : "text-white"}`}>{f.label}</span>
-                      <span className={`text-[12px] font-mono font-semibold ${isActive ? "text-gold-400" : "text-slate-500"}`}>{f.sub}</span>
-                    </button>
-                  );
-                })()
-              ))}
-            </div>
-
-            {frequency === "custom" ? (
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end pt-1">
-                <div className="sm:col-span-6 space-y-1.5">
-                  <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
-                    TIMES
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={customFrequencyValue || ""}
-                    onFocus={clearZeroOnFocus}
-                    onChange={(e) => setCustomFrequencyValue(Math.max(0, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800/80 rounded-xl py-3 px-4 text-white font-mono text-sm focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50 transition"
-                    placeholder="0"
-                  />
-                </div>
-
-                <div className="sm:col-span-6 space-y-1.5">
-                  <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block">
-                    PER
-                  </label>
-                  <div className="flex border border-slate-800 rounded-xl overflow-hidden bg-slate-950 h-[46px]">
-                    {(["perDay", "perWeek"] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setCustomFrequencyType(t)}
-                        className={`flex-1 text-xs font-mono font-bold transition cursor-pointer border-r last:border-r-0 border-slate-800/40 ${customFrequencyType === t
-                          ? "bg-gold-500/10 text-gold-400"
-                          : "text-slate-400 hover:text-white"
-                          }`}
-                      >
-                        {t === "perDay" ? "Day" : "Week"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
         </div>
 
         {/* RIGHT COLUMN: CALCULATION RESULTS */}
@@ -995,7 +1118,7 @@ export default function ReconstitutionCalc() {
             </h2>
 
             <div className="text-center space-y-1 py-1">
-              <div className="text-[11px] font-mono text-slate-400 uppercase tracking-widest">
+              <div className="text-[11px] font-mono text-white uppercase tracking-widest">
                 Calculated draw amount
               </div>
               <div className="flex items-end justify-center gap-2">
@@ -1017,7 +1140,12 @@ export default function ReconstitutionCalc() {
                 </span>
                 <div className="text-sm text-white">
                   Add <span className="text-gold-400 font-bold">{bacWaterMl.toFixed(2)} mL</span> diluent into your{" "}
-                  {vialContentType === "potency" ? `${vialPotencyIu || 0} IU` : `${vialWeightMg || 0} mg`} vial → {calculations.concentrationDisplay}
+                  {vialContentType === "potency"
+                    ? `${vialPotencyIu || 0} IU`
+                    : vialContentType === "blend"
+                      ? `${blendTotalMg} mg blend`
+                      : `${vialWeightMg || 0} mg`}{" "}
+                  vial → {calculations.concentrationDisplay}
                 </div>
               </div>
               <div className="flex items-start space-x-2.5">
@@ -1036,40 +1164,103 @@ export default function ReconstitutionCalc() {
                   )}
                 </div>
               </div>
+              {calculations.blendBreakdown ? (
+                <div className="flex items-start space-x-2.5">
+                  <span className="w-5 h-5 rounded-full bg-gold-400/10 border border-gold-500/20 text-gold-400 flex items-center justify-center text-[12px] font-bold font-mono mt-0.5">
+                    3
+                  </span>
+                  <div className="text-sm text-white space-y-0.5">
+                    <div>Each draw gives you:</div>
+                    {calculations.blendBreakdown.map((c, i) => (
+                      <div key={i} className="text-slate-400">
+                        <span className="text-gold-400 font-bold">{formatMg(c.doseMcg / 1000)}</span> {c.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          {/* Syringe illustration card */}
+          {/* Injection device: pick the device, see the draw on it */}
           <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-white uppercase tracking-wide">Syringe illustration</span>
+              <span className="text-xs font-black text-white uppercase tracking-wide">Injection device</span>
               <span className="text-[11px] font-mono text-slate-500">{syringeConfig.maxVolumeMl} mL capacity</span>
             </div>
 
+            <div className="space-y-2 pb-3 border-b border-slate-800/70">
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => { if (isPenSelected) setSyringeType("100u"); }}
+                  className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${!isPenSelected
+                    ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
+                    : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
+                    }`}
+                >
+                  Syringe
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { if (!isPenSelected) setSyringeType("pen"); }}
+                  className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${isPenSelected
+                    ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
+                    : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
+                    }`}
+                >
+                  Auto-Injector Pen
+                </button>
+              </div>
+              {!isPenSelected ? (
+                <div className="grid grid-cols-5 gap-1">
+                  {(["30u", "50u", "100u", "1mL", "3mL"] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSyringeType(s)}
+                      className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${syringeType === s
+                        ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
+                        : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
+                        }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <span className="text-[12px] font-mono text-slate-500 block font-semibold">
+                {syringeConfig.label}
+              </span>
+            </div>
+
+            <div className="text-center text-gold-400 font-black font-mono text-base">
+              {isPenSelected ? `Dial to ${unitsDisplay} ${unitLabel}` : `${unitsDisplay} ${unitLabel}`}
+            </div>
             {isPenSelected ? (
-              <PenDialGauge
-                clicksToShow={Number(unitsDisplay)}
-                maxUnits={syringeConfig.maxUnits}
-                fillPercentage={fillPercentage}
-              />
+              <PenIllustration clicks={Number(unitsDisplay)} ticks={syringeConfig.ticks} maxUnits={syringeConfig.maxUnits} />
             ) : (
-              <>
-                <div className="text-center text-gold-400 font-black font-mono text-base">
-                  {unitsDisplay} {unitLabel}
-                </div>
-                <SyringeIllustration fillPercentage={fillPercentage} ticks={syringeConfig.ticks} maxUnits={syringeConfig.maxUnits} />
-                <div className="text-center text-[11px] font-mono text-slate-500 uppercase tracking-wide">
-                  {unitLabel} · schematic scale
-                </div>
-                <div className="text-center text-[11px] font-mono text-gold-500/80">
-                  Gold edge marks the calculated draw
-                </div>
-              </>
+              <SyringeIllustration fillPercentage={fillPercentage} ticks={syringeConfig.ticks} maxUnits={syringeConfig.maxUnits} />
             )}
+            <div className="text-center text-[11px] font-mono text-slate-500 uppercase tracking-wide">
+              {unitLabel} · schematic scale
+            </div>
+            <div className="text-center text-[11px] font-mono text-gold-500/80">
+              {isPenSelected
+                ? "Window shows the number to dial · the grip comes out further for bigger doses"
+                : "Gold edge marks the calculated draw"}
+            </div>
 
             <div className="text-center text-[11px] text-slate-500 font-mono">
               Illustration only; use the markings on your actual device.
             </div>
+
+            {isPenSelected && cartridgeFillsNeeded !== null ? (
+              <div className="flex items-center justify-between pt-3 border-t border-slate-800/70 text-sm">
+                <span className="text-white">Pen fills needed</span>
+                <span className="font-bold text-slate-400 font-mono">{cartridgeFillsNeeded}</span>
+              </div>
+            ) : null}
 
             {/* Validation alerts */}
             {calculations.insulinUnits > syringeConfig.maxUnits ? (
@@ -1154,6 +1345,19 @@ export default function ReconstitutionCalc() {
                         rounding to a device marking.
                       </p>
                     </>
+                  ) : vialContentType === "blend" ? (
+                    <>
+                      <p>
+                        All the peptides dissolve in the same water, so the draw is worked out from the peptide your dose
+                        is for: its concentration = its mg ÷ water added (mL), and draw volume = your dose ÷ that
+                        concentration, shown in syringe units at 100 units per mL.
+                      </p>
+                      <p>
+                        That draw takes the same share of every peptide in the vial, so each one's amount per draw = its mg
+                        × (your dose ÷ the dosed peptide's mg). Full doses per vial, remaining and vial-used-per-dose all
+                        follow from that share.
+                      </p>
+                    </>
                   ) : (
                     <>
                       <p>
@@ -1170,83 +1374,6 @@ export default function ReconstitutionCalc() {
                 </div>
               ) : null}
             </div>
-          </div>
-
-          {/* Device Type Selection */}
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5 space-y-2">
-            <label className="text-[12px] font-mono tracking-wider uppercase text-slate-400 block font-bold">
-              INJECTION DEVICE
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => { if (isPenSelected) setSyringeType("100u"); }}
-                className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${!isPenSelected
-                  ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
-                  : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
-                  }`}
-              >
-                Syringe
-              </button>
-              <button
-                type="button"
-                onClick={() => { if (!isPenSelected) setSyringeType("pen"); }}
-                className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${isPenSelected
-                  ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
-                  : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
-                  }`}
-              >
-                Auto-Injector Pen
-              </button>
-            </div>
-            {!isPenSelected ? (
-              <div className="grid grid-cols-5 gap-1">
-                {(["30u", "50u", "100u", "1mL", "3mL"] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSyringeType(s)}
-                    className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${syringeType === s
-                      ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
-                      : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
-                      }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <span className="text-[12px] font-mono text-slate-500 block font-semibold">
-              {syringeConfig.label}
-            </span>
-          </div>
-
-          {/* Stats cells */}
-          <div className={`grid gap-2 ${isPenSelected ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
-            <div className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-3 text-center flex flex-col justify-center space-y-0.5">
-              <span className="text-xs md:text-sm font-black text-white">{frequencyDisplayLabel}</span>
-              <span className="text-[8px] font-mono tracking-wider text-slate-500 uppercase font-semibold">FREQUENCY</span>
-            </div>
-            <div className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-3 text-center flex flex-col justify-center space-y-0.5">
-              <span className="text-xs md:text-sm font-black text-white font-mono">
-                {calculations.dosesPerVial > 0 ? calculations.dosesPerVial : "—"}
-              </span>
-              <span className="text-[8px] font-mono tracking-wider text-slate-500 uppercase font-semibold">FULL DOSES / VIAL</span>
-            </div>
-            <div className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-3 text-center flex flex-col justify-center space-y-0.5">
-              <span className="text-xs md:text-sm font-black text-white font-mono">
-                {calculations.durationDays > 0 ? (
-                  dosesPerDay < 1 ? `${Math.floor(calculations.durationDays / 7)} wk` : `${Math.floor(calculations.durationDays)} d`
-                ) : "—"}
-              </span>
-              <span className="text-[8px] font-mono tracking-wider text-slate-500 uppercase font-semibold">DURATION</span>
-            </div>
-            {isPenSelected && cartridgeFillsNeeded !== null ? (
-              <div className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-3 text-center flex flex-col justify-center space-y-0.5">
-                <span className="text-xs md:text-sm font-black text-white font-mono">{cartridgeFillsNeeded}</span>
-                <span className="text-[8px] font-mono tracking-wider text-slate-500 uppercase font-semibold">PEN FILLS NEEDED</span>
-              </div>
-            ) : null}
           </div>
 
           {/* Research Use Only Caption */}

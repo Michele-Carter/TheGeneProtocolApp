@@ -3,7 +3,15 @@ import { z } from "zod";
 import { getAdminStatus } from "../_lib/admin.js";
 import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
-import { addAdjustmentLot, consumeFifo, ensureItems, InventoryError, restoreSaleStock } from "../_lib/inventory.js";
+import {
+    addAdjustmentLot,
+    consumeFifo,
+    ensureItems,
+    findAdjustment,
+    InventoryError,
+    restoreSaleStock,
+    undoAdjustment,
+} from "../_lib/inventory.js";
 import { calculateOrder, isExpenseLine, type OrderInput } from "../../shared/landedCost.js";
 import { EXPENSE_CATEGORIES, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
 import { expenseSummary, expenseTotals } from "../../shared/expenses.js";
@@ -16,7 +24,7 @@ import { expenses, invItems, inventoryLots, purchaseOrders, sales, stockMovement
 //   PATCH  /api/admin/orders?id=            DELETE /api/admin/orders?id=
 //   POST   /api/admin/orders?id=&action=receive|unreceive
 //   GET    /api/admin/inventory[?id=]
-//   POST   /api/admin/adjust
+//   POST   /api/admin/adjust               PATCH /api/admin/adjust?id=    DELETE /api/admin/adjust?id=
 //   GET    /api/admin/sales[?id=]           POST /api/admin/sales
 //   PATCH  /api/admin/sales?id=             DELETE /api/admin/sales?id=
 //   POST   /api/admin/sales?id=&action=complete|reopen
@@ -157,6 +165,11 @@ const adjustSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+// An adjustment always stays on the item it was made for.
+const adjustEditSchema = adjustSchema.omit({ itemId: true });
+
+class NotFoundError extends Error {}
+
 // Midnight UTC is midday in NZ, so the date reads correctly in NZ time.
 function nzDate(date?: string): Date {
     return date ? new Date(`${date}T00:00:00Z`) : new Date();
@@ -213,6 +226,7 @@ function validationError(res: any, error: z.ZodError) {
 }
 
 type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 async function handleItems(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
@@ -537,34 +551,117 @@ async function handleInventory(req: any, res: any, db: Db) {
     return sendJson(res, 200, summary);
 }
 
+// The yyyy-mm-dd a timestamp falls on in NZ.
+function nzDateString(date: Date): string {
+    return date.toLocaleDateString("en-CA", { timeZone: "Pacific/Auckland" });
+}
+
+async function applyAdjustment(
+    tx: Tx,
+    adjustmentId: string,
+    itemId: string,
+    qty: number,
+    unitCostNzd: number | null,
+    meta: { reason: string; note: string; occurredAt: Date }
+) {
+    if (qty < 0) {
+        await consumeFifo(tx, itemId, -qty, { type: "adjust", refId: adjustmentId, ...meta });
+    } else {
+        await addAdjustmentLot(tx, itemId, qty, unitCostNzd, { refId: adjustmentId, ...meta });
+    }
+}
+
 async function handleAdjust(req: any, res: any, db: Db) {
-    if (req.method !== "POST") {
-        res.setHeader("Allow", "POST");
-        return sendJson(res, 405, { error: "Method not allowed" });
-    }
-    const read = await readBody(req, res);
-    if (!read.ok) return;
-    const parsed = adjustSchema.safeParse(read.body);
-    if (!parsed.success) return validationError(res, parsed.error);
-    const { itemId, qty, reason, note, unitCostNzd, date } = parsed.data;
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
 
-    const [item] = await db.select().from(invItems).where(eq(invItems.id, itemId));
-    if (!item) return sendJson(res, 404, { error: "Item not found" });
+    if (req.method === "POST" && !id) {
+        const read = await readBody(req, res);
+        if (!read.ok) return;
+        const parsed = adjustSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const { itemId, qty, reason, note, unitCostNzd, date } = parsed.data;
 
-    try {
-        await db.transaction(async (tx) => {
-            const occurredAt = nzDate(date);
-            if (qty < 0) {
-                await consumeFifo(tx, itemId, -qty, { type: "adjust", reason, note, occurredAt });
-            } else {
-                await addAdjustmentLot(tx, itemId, qty, unitCostNzd ?? null, { reason, note, occurredAt });
-            }
-        });
-    } catch (error) {
-        if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
-        throw error;
+        const [item] = await db.select().from(invItems).where(eq(invItems.id, itemId));
+        if (!item) return sendJson(res, 404, { error: "Item not found" });
+
+        try {
+            await db.transaction(async (tx) => {
+                await applyAdjustment(tx, crypto.randomUUID(), itemId, qty, unitCostNzd ?? null, {
+                    reason,
+                    note,
+                    occurredAt: nzDate(date),
+                });
+            });
+        } catch (error) {
+            if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
+            throw error;
+        }
+        return sendJson(res, 200, { success: true });
     }
-    return sendJson(res, 200, { success: true });
+
+    if (req.method === "DELETE" && id) {
+        try {
+            await db.transaction(async (tx) => {
+                const movements = await findAdjustment(tx, id);
+                if (movements.length === 0) throw new NotFoundError("Adjustment not found");
+                await undoAdjustment(tx, movements);
+            });
+        } catch (error) {
+            if (error instanceof NotFoundError) return sendJson(res, 404, { error: error.message });
+            if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
+            throw error;
+        }
+        return sendJson(res, 200, { success: true });
+    }
+
+    if (req.method === "PATCH" && id) {
+        const read = await readBody(req, res);
+        if (!read.ok) return;
+        const parsed = adjustEditSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const { qty, reason, note, unitCostNzd, date } = parsed.data;
+
+        try {
+            await db.transaction(async (tx) => {
+                const movements = await findAdjustment(tx, id);
+                if (movements.length === 0) throw new NotFoundError("Adjustment not found");
+
+                const first = movements[0];
+                const oldQty = movements.reduce((total, m) => total + m.qty, 0);
+                const oldDate = nzDateString(first.occurredAt);
+                const dateChanged = date != null && date !== oldDate;
+                // Blank cost on an added batch keeps the cost it already has.
+                const cost = unitCostNzd ?? (oldQty > 0 ? first.unitCostNzd : null);
+                const costChanged = qty > 0 && cost != null && Math.abs(cost - first.unitCostNzd) > 1e-9;
+
+                // A removal's date doesn't affect which batches it came from, and reason/note never touch stock,
+                // so those can be changed in place - even when the stock has moved on since.
+                const stockChanged = qty !== oldQty || (qty > 0 && (costChanged || dateChanged));
+                if (!stockChanged) {
+                    await tx
+                        .update(stockMovements)
+                        .set({ reason, note, ...(dateChanged ? { occurredAt: nzDate(date) } : {}) })
+                        .where(inArray(stockMovements.id, movements.map((m) => m.id)));
+                    return;
+                }
+
+                await undoAdjustment(tx, movements);
+                await applyAdjustment(tx, id, first.itemId, qty, cost, {
+                    reason,
+                    note,
+                    occurredAt: dateChanged ? nzDate(date) : first.occurredAt,
+                });
+            });
+        } catch (error) {
+            if (error instanceof NotFoundError) return sendJson(res, 404, { error: error.message });
+            if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
+            throw error;
+        }
+        return sendJson(res, 200, { success: true });
+    }
+
+    res.setHeader("Allow", "POST, PATCH, DELETE");
+    return sendJson(res, 405, { error: "Method not allowed" });
 }
 
 function saleDto(row: typeof sales.$inferSelect) {

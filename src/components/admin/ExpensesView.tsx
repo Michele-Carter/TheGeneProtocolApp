@@ -214,7 +214,7 @@ export default function ExpensesView() {
           </div>
 
           <div className="mt-5 space-y-2">
-            <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_5rem_8rem_7rem_2rem] gap-2 text-[11px] font-bold text-slate-400">
+            <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_5rem_8rem_7rem_2rem] gap-2 text-[11px] font-bold text-white">
               <span>Item</span>
               <span className="text-right">Qty</span>
               <span className="text-right">Cost each (NZD)</span>
@@ -275,7 +275,7 @@ export default function ExpensesView() {
               <NumberField placeholder="0.00" value={form.data.detail.discountNzd || null} onChange={(v) => setDetail({ discountNzd: v ?? 0 })} />
             </Field>
             <div className="bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 flex items-baseline justify-between gap-3">
-              <span className="text-[11px] font-bold text-slate-400">Total paid</span>
+              <span className="text-[11px] font-bold text-white">Total paid</span>
               <span className="text-base font-black tabular-nums text-gold-400">{nzd(formTotals?.total)}</span>
             </div>
           </div>
