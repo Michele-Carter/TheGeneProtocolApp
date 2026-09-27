@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Pencil, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
 import { fifoEstimate, saleProfit, saleTotals, type SaleInput, type SaleLine, type ShippingStatus } from "../../../shared/sales";
@@ -106,10 +106,20 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
     setDraft(blankLine());
   };
 
+  // Edit loads the line into the entry box at the top of the Items card, which may be scrolled
+  // out of view - so bring it into view and put the cursor in the price.
+  const entryBoxRef = useRef<HTMLDivElement>(null);
+  const showEntryBox = () =>
+    requestAnimationFrame(() => {
+      entryBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      entryBoxRef.current?.querySelector<HTMLInputElement>("input[data-price]")?.focus({ preventScroll: true });
+    });
+
   const editLine = (line: SaleLine) => {
     setDraft(line);
     setEditingLineId(line.id);
     setLineError(null);
+    showEntryBox();
   };
 
   const cancelEdit = () => {
@@ -316,6 +326,7 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
 
             {!completed && (
               <div
+                ref={entryBoxRef}
                 className={`border rounded-xl p-3 space-y-3 ${
                   editingLineId ? "border-gold-500/50 bg-gold-500/5" : "border-slate-800/80 bg-slate-950/50"
                 }`}
@@ -365,6 +376,7 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
                     }
                   >
                     <NumberField
+                      price
                       placeholder="0.00"
                       value={draft.unitPriceNzd || null}
                       onChange={(v) => setDraft((d) => ({ ...d, unitPriceNzd: v ?? 0 }))}

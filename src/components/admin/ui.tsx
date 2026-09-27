@@ -59,6 +59,7 @@ export function NumberField({
   integer = false,
   disabled,
   ariaLabel,
+  price,
 }: {
   value: number | null;
   onChange: (value: number | null) => void;
@@ -68,6 +69,8 @@ export function NumberField({
   integer?: boolean;
   disabled?: boolean;
   ariaLabel?: string;
+  /** Marks the input as a price field (data-price), e.g. so it can be focused when editing a line. */
+  price?: boolean;
 }) {
   const [text, setText] = useState(value == null ? "" : String(value));
 
@@ -87,6 +90,7 @@ export function NumberField({
       value={text}
       disabled={disabled}
       aria-label={ariaLabel}
+      data-price={price || undefined}
       placeholder={placeholder}
       className={`${inputClass} text-right tabular-nums ${className}`}
       onChange={(event) => {
