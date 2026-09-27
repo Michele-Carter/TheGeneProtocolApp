@@ -172,6 +172,13 @@ export const adminApi = {
     payload: { itemId: string; qty: number; reason: string; note?: string; unitCostNzd?: number | null; date?: string },
     t: GetToken
   ) => adminFetch<{ success: true }>("adjust", { method: "POST", body: JSON.stringify(payload) }, t),
+  updateAdjustment: (
+    id: string,
+    payload: { qty: number; reason: string; note?: string; unitCostNzd?: number | null; date?: string },
+    t: GetToken
+  ) => adminFetch<{ success: true }>(`adjust?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(payload) }, t),
+  deleteAdjustment: (id: string, t: GetToken) =>
+    adminFetch<{ success: true }>(`adjust?id=${q(id)}`, { method: "DELETE" }, t),
 
   listSales: (t: GetToken) => adminFetch<SaleRecord[]>("sales", { method: "GET" }, t),
   createSale: (data: SaleInput, t: GetToken) =>

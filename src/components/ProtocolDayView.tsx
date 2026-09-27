@@ -32,7 +32,7 @@ export default function ProtocolDayView({ state }: { state: ProtocolBuilderState
     <div className="space-y-6">
       {buckets.map(({ bucket, doses: bucketDoses }) => (
         <div key={bucket} className="space-y-2">
-          <div className="flex items-center gap-2 text-[12px] font-mono tracking-wider uppercase text-slate-500">
+          <div className="flex items-center gap-2 text-[12px] font-mono tracking-wider uppercase text-white">
             <span>{bucket}</span>
             <span className="text-slate-700">·</span>
             <span>

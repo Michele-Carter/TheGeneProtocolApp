@@ -26,7 +26,7 @@ export default function ProtocolWeekView({ state }: { state: ProtocolBuilderStat
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-[12px] font-extrabold text-slate-400 tracking-wider uppercase">{day.shortDay}</span>
+              <span className="text-[12px] font-extrabold text-white tracking-wider uppercase">{day.shortDay}</span>
               <span className={`text-[11px] font-mono ${isToday ? "text-gold-400 font-bold" : "text-slate-600"}`}>
                 {formatShortDate(day.date)}
               </span>

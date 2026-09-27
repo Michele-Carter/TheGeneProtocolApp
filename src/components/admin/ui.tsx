@@ -3,7 +3,7 @@ import { Plus, X } from "lucide-react";
 import type { CostEntry } from "../../../shared/landedCost";
 
 export const inputClass =
-  "w-full bg-slate-950/70 border border-slate-800 rounded-lg px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-gold-500/60 transition";
+  "w-full bg-slate-950/70 border border-slate-800 rounded-lg px-2.5 py-1.5 text-sm text-slate-400 placeholder:text-slate-600 focus:outline-none focus:border-gold-500/60 transition";
 
 export const buttonClass =
   "inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold border transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
@@ -42,7 +42,7 @@ export function Card({
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="block text-[11px] font-bold text-slate-400">{label}</span>
+      <span className="block text-[11px] font-bold text-white">{label}</span>
       {children}
       {hint && <span className="block text-[11px] text-slate-500 leading-snug">{hint}</span>}
     </label>

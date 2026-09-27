@@ -218,7 +218,7 @@ export default function PeptideDbDetail({
               }, {})
             ).map(([category, items]) => (
               <div key={category} className="space-y-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{category}</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-white">{category}</span>
                 <div className="space-y-2">
                   {items.map((item) => (
                     <div key={item.indication} className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/40 space-y-1">
@@ -288,7 +288,7 @@ export default function PeptideDbDetail({
               {activeMethod.reconstitution && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
                   <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/40">
-                    <div className="text-slate-500 mb-1 font-bold uppercase">Materials</div>
+                    <div className="text-white mb-1 font-bold uppercase">Materials</div>
                     <ul className="list-disc list-inside space-y-0.5 text-slate-300 text-sm leading-relaxed">
                       {activeMethod.reconstitution.materials.map((m, idx) => (
                         <li key={idx}>{m}</li>
@@ -296,7 +296,7 @@ export default function PeptideDbDetail({
                     </ul>
                   </div>
                   <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/40">
-                    <div className="text-slate-500 mb-1 font-bold uppercase">Steps</div>
+                    <div className="text-white mb-1 font-bold uppercase">Steps</div>
                     <ol className="list-decimal list-inside space-y-0.5 text-slate-300 text-sm leading-relaxed">
                       {activeMethod.reconstitution.steps.map((s, idx) => (
                         <li key={idx}>{s}</li>
@@ -577,7 +577,7 @@ export default function PeptideDbDetail({
           )}
           {entry.latestResearch.length > 0 && (
             <div className="space-y-2.5 pt-2 border-t border-slate-800/60">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Latest Research</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-white">Latest Research</span>
               {entry.latestResearch.map((lr) => (
                 <div key={lr.title} className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/40 space-y-1">
                   <div className="flex items-start justify-between gap-2">

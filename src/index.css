@@ -350,6 +350,33 @@ html.dark :is(.border-slate-800\/60, .border-slate-800\/40, .border-slate-700\/6
   border-color: rgba(71, 85, 105, 0.55) !important;
 }
 
+/* Gold hover borders (e.g. Protocol Builder tiles). The dark remaps further down force every slate border -
+   and every rounded-lg/xl surface border - to the theme border with !important and very specific selectors,
+   which would swallow these hovers. The never-matching id inside :is() lifts these above all of them. */
+html.dark :is(.hover\:border-gold-300, #gold-hover-border):hover {
+  border-color: var(--color-gold-300) !important;
+}
+
+html.dark :is(.hover\:border-gold-500, #gold-hover-border):hover {
+  border-color: var(--color-gold-500) !important;
+}
+
+html.dark :is(.hover\:border-gold-500\/30, #gold-hover-border):hover {
+  border-color: color-mix(in oklab, var(--color-gold-500) 30%, transparent) !important;
+}
+
+html.dark :is(.hover\:border-gold-500\/50, #gold-hover-border):hover {
+  border-color: color-mix(in oklab, var(--color-gold-500) 50%, transparent) !important;
+}
+
+html.dark :is(.hover\:border-gold-500\/70, #gold-hover-border):hover {
+  border-color: color-mix(in oklab, var(--color-gold-500) 70%, transparent) !important;
+}
+
+html.dark :is(.hover\:border-gold-500\/80, #gold-hover-border):hover {
+  border-color: color-mix(in oklab, var(--color-gold-500) 80%, transparent) !important;
+}
+
 html.light main .bg-slate-900\/80,
 html.light main .bg-slate-900\/60,
 html.light main .bg-slate-900\/50,
@@ -772,7 +799,8 @@ html.dark select,
 html.dark textarea {
   background: var(--theme-dark-surface) !important;
   border-color: var(--theme-dark-border) !important;
-  color: var(--theme-dark-text) !important;
+  /* Typed/selected values are grey; their labels are white. */
+  color: var(--theme-dark-muted) !important;
 }
 
 /* Keep keyboard/accessibility focus visible */

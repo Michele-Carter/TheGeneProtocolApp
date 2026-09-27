@@ -379,7 +379,7 @@ export default function MyStackView({
                     onClick={() => toggleIntel(pep.id)}
                     className="w-full px-4 py-3 flex items-center justify-between text-left border-t border-slate-800/60 hover:bg-slate-800/30 transition cursor-pointer"
                   >
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">Protocol intelligence</span>
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-white">Protocol intelligence</span>
                     <div className="flex items-center space-x-4">
                       <span className="text-[12px] font-mono text-slate-500 hidden sm:inline">
                         t½ {pep.halfLife} • peak {pep.peakTime} • {pep.bestTime}

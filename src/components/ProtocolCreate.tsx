@@ -141,7 +141,7 @@ export default function ProtocolCreate({
       {/* Compact parameters row */}
       <div className="p-4 bg-slate-900/60 rounded-2xl border border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="space-y-1.5">
-          <label className="text-[11px] font-mono tracking-wider uppercase text-slate-500">Timeframe</label>
+          <label className="text-[11px] font-mono tracking-wider uppercase text-white">Timeframe</label>
           <div className="flex flex-wrap items-center gap-1">
             {TIMEFRAME_OPTIONS.map((weeks) => (
               <button
@@ -163,7 +163,7 @@ export default function ProtocolCreate({
                 min={1}
                 value={timeframeWeeks}
                 onChange={(e) => setTimeframeWeeks(Math.max(1, Number(e.target.value) || 1))}
-                className={`w-14 bg-slate-950 border rounded-lg py-1 px-2 text-[11px] font-mono font-bold text-white outline-none focus:border-gold-500 ${
+                className={`w-14 bg-slate-950 border rounded-lg py-1 px-2 text-[11px] font-mono font-bold text-slate-400 outline-none focus:border-gold-500 ${
                   TIMEFRAME_OPTIONS.includes(timeframeWeeks as (typeof TIMEFRAME_OPTIONS)[number]) ? "border-slate-800" : "border-gold-500/60"
                 }`}
               />
@@ -173,7 +173,7 @@ export default function ProtocolCreate({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[11px] font-mono tracking-wider uppercase text-slate-500">Body weight</label>
+          <label className="text-[11px] font-mono tracking-wider uppercase text-white">Body weight</label>
           <div className="flex bg-slate-950 border border-slate-800 rounded-xl overflow-hidden p-1">
             <input
               type="number"
@@ -204,7 +204,7 @@ export default function ProtocolCreate({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[11px] font-mono tracking-wider uppercase text-slate-500">Protocol start date</label>
+          <label className="text-[11px] font-mono tracking-wider uppercase text-white">Protocol start date</label>
           <StyledDatePicker value={protocolStartDate} onChange={setProtocolStartDate} />
         </div>
       </div>
@@ -220,7 +220,7 @@ export default function ProtocolCreate({
           </div>
           <input
             type="text"
-            className="w-full bg-slate-950 border border-slate-800 focus:border-gold-500 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder-slate-500 outline-none transition"
+            className="w-full bg-slate-950 border border-slate-800 focus:border-gold-500 rounded-xl py-3 pl-10 pr-4 text-sm text-slate-400 placeholder-slate-600 outline-none transition"
             placeholder="Search peptides — e.g. BPC-157, tirzepatide, epitalon..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -320,13 +320,13 @@ export default function ProtocolCreate({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Database</label>
+                    <label className="text-[10px] font-mono tracking-wider uppercase text-white">Database</label>
                     <select
                       value={sourceOverrideByPeptide[pep.id] ?? ""}
                       onChange={(e) =>
                         setPeptideSourceOverride(pep.id, e.target.value ? (e.target.value as DosingSourceId) : null)
                       }
-                      className="bg-slate-950 border border-slate-800 rounded-lg py-1 px-1.5 text-[10px] font-mono text-slate-300 outline-none focus:border-gold-500 cursor-pointer"
+                      className="bg-slate-950 border border-slate-800 rounded-lg py-1 px-1.5 text-[10px] font-mono text-slate-400 outline-none focus:border-gold-500 cursor-pointer"
                     >
                       <option value="">Default ({DOSING_SOURCE_LABELS[protocolDataSource]})</option>
                       {(Object.keys(DOSING_SOURCE_LABELS) as DosingSourceId[]).map((sourceId) => (
@@ -350,7 +350,7 @@ export default function ProtocolCreate({
                             not what's actually active while hand-editing. */}
                         {!isManualTitration && (sourceOptions.length > 0 || track) && (
                           <div className="space-y-1">
-                            <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">
+                            <label className="text-[10px] font-mono tracking-wider uppercase text-white">
                               Protocol goal{builderMode === "manual" ? " (optional preset)" : ""}
                             </label>
                             <select
@@ -360,7 +360,7 @@ export default function ProtocolCreate({
                                   ? setTitrationTrack(pep.id)
                                   : setGoalDoseOption(pep.id, e.target.value)
                               }
-                              className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white outline-none focus:border-gold-500"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-slate-400 outline-none focus:border-gold-500"
                             >
                               {track && (
                                 <option value={TITRATION_OPTION_VALUE}>
@@ -405,19 +405,19 @@ export default function ProtocolCreate({
                                     min={1}
                                     value={step.startWeek}
                                     onChange={(e) => updateTitrationStep(pep.id, index, { startWeek: Math.max(1, Number(e.target.value) || 1) })}
-                                    className="w-12 bg-slate-950 border border-slate-800 rounded-lg py-1 px-1.5 text-xs text-white outline-none focus:border-gold-500"
+                                    className="w-12 bg-slate-950 border border-slate-800 rounded-lg py-1 px-1.5 text-xs text-slate-400 outline-none focus:border-gold-500"
                                   />
                                   <input
                                     type="text"
                                     inputMode="decimal"
                                     value={step.amount}
                                     onChange={(e) => updateTitrationStep(pep.id, index, { amount: e.target.value })}
-                                    className="w-16 bg-slate-950 border border-slate-800 rounded-lg py-1 px-1.5 text-xs text-white outline-none focus:border-gold-500"
+                                    className="w-16 bg-slate-950 border border-slate-800 rounded-lg py-1 px-1.5 text-xs text-slate-400 outline-none focus:border-gold-500"
                                   />
                                   <select
                                     value={step.unit}
                                     onChange={(e) => updateTitrationStep(pep.id, index, { unit: e.target.value as PeptideDoseConfig["unit"] })}
-                                    className="bg-slate-950 border border-slate-800 rounded-lg py-1 px-1.5 text-xs text-white outline-none focus:border-gold-500 cursor-pointer"
+                                    className="bg-slate-950 border border-slate-800 rounded-lg py-1 px-1.5 text-xs text-slate-400 outline-none focus:border-gold-500 cursor-pointer"
                                   >
                                     {UNIT_OPTIONS.map((unit) => (
                                       <option key={unit} value={unit}>
@@ -466,19 +466,19 @@ export default function ProtocolCreate({
                     <>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Dose</label>
+                          <label className="text-[10px] font-mono tracking-wider uppercase text-white">Dose</label>
                           <div className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white">
                             {config.amount}
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Unit</label>
+                          <label className="text-[10px] font-mono tracking-wider uppercase text-white">Unit</label>
                           <div className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white">
                             {config.unit}
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Start date</label>
+                          <label className="text-[10px] font-mono tracking-wider uppercase text-white">Start date</label>
                           <StyledDatePicker
                             value={config.startDay}
                             onChange={(isoDate) => updateDoseConfig(pep.id, { startDay: isoDate })}
@@ -486,7 +486,7 @@ export default function ProtocolCreate({
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Frequency</label>
+                          <label className="text-[10px] font-mono tracking-wider uppercase text-white">Frequency</label>
                           <div className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white">
                             {config.frequency}
                           </div>
@@ -494,7 +494,7 @@ export default function ProtocolCreate({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Dosing days</label>
+                        <label className="text-[10px] font-mono tracking-wider uppercase text-white">Dosing days</label>
                         <div className="flex flex-wrap gap-1.5">
                           {JS_DAY_SHORT.map((day) => {
                             const active = config.days.includes(day);
@@ -520,21 +520,21 @@ export default function ProtocolCreate({
                     <>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Dose</label>
+                          <label className="text-[10px] font-mono tracking-wider uppercase text-white">Dose</label>
                           <input
                             type="text"
                             inputMode="decimal"
                             value={config.amount}
                             onChange={(e) => updateDoseConfig(pep.id, { amount: e.target.value })}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white outline-none focus:border-gold-500"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-slate-400 outline-none focus:border-gold-500"
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Unit</label>
+                          <label className="text-[10px] font-mono tracking-wider uppercase text-white">Unit</label>
                           <select
                             value={config.unit}
                             onChange={(e) => updateDoseConfig(pep.id, { unit: e.target.value as PeptideDoseConfig["unit"] })}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white outline-none focus:border-gold-500"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-slate-400 outline-none focus:border-gold-500"
                           >
                             {UNIT_OPTIONS.map((unit) => (
                               <option key={unit} value={unit}>
@@ -544,7 +544,7 @@ export default function ProtocolCreate({
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Start date</label>
+                          <label className="text-[10px] font-mono tracking-wider uppercase text-white">Start date</label>
                           <StyledDatePicker
                             value={config.startDay}
                             onChange={(isoDate) => updateDoseConfig(pep.id, { startDay: isoDate })}
@@ -552,7 +552,7 @@ export default function ProtocolCreate({
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Frequency</label>
+                          <label className="text-[10px] font-mono tracking-wider uppercase text-white">Frequency</label>
                           <input
                             type="text"
                             value={config.frequency}
@@ -574,7 +574,7 @@ export default function ProtocolCreate({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Dosing days</label>
+                        <label className="text-[10px] font-mono tracking-wider uppercase text-white">Dosing days</label>
                         <div className="flex flex-wrap gap-1.5">
                           {JS_DAY_SHORT.map((day) => {
                             const active = config.days.includes(day);
@@ -600,7 +600,7 @@ export default function ProtocolCreate({
 
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-mono tracking-wider uppercase text-slate-500">Cycle</label>
+                      <label className="text-[10px] font-mono tracking-wider uppercase text-white">Cycle</label>
                       <button
                         type="button"
                         onClick={() =>
@@ -623,7 +623,7 @@ export default function ProtocolCreate({
                           min={1}
                           value={config.cycleOnWeeks}
                           onChange={(e) => updateDoseConfig(pep.id, { cycleOnWeeks: Math.max(1, Number(e.target.value)) })}
-                          className="w-16 bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white outline-none focus:border-gold-500"
+                          className="w-16 bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-slate-400 outline-none focus:border-gold-500"
                         />
                         <span className="text-[11px] text-slate-500">wk on</span>
                         <input
@@ -631,7 +631,7 @@ export default function ProtocolCreate({
                           min={0}
                           value={config.cycleOffWeeks ?? 0}
                           onChange={(e) => updateDoseConfig(pep.id, { cycleOffWeeks: Math.max(0, Number(e.target.value)) })}
-                          className="w-16 bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white outline-none focus:border-gold-500"
+                          className="w-16 bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-slate-400 outline-none focus:border-gold-500"
                         />
                         <span className="text-[11px] text-slate-500">wk off</span>
                       </div>

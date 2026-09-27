@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { invItems, inventoryLots, stockMovements } from "./schema.js";
 import type { ItemKind } from "../../shared/landedCost.js";
@@ -115,7 +115,7 @@ export async function addAdjustmentLot(
     itemId: string,
     qty: number,
     unitCostNzd: number | null,
-    meta: { reason?: string; note?: string; occurredAt?: Date }
+    meta: { refId?: string | null; reason?: string; note?: string; occurredAt?: Date }
 ) {
     let cost = unitCostNzd;
     if (cost == null) {
@@ -147,8 +147,54 @@ export async function addAdjustmentLot(
         type: "adjust",
         qty,
         unitCostNzd: cost,
+        refId: meta.refId ?? null,
         reason: meta.reason ?? "",
         note: meta.note ?? "",
         occurredAt,
     });
+}
+
+// The stock movements that make up one adjustment. A removal can span several batches, so its movements
+// share an adjustment id in refId. Adjustments made before that id existed are keyed by their movement id.
+export async function findAdjustment(tx: Tx, adjustmentId: string) {
+    return tx
+        .select()
+        .from(stockMovements)
+        .where(
+            and(
+                eq(stockMovements.type, "adjust"),
+                or(
+                    eq(stockMovements.refId, adjustmentId),
+                    and(isNull(stockMovements.refId), eq(stockMovements.id, adjustmentId))
+                )
+            )
+        )
+        .for("update");
+}
+
+// Reverses an adjustment: removed units go back to the batch they came from, and a batch the
+// adjustment added is deleted - but only if none of it has been sold or used since.
+export async function undoAdjustment(tx: Tx, movements: (typeof stockMovements.$inferSelect)[]) {
+    for (const movement of movements) {
+        if (movement.lotId && movement.qty < 0) {
+            await tx
+                .update(inventoryLots)
+                .set({ qtyRemaining: sql`${inventoryLots.qtyRemaining} + ${-movement.qty}` })
+                .where(eq(inventoryLots.id, movement.lotId));
+        } else if (movement.lotId) {
+            const [lot] = await tx
+                .select()
+                .from(inventoryLots)
+                .where(eq(inventoryLots.id, movement.lotId))
+                .for("update");
+            if (lot && lot.qtyRemaining !== lot.qtyReceived) {
+                const used = lot.qtyReceived - lot.qtyRemaining;
+                throw new InventoryError(
+                    `${used} of the units this adjustment added have already been sold or used, so it can't be deleted or have its quantity, cost or date changed. You can still edit the reason and note.`
+                );
+            }
+            if (lot) await tx.delete(inventoryLots).where(eq(inventoryLots.id, lot.id));
+        }
+        await tx.delete(stockMovements).where(eq(stockMovements.id, movement.id));
+    }
 }

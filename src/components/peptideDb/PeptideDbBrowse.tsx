@@ -56,7 +56,7 @@ export default function PeptideDbBrowse({ onSelect }: { onSelect: (slug: string)
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search peptides by name, category, or benefit..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-600 outline-none focus:border-gold-500"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-slate-400 placeholder:text-slate-600 outline-none focus:border-gold-500"
           />
         </div>
 
