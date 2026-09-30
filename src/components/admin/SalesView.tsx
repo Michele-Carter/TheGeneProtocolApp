@@ -4,7 +4,7 @@ import { ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { emptySale, type SaleInput } from "../../../shared/sales";
 import { adminApi, nzd, todayIso, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
 import SaleEditor from "./SaleEditor";
-import { ErrorNote, primaryButton, secondaryButton } from "./ui";
+import { ErrorNote, formatMonth, MonthFilter, primaryButton, secondaryButton, StatusDot } from "./ui";
 
 type Filter = "all" | "open" | "unpaid" | "to-send";
 
@@ -23,6 +23,7 @@ export default function SalesView() {
   const [inventory, setInventory] = useState<InventorySummaryRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [month, setMonth] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
 
   const load = useCallback(async () => {
@@ -55,26 +56,29 @@ export default function SalesView() {
   }, [sales]);
 
   const stats = useMemo(() => {
-    const month = todayIso().slice(0, 7);
     const all = sales ?? [];
-    const thisMonth = all.filter((s) => s.status === "completed" && s.orderDate.startsWith(month));
+    const inMonth = month == null ? all : all.filter((s) => s.orderDate.startsWith(month));
+    const completed = inMonth.filter((s) => s.status === "completed");
     return {
-      monthSales: thisMonth.reduce((t, s) => t + s.totals.total, 0),
-      monthProfit: thisMonth.reduce((t, s) => t + (s.profit ?? 0), 0),
+      periodSales: completed.reduce((t, s) => t + s.totals.total, 0),
+      periodProfit: completed.reduce((t, s) => t + (s.profit ?? 0), 0),
       owed: all.reduce((t, s) => t + Math.max(0, s.totals.balance), 0),
       toSend: all.filter((s) => s.data.shipping.status === "not-sent").length,
     };
-  }, [sales]);
+  }, [sales, month]);
+
+  const periodLabel = month == null ? "all time" : formatMonth(month);
 
   const filtered = useMemo(
     () =>
       (sales ?? []).filter((s) => {
+        if (month != null && !s.orderDate.startsWith(month)) return false;
         if (filter === "open") return s.status === "open";
         if (filter === "unpaid") return s.totals.balance > 0.004;
         if (filter === "to-send") return s.data.shipping.status === "not-sent";
         return true;
       }),
-    [sales, filter]
+    [sales, filter, month]
   );
 
   const refreshAfterChange = () => {
@@ -111,8 +115,8 @@ export default function SalesView() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile label="Sales this month" value={nzd(stats.monthSales)} />
-        <Tile label="Profit this month" value={nzd(stats.monthProfit)} />
+        <Tile label={`Sales — ${periodLabel}`} value={nzd(stats.periodSales)} />
+        <Tile label={`Profit — ${periodLabel}`} value={nzd(stats.periodProfit)} />
         <Tile label="Owed to you" value={nzd(stats.owed)} warn={stats.owed > 0.004} />
         <Tile label="Waiting to send" value={String(stats.toSend)} warn={stats.toSend > 0} />
       </div>
@@ -129,6 +133,7 @@ export default function SalesView() {
             {f.label}
           </button>
         ))}
+        <MonthFilter value={month} onChange={setMonth} />
         <div className="ml-auto flex gap-2">
           <button className={secondaryButton} onClick={() => void load()} aria-label="Refresh">
             <RefreshCw size={13} />
@@ -159,7 +164,7 @@ export default function SalesView() {
               onClick={() => setEditing({ record: sale, data: sale.data })}
               className="w-full text-left px-4 py-3 bg-slate-900/30 hover:bg-slate-900/70 transition cursor-pointer flex items-center gap-3"
             >
-              <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-[6.5rem_minmax(0,1fr)_7rem_7rem_9rem] gap-x-4 gap-y-1 items-center">
+              <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-[6.5rem_minmax(0,1fr)_6rem_5.5rem_6rem_6.5rem_7rem] gap-x-4 gap-y-1 items-center">
                 <span className="text-xs text-slate-400 tabular-nums">
                   {new Date(`${sale.orderDate}T00:00:00`).toLocaleDateString("en-NZ")}
                 </span>
@@ -179,17 +184,15 @@ export default function SalesView() {
                   )}
                   <span className="block text-[10px] text-slate-500">profit</span>
                 </span>
-                <span className="flex flex-wrap gap-1">
-                  <Badge tone={sale.status === "completed" ? "good" : "muted"}>
-                    {sale.status === "completed" ? "Completed" : "Open"}
-                  </Badge>
-                  <Badge tone={sale.totals.paymentStatus === "paid" ? "good" : "warn"}>
-                    {sale.totals.paymentStatus === "paid" ? "Paid" : sale.totals.paymentStatus === "part-paid" ? "Part paid" : "Unpaid"}
-                  </Badge>
-                  <Badge tone={sale.data.shipping.status === "not-sent" ? "warn" : "good"}>
-                    {{ "not-sent": "Not sent", sent: "Sent", delivered: "Delivered", collected: "Collected" }[sale.data.shipping.status]}
-                  </Badge>
-                </span>
+                <StatusDot tone={sale.status === "completed" ? "good" : "muted"}>
+                  {sale.status === "completed" ? "Completed" : "Open"}
+                </StatusDot>
+                <StatusDot tone={sale.totals.paymentStatus === "paid" ? "good" : "warn"}>
+                  {sale.totals.paymentStatus === "paid" ? "Paid" : sale.totals.paymentStatus === "part-paid" ? "Part paid" : "Unpaid"}
+                </StatusDot>
+                <StatusDot tone={sale.data.shipping.status === "not-sent" ? "warn" : "good"}>
+                  {{ "not-sent": "Not sent", sent: "Sent", delivered: "Delivered", collected: "Collected" }[sale.data.shipping.status]}
+                </StatusDot>
               </div>
               <ChevronRight size={15} className="text-slate-600 flex-shrink-0" />
             </button>
@@ -198,12 +201,6 @@ export default function SalesView() {
       )}
     </div>
   );
-}
-
-function Badge({ tone, children }: { tone: "good" | "warn" | "muted"; children: React.ReactNode }) {
-  const cls =
-    tone === "good" ? "text-emerald-400 border-emerald-900/60" : tone === "warn" ? "text-amber-400 border-amber-900/60" : "text-slate-400 border-slate-700";
-  return <span className={`text-[9px] font-bold uppercase tracking-wide border rounded-full px-1.5 py-0.5 ${cls}`}>{children}</span>;
 }
 
 function Tile({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
