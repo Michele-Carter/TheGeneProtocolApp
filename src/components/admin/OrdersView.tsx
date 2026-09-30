@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { emptyOrder, orderTypeOf, type OrderInput, type OrderType } from "../../../shared/landedCost";
 import { adminApi, nzd, todayIso, type InvItem, type PurchaseOrderRecord } from "../../lib/adminApi";
 import OrderEditor from "./OrderEditor";
-import { ErrorNote, primaryButton, secondaryButton } from "./ui";
+import { ErrorNote, MonthFilter, primaryButton, secondaryButton } from "./ui";
 
 // What was ordered, for the list: "Retatrutide 5mg, Ara-290 10mg" or "V3 Injection Pen (Yellow, Purple)".
 function itemsSummary(order: OrderInput): string {
@@ -27,6 +27,7 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
   const [orders, setOrders] = useState<PurchaseOrderRecord[] | null>(null);
   const [items, setItems] = useState<InvItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [month, setMonth] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
 
   const load = useCallback(async () => {
@@ -44,6 +45,10 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
     void load();
   }, [load]);
 
+  const filtered = useMemo(
+    () => (orders ?? []).filter((o) => month == null || o.orderDate.startsWith(month)),
+    [orders, month]
+  );
 
   if (editing) {
     return (
@@ -85,20 +90,26 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
         </div>
       </div>
 
+      <MonthFilter value={month} onChange={setMonth} />
+
       <ErrorNote message={error} />
 
       {orders == null && !error && <p className="text-xs text-slate-500">Loading orders…</p>}
 
-      {orders?.length === 0 && (
+      {orders && filtered.length === 0 && (
         <div className="text-center py-14 border border-dashed border-slate-800 rounded-2xl">
-          <p className="text-sm text-slate-400">No {orderType === "peptides" ? "peptide" : "supply"} orders yet.</p>
-          <p className="text-xs text-slate-500 mt-1">Add your first one to start tracking costs and stock.</p>
+          <p className="text-sm text-slate-400">
+            {orders.length === 0 ? `No ${orderType === "peptides" ? "peptide" : "supply"} orders yet.` : "No orders in that month."}
+          </p>
+          {orders.length === 0 && (
+            <p className="text-xs text-slate-500 mt-1">Add your first one to start tracking costs and stock.</p>
+          )}
         </div>
       )}
 
-      {orders && orders.length > 0 && (
+      {filtered.length > 0 && (
         <div className="border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/80">
-          {orders.map((order) => (
+          {filtered.map((order) => (
             <button
               key={order.id}
               onClick={() => setEditing({ record: order, data: order.data })}

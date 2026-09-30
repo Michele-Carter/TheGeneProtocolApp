@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import type { CostEntry } from "../../../shared/landedCost";
 
@@ -209,6 +209,70 @@ export function StatRow({
       <span className="text-slate-400">{label}</span>
       <span className={`tabular-nums ${strong ? "font-black" : "font-semibold"} ${toneClass}`}>{value}</span>
     </div>
+  );
+}
+
+export function formatMonth(month: string): string {
+  return new Date(`${month}-01T00:00:00`).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
+}
+
+// Month picker styled as a button that reads "Select month" when empty (no separate
+// "all time" toggle needed - an empty value already means all time everywhere it's used).
+// The real <input type="month"> stays in the DOM (pointer-events disabled) so its native
+// picker can be opened with showPicker() from the visible button's click handler.
+export function MonthFilter({ value, onChange }: { value: string | null; onChange: (value: string | null) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === "function") el.showPicker();
+    else el.focus();
+  };
+
+  return (
+    <div className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={openPicker}
+        className={`${inputClass} w-auto min-w-[10rem] pr-7 text-left cursor-pointer ${
+          value != null ? "border-gold-500/60 text-gold-300" : ""
+        }`}
+      >
+        {value != null ? formatMonth(value) : "Select month"}
+      </button>
+      <input
+        ref={inputRef}
+        type="month"
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value || null)}
+        className="absolute inset-0 opacity-0 pointer-events-none"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      {value != null && (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="absolute right-2 text-slate-500 hover:text-white transition cursor-pointer"
+          aria-label="Clear month filter"
+        >
+          <X size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Small coloured dot + label, for compact multi-state status columns (payment, shipping...).
+export function StatusDot({ tone, children }: { tone: "good" | "warn" | "muted"; children: React.ReactNode }) {
+  const dotClass = tone === "good" ? "bg-emerald-400" : tone === "warn" ? "bg-amber-400" : "bg-slate-500";
+  const textClass = tone === "good" ? "text-emerald-400" : tone === "warn" ? "text-amber-400" : "text-slate-400";
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap">
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotClass}`} />
+      <span className={textClass}>{children}</span>
+    </span>
   );
 }
 
