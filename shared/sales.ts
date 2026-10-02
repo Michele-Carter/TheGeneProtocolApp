@@ -79,11 +79,13 @@ export function saleTotals(sale: SaleInput): SaleTotals {
 }
 
 // Profit once the cost of the stock sold is known (exact after completion, estimated before).
+// Based on what was actually paid, not the invoiced total — a discount or manual adjustment
+// can make the total not match what was really collected.
 export function saleProfit(sale: SaleInput, cogsNzd: number | null) {
-  const { total } = saleTotals(sale);
+  const paid = num(sale.payment?.amountPaidNzd);
   if (cogsNzd == null) return { profit: null, marginPct: null };
-  const profit = total - cogsNzd - num(sale.shippingCostNzd) - num(sale.paymentFeesNzd);
-  return { profit, marginPct: total > 0 ? (profit / total) * 100 : null };
+  const profit = paid - cogsNzd - num(sale.shippingCostNzd) - num(sale.paymentFeesNzd);
+  return { profit, marginPct: paid > 0 ? (profit / paid) * 100 : null };
 }
 
 // Estimates the cost of each line by taking units from the oldest batches first,
