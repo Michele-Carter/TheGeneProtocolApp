@@ -1,6 +1,7 @@
 import type { CheckStatus, ItemKind, OrderInput } from "../../shared/landedCost";
 import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sales";
 import type { ExpenseDetail } from "../../shared/expenses";
+import type { BundleInput } from "../../shared/bundles";
 
 export interface SaleRecord {
   id: string;
@@ -35,6 +36,12 @@ export interface ExpenseRecord extends Omit<ExpenseInput, "detail"> {
   amountNzd: number; // derived total
   detail: ExpenseDetail | null; // null on expenses saved before items existed
   sourceOrderId: string | null; // created from expense lines on this supply order
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BundleRecord extends BundleInput {
+  id: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -198,6 +205,14 @@ export const adminApi = {
     adminFetch<ExpenseRecord>(`expenses?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
   deleteExpense: (id: string, t: GetToken) =>
     adminFetch<{ success: true }>(`expenses?id=${q(id)}`, { method: "DELETE" }, t),
+
+  listBundles: (t: GetToken) => adminFetch<BundleRecord[]>("bundles", { method: "GET" }, t),
+  createBundle: (data: BundleInput, t: GetToken) =>
+    adminFetch<BundleRecord>("bundles", { method: "POST", body: JSON.stringify(data) }, t),
+  updateBundle: (id: string, data: BundleInput, t: GetToken) =>
+    adminFetch<BundleRecord>(`bundles?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
+  deleteBundle: (id: string, t: GetToken) =>
+    adminFetch<{ success: true }>(`bundles?id=${q(id)}`, { method: "DELETE" }, t),
 };
 
 export const money = (value: number | null | undefined, currency: "USD" | "NZD", digits = 2) => {

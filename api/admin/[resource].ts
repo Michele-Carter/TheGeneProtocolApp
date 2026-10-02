@@ -15,7 +15,7 @@ import {
 import { calculateOrder, isExpenseLine, type OrderInput } from "../../shared/landedCost.js";
 import { EXPENSE_CATEGORIES, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
 import { expenseSummary, expenseTotals } from "../../shared/expenses.js";
-import { expenses, invItems, inventoryLots, purchaseOrders, sales, stockMovements } from "../_lib/schema.js";
+import { bundles, expenses, invItems, inventoryLots, purchaseOrders, sales, stockMovements } from "../_lib/schema.js";
 
 // All owner-only endpoints live in this one function (keeps us under Vercel's function limit):
 //   GET    /api/admin/me
@@ -30,6 +30,8 @@ import { expenses, invItems, inventoryLots, purchaseOrders, sales, stockMovement
 //   POST   /api/admin/sales?id=&action=complete|reopen
 //   GET    /api/admin/expenses              POST /api/admin/expenses
 //   PATCH  /api/admin/expenses?id=          DELETE /api/admin/expenses?id=
+//   GET    /api/admin/bundles               POST /api/admin/bundles
+//   PATCH  /api/admin/bundles?id=           DELETE /api/admin/bundles?id=
 
 const money = z.number().finite();
 const costEntry = z.object({ id: z.string(), label: z.string(), amount: money });
@@ -104,6 +106,7 @@ const saleInputSchema = z.object({
             unit: z.string(),
             qty: z.number().int().min(1, "Quantity must be at least 1"),
             unitPriceNzd: money.min(0),
+            bundleName: z.string().optional(),
         })
     ),
     discountNzd: money.min(0),
@@ -167,6 +170,18 @@ const adjustSchema = z.object({
 
 // An adjustment always stays on the item it was made for.
 const adjustEditSchema = adjustSchema.omit({ itemId: true });
+
+const bundleSchema = z.object({
+    name: z.string().trim().min(1, "Name is required"),
+    description: z.string().default(""),
+    components: z.array(
+        z.object({
+            itemId: z.string().min(1),
+            qty: z.number().int().min(1),
+        })
+    ).min(1, "Add at least one item"),
+    priceNzd: money.min(0).nullable(),
+});
 
 class NotFoundError extends Error {}
 
@@ -854,6 +869,46 @@ async function handleExpenses(req: any, res: any, db: Db) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+async function handleBundles(req: any, res: any, db: Db) {
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
+
+    if (req.method === "GET") {
+        const rows = await db.select().from(bundles).orderBy(asc(bundles.name));
+        return sendJson(res, 200, rows);
+    }
+
+    if (req.method === "DELETE" && id) {
+        await db.delete(bundles).where(eq(bundles.id, id));
+        return sendJson(res, 200, { success: true });
+    }
+
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+    const parsed = bundleSchema.safeParse(read.body);
+    if (!parsed.success) return validationError(res, parsed.error);
+
+    if (req.method === "POST" && !id) {
+        const [row] = await db
+            .insert(bundles)
+            .values({ id: crypto.randomUUID(), ...parsed.data })
+            .returning();
+        return sendJson(res, 201, row);
+    }
+
+    if (req.method === "PATCH" && id) {
+        const [row] = await db
+            .update(bundles)
+            .set({ ...parsed.data, updatedAt: new Date() })
+            .where(eq(bundles.id, id))
+            .returning();
+        if (!row) return sendJson(res, 404, { error: "Bundle not found" });
+        return sendJson(res, 200, row);
+    }
+
+    res.setHeader("Allow", "GET, POST, PATCH, DELETE");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
 export default async function handler(req: any, res: any) {
     const { userId, isAdmin } = await getAdminStatus(req);
     if (!userId) {
@@ -892,6 +947,8 @@ export default async function handler(req: any, res: any) {
                 return await handleSales(req, res, db);
             case "expenses":
                 return await handleExpenses(req, res, db);
+            case "bundles":
+                return await handleBundles(req, res, db);
             default:
                 return sendJson(res, 404, { error: "Not found" });
         }

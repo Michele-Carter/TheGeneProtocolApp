@@ -8,6 +8,7 @@ import { useAuth } from "@clerk/react";
 import { WeightEntry, ShotEntry } from "../types";
 import { getUserState, putUserState } from "../lib/userStateApi";
 import { Plus, Trash2, Scale, Activity, TrendingDown, ClipboardList, Calendar, ChevronLeft, ChevronRight, Pencil, Check } from "lucide-react";
+import StyledDatePicker from "./StyledDatePicker";
 
 type TrackingPersistedState = {
   weightEntries: WeightEntry[];
@@ -686,11 +687,10 @@ export default function TrackingManager() {
                             <tr key={entry.id} className="hover:bg-slate-950/20 transition">
                               <td className="py-2.5 font-mono text-[12px] text-slate-400">
                                 {isEditing ? (
-                                  <input
-                                    type="date"
+                                  <StyledDatePicker
                                     value={entry.date}
-                                    onChange={(e) => handleUpdateWeight(entry.id, { date: e.target.value })}
-                                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-400 outline-none focus:border-gold-500"
+                                    onChange={(v) => handleUpdateWeight(entry.id, { date: v })}
+                                    buttonClassName="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-400 outline-none hover:border-gold-500/60 focus:border-gold-500 flex items-center gap-1.5 cursor-pointer"
                                   />
                                 ) : (
                                   entry.date

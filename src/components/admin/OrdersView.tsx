@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw, Search, X } from "lucide-react";
 import { emptyOrder, orderTypeOf, type OrderInput, type OrderType } from "../../../shared/landedCost";
 import { adminApi, nzd, todayIso, type InvItem, type PurchaseOrderRecord } from "../../lib/adminApi";
 import OrderEditor from "./OrderEditor";
-import { ErrorNote, MonthFilter, primaryButton, secondaryButton } from "./ui";
+import { ErrorNote, inputClass, MonthFilter, primaryButton, secondaryButton } from "./ui";
+import LoadingSpinner from "../LoadingSpinner";
 
 // What was ordered, for the list: "Retatrutide 5mg, Ara-290 10mg" or "V3 Injection Pen (Yellow, Purple)".
 function itemsSummary(order: OrderInput): string {
@@ -28,6 +29,7 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
   const [items, setItems] = useState<InvItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [month, setMonth] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing>(null);
 
   const load = useCallback(async () => {
@@ -45,9 +47,29 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
     void load();
   }, [load]);
 
+  const searchQuery = search.trim().toLowerCase();
+
   const filtered = useMemo(
-    () => (orders ?? []).filter((o) => month == null || o.orderDate.startsWith(month)),
-    [orders, month]
+    () =>
+      (orders ?? []).filter((o) => {
+        if (month != null && !o.orderDate.startsWith(month)) return false;
+        if (searchQuery) {
+          const haystack = [
+            o.supplier,
+            o.data.orderNumber,
+            o.data.tracking,
+            o.data.notes,
+            itemsSummary(o.data),
+            nzd(o.summary.totalLandedNzd),
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(searchQuery)) return false;
+        }
+        return true;
+      }),
+    [orders, month, searchQuery]
   );
 
   if (editing) {
@@ -74,12 +96,7 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-slate-400">
-          {orderType === "peptides"
-            ? "Every peptide order you've placed, with its landed cost per vial worked out in NZD."
-            : "Pens, needles, swabs and other stock — plus business items bought on the same invoice (mark those lines as Expense)."}
-        </p>
+      <div className="flex justify-end">
         <div className="flex gap-2">
           <button className={secondaryButton} onClick={() => void load()} aria-label="Refresh">
             <RefreshCw size={13} />
@@ -90,16 +107,37 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
         </div>
       </div>
 
-      <MonthFilter value={month} onChange={setMonth} />
+      <div className="flex flex-wrap items-center gap-2">
+        <MonthFilter value={month} onChange={setMonth} />
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search supplier, item, amount…"
+            className={`${inputClass} pl-8 pr-7`}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition cursor-pointer"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
 
       <ErrorNote message={error} />
 
-      {orders == null && !error && <p className="text-xs text-slate-500">Loading orders…</p>}
+      {orders == null && !error && <LoadingSpinner label="Loading orders..." />}
 
       {orders && filtered.length === 0 && (
         <div className="text-center py-14 border border-dashed border-slate-800 rounded-2xl">
           <p className="text-sm text-slate-400">
-            {orders.length === 0 ? `No ${orderType === "peptides" ? "peptide" : "supply"} orders yet.` : "No orders in that month."}
+            {orders.length === 0 ? `No ${orderType === "peptides" ? "peptide" : "supply"} orders yet.` : "No orders match."}
           </p>
           {orders.length === 0 && (
             <p className="text-xs text-slate-500 mt-1">Add your first one to start tracking costs and stock.</p>

@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw, Search, X } from "lucide-react";
 import { emptySale, type SaleInput } from "../../../shared/sales";
-import { adminApi, nzd, todayIso, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
+import { adminApi, nzd, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
 import SaleEditor from "./SaleEditor";
-import { ErrorNote, formatMonth, MonthFilter, primaryButton, secondaryButton, StatusDot } from "./ui";
+import { ErrorNote, formatMonth, inputClass, MonthFilter, primaryButton, secondaryButton, StatusDot } from "./ui";
+import LoadingSpinner from "../LoadingSpinner";
 
 type Filter = "all" | "open" | "unpaid" | "to-send";
 
@@ -21,17 +22,24 @@ export default function SalesView() {
   const { getToken } = useAuth();
   const [sales, setSales] = useState<SaleRecord[] | null>(null);
   const [inventory, setInventory] = useState<InventorySummaryRow[]>([]);
+  const [bundles, setBundles] = useState<BundleRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [month, setMonth] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [saleRows, stock] = await Promise.all([adminApi.listSales(getToken), adminApi.inventory(getToken)]);
+      const [saleRows, stock, bundleRows] = await Promise.all([
+        adminApi.listSales(getToken),
+        adminApi.inventory(getToken),
+        adminApi.listBundles(getToken),
+      ]);
       setSales(saleRows);
       setInventory(stock);
+      setBundles(bundleRows);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -69,16 +77,35 @@ export default function SalesView() {
 
   const periodLabel = month == null ? "all time" : formatMonth(month);
 
+  const searchQuery = search.trim().toLowerCase();
+
   const filtered = useMemo(
     () =>
       (sales ?? []).filter((s) => {
         if (month != null && !s.orderDate.startsWith(month)) return false;
-        if (filter === "open") return s.status === "open";
-        if (filter === "unpaid") return s.totals.balance > 0.004;
-        if (filter === "to-send") return s.data.shipping.status === "not-sent";
+        if (filter === "open" && s.status !== "open") return false;
+        if (filter === "unpaid" && !(s.totals.balance > 0.004)) return false;
+        if (filter === "to-send" && s.data.shipping.status !== "not-sent") return false;
+        if (searchQuery) {
+          const haystack = [
+            s.customerName,
+            s.data.customerContact,
+            s.data.orderNumber,
+            s.data.notes,
+            s.data.shipping.tracking,
+            s.data.shipping.courier,
+            s.data.payment.method,
+            nzd(s.totals.total),
+            ...s.data.lines.flatMap((l) => [l.name, l.variant]),
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(searchQuery)) return false;
+        }
         return true;
       }),
-    [sales, filter, month]
+    [sales, filter, month, searchQuery]
   );
 
   const refreshAfterChange = () => {
@@ -97,6 +124,7 @@ export default function SalesView() {
         record={editing.record}
         initialData={editing.data}
         inventory={inventory}
+        bundles={bundles}
         customers={customers}
         lastPrices={lastPrices}
         onBack={() => {
@@ -134,6 +162,25 @@ export default function SalesView() {
           </button>
         ))}
         <MonthFilter value={month} onChange={setMonth} />
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search customer, peptide, amount…"
+            className={`${inputClass} pl-8 pr-7`}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition cursor-pointer"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
         <div className="ml-auto flex gap-2">
           <button className={secondaryButton} onClick={() => void load()} aria-label="Refresh">
             <RefreshCw size={13} />
@@ -145,7 +192,7 @@ export default function SalesView() {
       </div>
 
       <ErrorNote message={error} />
-      {sales == null && !error && <p className="text-xs text-slate-500">Loading customer orders…</p>}
+      {sales == null && !error && <LoadingSpinner label="Loading customer orders..." />}
 
       {sales && filtered.length === 0 && (
         <div className="text-center py-14 border border-dashed border-slate-800 rounded-2xl">

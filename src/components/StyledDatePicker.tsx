@@ -14,13 +14,17 @@ export default function StyledDatePicker({
   onChange,
   className = "",
   buttonClassName,
-  align = "left"
+  align = "left",
+  disabled = false,
+  ariaLabel
 }: {
   value: string;
   onChange: (isoDate: string) => void;
   className?: string;
   buttonClassName?: string;
   align?: "left" | "right";
+  disabled?: boolean;
+  ariaLabel?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const parsed = getDateParts(value);
@@ -40,6 +44,7 @@ export default function StyledDatePicker({
   }, []);
 
   const togglePicker = () => {
+    if (disabled) return;
     if (isOpen) {
       setIsOpen(false);
       return;
@@ -88,10 +93,12 @@ export default function StyledDatePicker({
       <button
         type="button"
         onClick={togglePicker}
-        className={
+        disabled={disabled}
+        aria-label={ariaLabel}
+        className={`${
           buttonClassName ??
           "w-full flex items-center justify-between gap-2 bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-gold-500 rounded-xl py-2 px-3 text-sm text-white outline-none transition cursor-pointer"
-        }
+        } ${disabled ? "opacity-50 cursor-not-allowed hover:border-slate-800" : ""}`}
       >
         <span className={parsed ? "" : "text-slate-500"}>{displayLabel}</span>
         <Calendar size={14} className="text-slate-500 flex-shrink-0" />

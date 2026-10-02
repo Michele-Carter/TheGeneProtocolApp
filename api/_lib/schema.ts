@@ -102,6 +102,18 @@ export const sales = pgTable("sales", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// A reusable kit of inventory items sold together (e.g. "Pen Starter Bundle"). Holds no stock
+// of its own — selling one expands it into a SaleLine per component (shared/bundles.ts).
+export const bundles = pgTable("bundles", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  components: jsonb("components").notNull(), // BundleComponent[] (shared/bundles.ts)
+  priceNzd: numeric("price_nzd", { precision: 14, scale: 2, mode: "number" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Business costs that aren't stock (equipment, packaging, postage, software...).
 export const expenses = pgTable("expenses", {
   id: text("id").primaryKey(),

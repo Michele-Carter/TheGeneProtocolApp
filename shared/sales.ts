@@ -15,6 +15,7 @@ export interface SaleLine {
   unit: string;
   qty: number; // individual units (vials, pens...)
   unitPriceNzd: number;
+  bundleName?: string; // set when added as part of a bundle, purely for display grouping
 }
 
 export interface SaleInput {
@@ -67,8 +68,10 @@ export function saleTotals(sale: SaleInput): SaleTotals {
   const total = itemsSubtotal - num(sale.discountNzd) + num(sale.shippingChargedNzd);
   const paid = num(sale.payment?.amountPaidNzd);
   const balance = total - paid;
+  // Check what's still owed before what's been paid — a fully-discounted $0 order owes nothing
+  // and is "paid", even though nothing was ever actually paid.
   const paymentStatus: PaymentStatus =
-    paid <= 0.004 ? "unpaid" : balance > 0.004 ? "part-paid" : "paid";
+    balance <= 0.004 ? "paid" : paid > 0.004 ? "part-paid" : "unpaid";
   return {
     itemsSubtotal,
     total,

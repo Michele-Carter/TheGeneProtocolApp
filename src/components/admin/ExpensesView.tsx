@@ -4,7 +4,9 @@ import { Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { EXPENSE_CATEGORIES } from "../../../shared/sales";
 import { detailFromLegacy, expenseTotals, type ExpenseDetail, type ExpenseItem } from "../../../shared/expenses";
 import { adminApi, nzd, todayIso, type ExpenseCategory, type ExpenseInput, type ExpenseRecord } from "../../lib/adminApi";
-import { Card, ErrorNote, Field, NumberField, dangerButton, inputClass, newId, primaryButton, secondaryButton } from "./ui";
+import { Card, ErrorNote, Field, NumberField, dangerButton, dateButtonClass, inputClass, newId, primaryButton, secondaryButton } from "./ui";
+import StyledDatePicker from "../StyledDatePicker";
+import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 
 const blankItem = (): ExpenseItem => ({ id: newId(), name: "", qty: 1, unitCostNzd: 0 });
 
@@ -21,7 +23,8 @@ export default function ExpensesView() {
   const { getToken } = useAuth();
   const [rows, setRows] = useState<ExpenseRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<null | "save" | "delete">(null);
+  const busy = busyAction != null;
   // fromOrder: expenses created from a supply order are shown read-only (they're changed via the order).
   const [form, setForm] = useState<{ id: string | null; fromOrder?: boolean; data: ExpenseInput } | null>(null);
   const [year, setYear] = useState(todayIso().slice(0, 4));
@@ -66,15 +69,15 @@ export default function ExpensesView() {
     };
   }, [rows, inYear]);
 
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true);
+  const run = async (action: NonNullable<typeof busyAction>, fn: () => Promise<void>) => {
+    setBusyAction(action);
     setError(null);
     try {
       await fn();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -95,7 +98,7 @@ export default function ExpensesView() {
       return;
     }
     const data = { ...form.data, detail: { ...form.data.detail, items } };
-    run(async () => {
+    run("save", async () => {
       if (form.id) await adminApi.updateExpense(form.id, data, getToken);
       else await adminApi.createExpense(data, getToken);
       setForm(null);
@@ -106,7 +109,7 @@ export default function ExpensesView() {
   const remove = () => {
     if (!form?.id || !window.confirm("Delete this expense?")) return;
     const id = form.id;
-    run(async () => {
+    run("delete", async () => {
       await adminApi.deleteExpense(id, getToken);
       setForm(null);
       await load();
@@ -158,7 +161,7 @@ export default function ExpensesView() {
             <div className="flex items-center gap-2">
               {!form.fromOrder && (
                 <button className={primaryButton} onClick={save} disabled={busy}>
-                  <Save size={13} /> Save expense
+                  {busyAction === "save" ? <Spinner /> : <Save size={13} />} Save expense
                 </button>
               )}
               <button className="p-1.5 text-slate-500 hover:text-white cursor-pointer" onClick={() => setForm(null)} aria-label="Close">
@@ -177,11 +180,10 @@ export default function ExpensesView() {
           <fieldset disabled={form.fromOrder} className="contents">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <Field label="Date">
-              <input
-                type="date"
-                className={inputClass}
+              <StyledDatePicker
+                buttonClassName={dateButtonClass}
                 value={form.data.expenseDate}
-                onChange={(e) => setField("expenseDate", e.target.value)}
+                onChange={(v) => setField("expenseDate", v)}
               />
             </Field>
             <Field label="Supplier (optional)">
@@ -294,7 +296,7 @@ export default function ExpensesView() {
           <div className="flex flex-wrap gap-2 mt-4">
             {!form.fromOrder && (
               <button className={primaryButton} onClick={save} disabled={busy}>
-                <Save size={13} /> {busy ? "Saving…" : "Save expense"}
+                {busyAction === "save" ? <Spinner /> : <Save size={13} />} {busyAction === "save" ? "Saving…" : "Save expense"}
               </button>
             )}
             <button className={secondaryButton} onClick={() => setForm(null)} disabled={busy}>
@@ -302,7 +304,7 @@ export default function ExpensesView() {
             </button>
             {form.id && !form.fromOrder && (
               <button className={`${dangerButton} ml-auto`} onClick={remove} disabled={busy}>
-                <Trash2 size={13} /> Delete
+                {busyAction === "delete" ? <Spinner /> : <Trash2 size={13} />} Delete
               </button>
             )}
           </div>
@@ -349,7 +351,7 @@ export default function ExpensesView() {
       </div>
 
       {!form && <ErrorNote message={error} />}
-      {rows == null && !error && <p className="text-xs text-slate-500">Loading expenses…</p>}
+      {rows == null && !error && <LoadingSpinner label="Loading expenses..." />}
 
       {rows && visible.length === 0 && (
         <div className="text-center py-14 border border-dashed border-slate-800 rounded-2xl">
