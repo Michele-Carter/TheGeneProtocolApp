@@ -13,17 +13,47 @@ import DashboardPage from "./components/DashboardPage";
 import AuthPage from "./components/AuthPage";
 import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
+import LoadingSpinner from "./components/LoadingSpinner";
 import { useIsAdmin } from "./hooks/useIsAdmin";
-import { Beaker, Search, Scale, ClipboardList, ShieldAlert, BookOpen, ExternalLink, Menu, X, LayoutGrid, Lock } from "lucide-react";
+import type { AdminSection } from "./components/admin/AdminArea";
+import {
+  Beaker,
+  Search,
+  Scale,
+  ClipboardList,
+  ShieldAlert,
+  BookOpen,
+  ExternalLink,
+  Menu,
+  X,
+  LayoutGrid,
+  Lock,
+  LayoutDashboard,
+  ShoppingBag,
+  FlaskConical,
+  Truck,
+  Boxes,
+  Receipt,
+} from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
 const AdminArea = lazy(() => import("./components/admin/AdminArea"));
 
 type ActiveTab = "dashboard" | "protocol" | "pricing" | "recon" | "logs" | "peptideDb" | "admin";
 
+const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
+  { id: "overview", label: "Overview", icon: <LayoutDashboard size={13} /> },
+  { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={13} /> },
+  { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={13} /> },
+  { id: "supply-orders", label: "Supply Orders", icon: <Truck size={13} /> },
+  { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
+  { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
+];
+
 export default function App() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
+  const [adminSection, setAdminSection] = useState<AdminSection>("overview");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mainScrollerRef = useRef<HTMLDivElement>(null);
 
@@ -91,8 +121,23 @@ export default function App() {
       // even when activeTab was already "protocol" (deep in a sub-view).
       setProtocolResetKey((key) => key + 1);
     }
+    if (tab === "admin") {
+      // Clicking the top-level Admin link always lands on the overview, like the other hubs.
+      setAdminSection("overview");
+    }
 
     // Reset internal page scroller on every navigation, even when re-clicking the current tab.
+    requestAnimationFrame(() => {
+      if (mainScrollerRef.current) {
+        mainScrollerRef.current.scrollTop = 0;
+      }
+    });
+  }, []);
+
+  const navigateAdmin = useCallback((section: AdminSection) => {
+    setIsMobileMenuOpen(false);
+    setActiveTab("admin");
+    setAdminSection(section);
     requestAnimationFrame(() => {
       if (mainScrollerRef.current) {
         mainScrollerRef.current.scrollTop = 0;
@@ -117,8 +162,8 @@ export default function App() {
         return <PeptideDatabase />;
       case "admin":
         return isAdmin ? (
-          <Suspense fallback={<p className="text-xs text-slate-500">Loading admin…</p>}>
-            <AdminArea />
+          <Suspense fallback={<LoadingSpinner label="Loading admin..." />}>
+            <AdminArea section={adminSection} onNavigate={navigateAdmin} />
           </Suspense>
         ) : (
           <DashboardPage setActiveTab={navigateTab} />
@@ -244,7 +289,7 @@ export default function App() {
                 </div>
 
                 {isAdmin && (
-                  <div>
+                  <div className="space-y-1.5">
                     <button
                       onClick={() => navigateTab("admin")}
                       id="sidebar-btn-admin"
@@ -256,6 +301,24 @@ export default function App() {
                       <Lock size={14} />
                       <span>Admin</span>
                     </button>
+
+                    {activeTab === "admin" && (
+                      <div className="ml-3.5 pl-3 border-l border-slate-800 space-y-0.5">
+                        {ADMIN_SECTIONS.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => navigateAdmin(s.id)}
+                            className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[11px] transition cursor-pointer font-semibold ${adminSection === s.id
+                              ? "text-gold-400"
+                              : "text-slate-500 hover:text-white"
+                              }`}
+                          >
+                            {s.icon}
+                            <span>{s.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </nav>
@@ -383,6 +446,24 @@ export default function App() {
                       <Lock size={14} />
                       <span>Admin</span>
                     </button>
+
+                    {activeTab === "admin" && (
+                      <div className="ml-4 pl-3 border-l border-slate-800 space-y-0.5 mt-1">
+                        {ADMIN_SECTIONS.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => navigateAdmin(s.id)}
+                            className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[11px] transition cursor-pointer font-semibold ${adminSection === s.id
+                              ? "text-gold-400"
+                              : "text-slate-500 hover:text-white"
+                              }`}
+                          >
+                            {s.icon}
+                            <span>{s.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </nav>

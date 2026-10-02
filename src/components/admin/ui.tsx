@@ -1,9 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import type { CostEntry } from "../../../shared/landedCost";
+import { MONTHS } from "../../lib/protocolBuilderUtils";
 
 export const inputClass =
   "w-full bg-slate-950/70 border border-slate-800 rounded-lg px-2.5 py-1.5 text-sm text-slate-400 placeholder:text-slate-600 focus:outline-none focus:border-gold-500/60 transition";
+
+// Matches inputClass but as a button, for StyledDatePicker so date fields look like the rest of the admin form.
+export const dateButtonClass = `${inputClass} flex items-center justify-between gap-2 cursor-pointer`;
 
 export const buttonClass =
   "inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold border transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
@@ -218,38 +222,50 @@ export function formatMonth(month: string): string {
 
 // Month picker styled as a button that reads "Select month" when empty (no separate
 // "all time" toggle needed - an empty value already means all time everywhere it's used).
-// The real <input type="month"> stays in the DOM (pointer-events disabled) so its native
-// picker can be opened with showPicker() from the visible button's click handler.
+// A themed popover replaces the browser's native month input so it matches the rest of the app.
 export function MonthFilter({ value, onChange }: { value: string | null; onChange: (value: string | null) => void }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const today = new Date();
+  const parsedYear = value ? Number(value.split("-")[0]) : null;
+  const parsedMonth = value ? Number(value.split("-")[1]) - 1 : null;
+  const [viewYear, setViewYear] = useState(parsedYear ?? today.getFullYear());
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const openPicker = () => {
-    const el = inputRef.current;
-    if (!el) return;
-    if (typeof el.showPicker === "function") el.showPicker();
-    else el.focus();
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const togglePicker = () => {
+    if (isOpen) {
+      setIsOpen(false);
+      return;
+    }
+    setViewYear(parsedYear ?? today.getFullYear());
+    setIsOpen(true);
+  };
+
+  const selectMonth = (monthIndex: number) => {
+    onChange(`${viewYear}-${String(monthIndex + 1).padStart(2, "0")}`);
+    setIsOpen(false);
   };
 
   return (
-    <div className="relative inline-flex items-center">
+    <div className="relative inline-flex items-center" ref={containerRef}>
       <button
         type="button"
-        onClick={openPicker}
+        onClick={togglePicker}
         className={`${inputClass} w-auto min-w-[10rem] pr-7 text-left cursor-pointer ${
           value != null ? "border-gold-500/60 text-gold-300" : ""
         }`}
       >
         {value != null ? formatMonth(value) : "Select month"}
       </button>
-      <input
-        ref={inputRef}
-        type="month"
-        value={value ?? ""}
-        onChange={(event) => onChange(event.target.value || null)}
-        className="absolute inset-0 opacity-0 pointer-events-none"
-        tabIndex={-1}
-        aria-hidden="true"
-      />
       {value != null && (
         <button
           type="button"
@@ -259,6 +275,60 @@ export function MonthFilter({ value, onChange }: { value: string | null; onChang
         >
           <X size={13} />
         </button>
+      )}
+
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-2 bg-slate-950 border border-slate-800 rounded-xl p-3 shadow-2xl z-[80] w-[220px] text-xs text-white space-y-2">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setViewYear((y) => y - 1)}
+              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white cursor-pointer"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="font-mono font-medium text-xs">{viewYear}</span>
+            <button
+              type="button"
+              onClick={() => setViewYear((y) => y + 1)}
+              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white cursor-pointer"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {MONTHS.map((m, i) => {
+              const isSelected = parsedYear === viewYear && parsedMonth === i;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => selectMonth(i)}
+                  className={`py-1.5 text-center font-mono text-xs rounded transition-all hover:bg-gold-500/20 hover:text-gold-400 cursor-pointer ${
+                    isSelected ? "bg-gold-500 text-slate-950 font-bold hover:bg-gold-600 hover:text-slate-950" : "text-slate-300"
+                  }`}
+                >
+                  {m.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px] font-bold">
+            <button type="button" onClick={() => { onChange(null); setIsOpen(false); }} className="text-slate-400 hover:text-white cursor-pointer">
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
+                setIsOpen(false);
+              }}
+              className="text-gold-400 hover:text-gold-300 cursor-pointer"
+            >
+              This month
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

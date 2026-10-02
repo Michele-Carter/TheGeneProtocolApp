@@ -11,6 +11,7 @@ import ProtocolHub from "./ProtocolHub";
 import ProtocolCreate from "./ProtocolCreate";
 import CurrentProtocolView from "./CurrentProtocolView";
 import MyStackView from "./MyStackView";
+import LoadingSpinner from "./LoadingSpinner";
 
 export type ProtocolSubView = "hub" | "create" | "current" | "stack";
 
@@ -19,11 +20,7 @@ export default function ProtocolBuilder() {
   const [subView, setSubView] = useState<ProtocolSubView>("hub");
 
   if (registry.isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24 text-slate-400 text-sm">
-        Loading your protocols...
-      </div>
-    );
+    return <LoadingSpinner label="Loading your protocols..." className="py-24" />;
   }
 
   if (!registry.activeProtocol) {

@@ -9,9 +9,13 @@ import {
   type InventorySummaryRow,
   type StockMovement,
 } from "../../lib/adminApi";
-import { Card, ErrorNote, Field, NumberField, StatRow, inputClass, primaryButton, secondaryButton } from "./ui";
+import { Card, ErrorNote, Field, NumberField, StatRow, dateButtonClass, inputClass, primaryButton, secondaryButton } from "./ui";
+import StyledDatePicker from "../StyledDatePicker";
+import LoadingSpinner, { Spinner } from "../LoadingSpinner";
+import BundlesView from "./BundlesView";
 
 type KindFilter = "all" | "peptide" | "supply";
+type View = "items" | "bundles";
 
 const ADJUST_REASONS_OUT = ["Stocktake correction", "Damaged / broken", "Sample / giveaway", "Personal use", "Expired", "Other"];
 const ADJUST_REASONS_IN = ["Stocktake correction", "Found stock", "Returned by customer", "Opening stock", "Other"];
@@ -69,6 +73,7 @@ export default function InventoryView() {
   const [kind, setKind] = useState<KindFilter>("all");
   const [hideEmpty, setHideEmpty] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<View>("items");
 
   const load = useCallback(async () => {
     setError(null);
@@ -103,7 +108,7 @@ export default function InventoryView() {
     };
   }, [rows]);
 
-  if (selectedId) {
+  if (view === "items" && selectedId) {
     return (
       <ItemDetail
         itemId={selectedId}
@@ -117,6 +122,24 @@ export default function InventoryView() {
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-2 border-b border-slate-800/80 pb-3">
+        {(["items", "bundles"] as View[]).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
+              view === v ? "border-gold-500/60 text-gold-400" : "border-transparent text-slate-400 hover:text-white hover:bg-slate-900/40"
+            }`}
+          >
+            {v === "items" ? "Items" : "Bundles"}
+          </button>
+        ))}
+      </div>
+
+      {view === "bundles" ? (
+        <BundlesView inventory={rows ?? []} />
+      ) : (
+        <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Tile label="Stock value (at cost)" value={nzd(totals.value)} />
         <Tile label="Peptides" value={nzd(totals.peptideValue)} />
@@ -155,7 +178,7 @@ export default function InventoryView() {
       </div>
 
       <ErrorNote message={error} />
-      {rows == null && !error && <p className="text-xs text-slate-500">Loading inventory…</p>}
+      {rows == null && !error && <LoadingSpinner label="Loading inventory..." />}
 
       {rows && filtered.length === 0 && (
         <div className="text-center py-14 border border-dashed border-slate-800 rounded-2xl">
@@ -217,6 +240,8 @@ export default function InventoryView() {
           </table>
         </div>
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -234,7 +259,9 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
   const { getToken } = useAuth();
   const [detail, setDetail] = useState<InventoryDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<null | "adjust" | "reorderLevel">(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const busy = busyAction != null || deletingId != null;
   const [direction, setDirection] = useState<"out" | "in">("out");
   const [qty, setQty] = useState<number | null>(null);
   const [reason, setReason] = useState(ADJUST_REASONS_OUT[0]);
@@ -292,7 +319,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
       setError("Enter how many units to adjust.");
       return;
     }
-    setBusy(true);
+    setBusyAction("adjust");
     setError(null);
     const payload = {
       qty: direction === "out" ? -qty : qty,
@@ -312,7 +339,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -320,7 +347,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
     if (!entry.adjustmentId) return;
     const change = entry.qty > 0 ? `+${entry.qty}` : String(entry.qty);
     if (!window.confirm(`Delete this adjustment (${change} ${item?.unit}s)? The stock will be put back as it was.`)) return;
-    setBusy(true);
+    setDeletingId(entry.adjustmentId);
     setError(null);
     try {
       await adminApi.deleteAdjustment(entry.adjustmentId, getToken);
@@ -329,12 +356,12 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setDeletingId(null);
     }
   };
 
   const saveReorderLevel = async () => {
-    setBusy(true);
+    setBusyAction("reorderLevel");
     setError(null);
     try {
       await adminApi.updateItem(itemId, { reorderLevel }, getToken);
@@ -342,7 +369,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -464,7 +491,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
                               aria-label="Delete adjustment"
                               title="Delete adjustment"
                             >
-                              <Trash2 size={13} />
+                              {deletingId === m.adjustmentId ? <Spinner size={13} /> : <Trash2 size={13} />}
                             </button>
                           </div>
                         ) : (
@@ -495,7 +522,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
                   onClick={saveReorderLevel}
                   disabled={busy || reorderLevel === detail.item.reorderLevel}
                 >
-                  Save
+                  {busyAction === "reorderLevel" && <Spinner size={13} />} Save
                 </button>
               </div>
             </Card>
@@ -529,7 +556,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
                     <NumberField integer value={qty} onChange={setQty} />
                   </Field>
                   <Field label="Date">
-                    <input type="date" className={inputClass} value={date} onChange={(e) => setDate(e.target.value)} />
+                    <StyledDatePicker buttonClassName={dateButtonClass} value={date} onChange={setDate} />
                   </Field>
                 </div>
                 <Field label="Reason">
@@ -560,6 +587,7 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
                 )}
                 <div className="flex gap-2">
                   <button className={primaryButton} onClick={submitAdjust} disabled={busy}>
+                    {busyAction === "adjust" && <Spinner size={13} />}{" "}
                     {editingId ? "Save changes" : direction === "out" ? "Remove from stock" : "Add to stock"}
                   </button>
                   {editingId && (

@@ -20,11 +20,14 @@ import {
   NumberField,
   StatRow,
   dangerButton,
+  dateButtonClass,
   inputClass,
   newId,
   primaryButton,
   secondaryButton,
 } from "./ui";
+import StyledDatePicker from "../StyledDatePicker";
+import { Spinner } from "../LoadingSpinner";
 
 const CATALOG_OPTIONS = MY_PRODUCTS.flatMap((product) =>
   product.options
@@ -60,7 +63,8 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   const [data, setData] = useState<OrderInput>(initialData);
   const [savedJson, setSavedJson] = useState(JSON.stringify(initialData));
   const [current, setCurrent] = useState<PurchaseOrderRecord | null>(record);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<null | "save" | "receive" | "editReceived" | "unreceive" | "delete">(null);
+  const busy = busyAction != null;
   const [error, setError] = useState<string | null>(null);
   const [showReceive, setShowReceive] = useState(false);
   const [receivedDate, setReceivedDate] = useState(todayIso());
@@ -237,15 +241,15 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
     return `${units} ${unit}${units === 1 ? "" : "s"}`;
   };
 
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true);
+  const run = async (action: NonNullable<typeof busyAction>, fn: () => Promise<void>) => {
+    setBusyAction(action);
     setError(null);
     try {
       await fn();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -278,7 +282,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
     return saved;
   };
 
-  const save = () => run(async () => void (await persist()));
+  const save = () => run("save", async () => void (await persist()));
 
   const receive = () => {
     if (
@@ -289,7 +293,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
     ) {
       return;
     }
-    return run(async () => {
+    return run("receive", async () => {
       const saved = dirty || !current ? await persist() : current;
       const updated = await adminApi.receiveOrder(saved.id, { receivedDate, lots: lotInfo }, getToken);
       setCurrent(updated);
@@ -309,7 +313,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
     ) {
       return;
     }
-    run(async () => {
+    run("editReceived", async () => {
       const updated = await adminApi.unreceiveOrder(current.id, getToken);
       setCurrent(updated);
       if (updated.previousReceivedDate) setReceivedDate(updated.previousReceivedDate);
@@ -322,7 +326,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   const unreceive = () => {
     if (!current) return;
     if (!window.confirm("Take this order's stock back out of inventory and mark it as not received?")) return;
-    run(async () => {
+    run("unreceive", async () => {
       const updated = await adminApi.unreceiveOrder(current.id, getToken);
       setCurrent(updated);
       onSaved(updated);
@@ -335,7 +339,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
       return;
     }
     if (!window.confirm("Delete this order? This can't be undone.")) return;
-    run(async () => {
+    run("delete", async () => {
       await adminApi.deleteOrder(current.id, getToken);
       onDeleted(current.id);
     });
@@ -397,20 +401,20 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                 <PackageCheck size={12} /> Received
               </span>
               <button className={secondaryButton} onClick={unreceive} disabled={busy}>
-                <Undo2 size={13} /> Undo received
+                {busyAction === "unreceive" ? <Spinner /> : <Undo2 size={13} />} Undo received
               </button>
               <button className={primaryButton} onClick={editReceived} disabled={busy}>
-                <Pencil size={13} /> Edit order
+                {busyAction === "editReceived" ? <Spinner /> : <Pencil size={13} />} Edit order
               </button>
             </>
           ) : reReceiving ? (
             <button className={primaryButton} onClick={receive} disabled={busy || calc.totalLandedNzd == null}>
-              <PackageCheck size={13} /> Save & receive
+              {busyAction === "receive" ? <Spinner /> : <PackageCheck size={13} />} Save & receive
             </button>
           ) : (
             <>
               <button className={dangerButton} onClick={remove} disabled={busy}>
-                <Trash2 size={13} /> {current ? "Delete" : "Discard"}
+                {busyAction === "delete" ? <Spinner /> : <Trash2 size={13} />} {current ? "Delete" : "Discard"}
               </button>
               <button className={secondaryButton} onClick={() => setShowReceive((v) => !v)} disabled={busy}>
                 <PackageCheck size={13} /> Mark as received
@@ -419,12 +423,12 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
           )}
           {!received && !reReceiving && (
             <button className={primaryButton} onClick={save} disabled={busy || (!dirty && Boolean(current))}>
-              <Save size={13} /> {dirty || !current ? "Save" : "Saved"}
+              {busyAction === "save" ? <Spinner /> : <Save size={13} />} {dirty || !current ? "Save" : "Saved"}
             </button>
           )}
           {received && dirty && (
             <button className={primaryButton} onClick={save} disabled={busy}>
-              <Save size={13} /> Save
+              {busyAction === "save" ? <Spinner /> : <Save size={13} />} Save
             </button>
           )}
         </div>
@@ -454,12 +458,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
             )}
             <div className="max-w-[12rem]">
               <Field label="Date received">
-                <input
-                  type="date"
-                  className={inputClass}
-                  value={receivedDate}
-                  onChange={(e) => setReceivedDate(e.target.value)}
-                />
+                <StyledDatePicker buttonClassName={dateButtonClass} value={receivedDate} onChange={setReceivedDate} />
               </Field>
             </div>
             <p className="text-[11px] text-slate-500">Batch / lot numbers and expiry dates are optional.</p>
@@ -495,21 +494,18 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                       value={info.lotNumber}
                       onChange={(e) => setLotInfo((m) => ({ ...m, [line.id]: { ...info, lotNumber: e.target.value } }))}
                     />
-                    <input
-                      type="date"
-                      className={inputClass}
-                      aria-label="Expiry date"
+                    <StyledDatePicker
+                      buttonClassName={dateButtonClass}
+                      ariaLabel="Expiry date"
                       value={info.expiryDate ?? ""}
-                      onChange={(e) =>
-                        setLotInfo((m) => ({ ...m, [line.id]: { ...info, expiryDate: e.target.value || null } }))
-                      }
+                      onChange={(v) => setLotInfo((m) => ({ ...m, [line.id]: { ...info, expiryDate: v || null } }))}
                     />
                   </div>
                 );
               })}
             </div>
             <button className={primaryButton} onClick={receive} disabled={busy || calc.totalLandedNzd == null}>
-              <PackageCheck size={13} /> {dirty || !current ? "Save & add to inventory" : "Add to inventory"}
+              {busyAction === "receive" ? <Spinner /> : <PackageCheck size={13} />} {dirty || !current ? "Save & add to inventory" : "Add to inventory"}
             </button>
           </div>
         </Card>
@@ -529,12 +525,11 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                 />
               </Field>
               <Field label="Order date">
-                <input
-                  type="date"
-                  className={inputClass}
+                <StyledDatePicker
+                  buttonClassName={dateButtonClass}
                   value={data.orderDate}
                   disabled={received}
-                  onChange={(e) => set("orderDate", e.target.value)}
+                  onChange={(v) => set("orderDate", v)}
                 />
               </Field>
               <Field label="Order number (optional)">

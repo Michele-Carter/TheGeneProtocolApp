@@ -1,9 +1,9 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Pencil, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Package, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { fifoEstimate, saleProfit, saleTotals, type SaleInput, type SaleLine, type ShippingStatus } from "../../../shared/sales";
 import { MY_PRODUCTS } from "../../data/myProducts";
-import { adminApi, nzd, todayIso, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
+import { adminApi, nzd, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
 import {
   Card,
   ErrorNote,
@@ -11,11 +11,14 @@ import {
   NumberField,
   StatRow,
   dangerButton,
+  dateButtonClass,
   inputClass,
   newId,
   primaryButton,
   secondaryButton,
 } from "./ui";
+import StyledDatePicker from "../StyledDatePicker";
+import { Spinner } from "../LoadingSpinner";
 
 // Selling prices from the customer Pricing page (NZD per vial; the data field is named priceUsd).
 const PRICE_LIST: Record<string, number> = Object.fromEntries(
@@ -39,6 +42,7 @@ interface Props {
   record: SaleRecord | null;
   initialData: SaleInput;
   inventory: InventorySummaryRow[];
+  bundles: BundleRecord[];
   customers: string[];
   lastPrices: Record<string, number>;
   onBack: () => void;
@@ -46,12 +50,13 @@ interface Props {
   onDeleted: () => void;
 }
 
-export default function SaleEditor({ record, initialData, inventory, customers, lastPrices, onBack, onChanged, onDeleted }: Props) {
+export default function SaleEditor({ record, initialData, inventory, bundles, customers, lastPrices, onBack, onChanged, onDeleted }: Props) {
   const { getToken } = useAuth();
   const [data, setData] = useState<SaleInput>(initialData);
   const [savedJson, setSavedJson] = useState(JSON.stringify(initialData));
   const [current, setCurrent] = useState<SaleRecord | null>(record);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<null | "save" | "complete" | "reopen" | "delete">(null);
+  const busy = busyAction != null;
   const [error, setError] = useState<string | null>(null);
 
   const completed = current?.status === "completed";
@@ -67,6 +72,20 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
   const lineCost = (lineId: string) => (completed ? current?.costDetail?.[lineId] ?? null : estimate.byLine[lineId] ?? null);
   const cogs = completed ? current?.cogsNzd ?? null : estimate.total;
   const { profit, marginPct } = saleProfit(data, cogs);
+
+  // Lines added together as a bundle are shown as one collapsed row, named after the bundle.
+  const lineGroups = useMemo(() => {
+    const groups: { key: string; bundleName: string | null; lines: SaleLine[] }[] = [];
+    for (const line of data.lines) {
+      const last = groups[groups.length - 1];
+      if (line.bundleName && last?.bundleName === line.bundleName) {
+        last.lines.push(line);
+      } else {
+        groups.push({ key: line.id, bundleName: line.bundleName ?? null, lines: [line] });
+      }
+    }
+    return groups;
+  }, [data.lines]);
 
   const peptides = inventory.filter((row) => row.item.kind === "peptide");
   const supplies = inventory.filter((row) => row.item.kind === "supply");
@@ -133,6 +152,71 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
     if (editingLineId === lineId) cancelEdit();
   };
 
+  // Adding a bundle drops in one line per component (scaled by how many bundles).
+  // With a package price set, components usually have no sale-price history of their own
+  // (they're only ever sold as part of a bundle), so the package price is split across them
+  // weighted by stock cost — not left at $0 — and the lines already sum to the package price.
+  const [bundleId, setBundleId] = useState("");
+  const [bundleQty, setBundleQty] = useState<number | null>(1);
+  const bundlesById = useMemo(() => Object.fromEntries(bundles.map((b) => [b.id, b])), [bundles]);
+
+  const addBundle = () => {
+    const bundle = bundlesById[bundleId];
+    if (!bundle || !(bundleQty && bundleQty >= 1)) return;
+
+    const base = bundle.components.map((c) => {
+      const row = stockById[c.itemId];
+      const qty = c.qty * bundleQty;
+      const refCostNzd = row?.nextCostNzd ?? row?.averageCostNzd ?? 0;
+      return {
+        itemId: c.itemId,
+        kind: row?.item.kind ?? ("supply" as const),
+        name: row?.item.name ?? "Unknown item",
+        variant: row?.item.variant ?? "",
+        unit: row?.item.unit ?? "unit",
+        qty,
+        weight: qty * refCostNzd,
+      };
+    });
+
+    let newLines: SaleLine[];
+    if (bundle.priceNzd != null) {
+      const packageTotal = bundle.priceNzd * bundleQty;
+      const weightTotal = base.reduce((t, l) => t + l.weight, 0);
+      newLines = base.map((l) => {
+        const share = weightTotal > 0 ? l.weight / weightTotal : 1 / base.length;
+        const lineTotal = packageTotal * share;
+        return {
+          id: newId(),
+          itemId: l.itemId,
+          kind: l.kind,
+          name: l.name,
+          variant: l.variant,
+          unit: l.unit,
+          qty: l.qty,
+          unitPriceNzd: l.qty > 0 ? lineTotal / l.qty : 0,
+          bundleName: bundle.name,
+        };
+      });
+    } else {
+      newLines = base.map((l) => ({
+        id: newId(),
+        itemId: l.itemId,
+        kind: l.kind,
+        name: l.name,
+        variant: l.variant,
+        unit: l.unit,
+        qty: l.qty,
+        unitPriceNzd: PRICE_LIST[l.itemId] ?? lastPrices[l.itemId] ?? 0,
+        bundleName: bundle.name,
+      }));
+    }
+
+    setData((d) => ({ ...d, lines: [...d.lines, ...newLines] }));
+    setBundleId("");
+    setBundleQty(1);
+  };
+
   // Cost and stock check for the item in the entry box, as if it were already on the order.
   const draftEstimate = useMemo(() => {
     if (!draft.itemId || !(draft.qty >= 1)) return null;
@@ -141,15 +225,15 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
     return { cost: result.byLine[draft.id] ?? null, short: result.short.includes(draft.id) };
   }, [draft, editingLineId, data.lines, inventory]);
 
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true);
+  const run = async (action: NonNullable<typeof busyAction>, fn: () => Promise<void>) => {
+    setBusyAction(action);
     setError(null);
     try {
       await fn();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -178,7 +262,7 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
     return saved;
   };
 
-  const save = () => run(async () => void (await persist()));
+  const save = () => run("save", async () => void (await persist()));
 
   const complete = () => {
     if (draftStarted) {
@@ -199,7 +283,7 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
     }
     const summary = data.lines.map((l) => `• ${l.qty} × ${l.name} ${l.variant}`.trim()).join("\n");
     if (!window.confirm(`Complete this order and take these out of stock?\n\n${summary}`)) return;
-    run(async () => {
+    run("complete", async () => {
       const saved = dirty || !current ? await persist() : current;
       apply(await adminApi.completeSale(saved.id, data.orderDate, getToken));
     });
@@ -208,7 +292,7 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
   const reopen = () => {
     if (!current) return;
     if (!window.confirm("Reopen this order? Its items go back into stock (into the same batches they came from).")) return;
-    run(async () => apply(await adminApi.reopenSale(current.id, getToken)));
+    run("reopen", async () => apply(await adminApi.reopenSale(current.id, getToken)));
   };
 
   const remove = () => {
@@ -217,7 +301,7 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
       return;
     }
     if (!window.confirm("Delete this customer order? This can't be undone.")) return;
-    run(async () => {
+    run("delete", async () => {
       await adminApi.deleteSale(current.id, getToken);
       onDeleted();
     });
@@ -253,21 +337,21 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
                 <CheckCircle2 size={12} /> Completed
               </span>
               <button className={secondaryButton} onClick={reopen} disabled={busy}>
-                <RotateCcw size={13} /> Reopen
+                {busyAction === "reopen" ? <Spinner /> : <RotateCcw size={13} />} Reopen
               </button>
             </>
           ) : (
             <>
               <button className={dangerButton} onClick={remove} disabled={busy}>
-                <Trash2 size={13} /> {current ? "Delete" : "Discard"}
+                {busyAction === "delete" ? <Spinner /> : <Trash2 size={13} />} {current ? "Delete" : "Discard"}
               </button>
               <button className={secondaryButton} onClick={complete} disabled={busy}>
-                <CheckCircle2 size={13} /> Complete order
+                {busyAction === "complete" ? <Spinner /> : <CheckCircle2 size={13} />} Complete order
               </button>
             </>
           )}
           <button className={primaryButton} onClick={save} disabled={busy || (!dirty && Boolean(current))}>
-            <Save size={13} /> {dirty || !current ? "Save" : "Saved"}
+            {busyAction === "save" ? <Spinner /> : <Save size={13} />} {dirty || !current ? "Save" : "Saved"}
           </button>
         </div>
       </div>
@@ -299,12 +383,11 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
                 />
               </Field>
               <Field label="Order date">
-                <input
-                  type="date"
-                  className={inputClass}
+                <StyledDatePicker
+                  buttonClassName={dateButtonClass}
                   value={data.orderDate}
                   disabled={completed}
-                  onChange={(e) => set("orderDate", e.target.value)}
+                  onChange={(v) => set("orderDate", v)}
                 />
               </Field>
               <Field label="Order number (optional)">
@@ -427,6 +510,29 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
               </div>
             )}
 
+            {!completed && bundles.length > 0 && (
+              <div className="mt-3 border border-slate-800/80 bg-slate-950/50 rounded-xl p-3 space-y-2">
+                <span className="block text-[11px] font-bold text-white">Or add a bundle</span>
+                <div className="grid grid-cols-[minmax(0,1fr)_5rem_auto] gap-2 items-center">
+                  <select className={inputClass} value={bundleId} onChange={(e) => setBundleId(e.target.value)}>
+                    <option value="" disabled>
+                      Choose a bundle…
+                    </option>
+                    {bundles.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                        {b.priceNzd != null ? ` — ${nzd(b.priceNzd)}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <NumberField integer ariaLabel="Quantity" value={bundleQty} onChange={setBundleQty} />
+                  <button type="button" className={secondaryButton} onClick={addBundle} disabled={!bundleId}>
+                    <Plus size={13} /> Add
+                  </button>
+                </div>
+              </div>
+            )}
+
             {data.lines.length === 0 ? (
               completed && <p className="text-xs text-slate-500 py-4 text-center">No items on this order.</p>
             ) : (
@@ -438,7 +544,92 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
                   <span className="text-right">Line total</span>
                 </div>
                 <div className="divide-y divide-slate-800/70">
-                  {data.lines.map((line) => {
+                  {lineGroups.map((group) => {
+                    if (group.bundleName) {
+                      const bundleName = group.bundleName;
+                      const open = Boolean(expandedLines[group.key]);
+                      const groupTotal = group.lines.reduce((t, l) => t + l.qty * l.unitPriceNzd, 0);
+                      const costs = group.lines.map((l) => lineCost(l.id));
+                      const groupCost = costs.some((c) => c == null) ? null : (costs as number[]).reduce((t, c) => t + c, 0);
+                      const groupShort = !completed && group.lines.some((l) => estimate.short.includes(l.id));
+                      const removeGroup = () =>
+                        setData((d) => ({ ...d, lines: d.lines.filter((l) => !group.lines.some((gl) => gl.id === l.id)) }));
+                      return (
+                        <div key={group.key}>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedLines((m) => ({ ...m, [group.key]: !m[group.key] }))}
+                            className="w-full grid grid-cols-[1rem_minmax(0,1fr)_auto_6.5rem] gap-3 px-3 py-2.5 items-center text-left hover:bg-slate-900/50 transition cursor-pointer"
+                            aria-expanded={open}
+                          >
+                            <ChevronRight size={14} className={`text-slate-500 transition-transform ${open ? "rotate-90" : ""}`} />
+                            <span className="min-w-0 truncate text-sm font-semibold text-slate-100 flex items-center gap-1.5">
+                              <Package size={13} className="text-sky-300 flex-shrink-0" />
+                              <span className="truncate">{bundleName}</span>
+                              {groupShort && (
+                                <span className="text-[9px] font-bold uppercase tracking-wide text-red-400 border border-red-900/60 rounded-full px-1.5 py-0.5 flex-shrink-0">
+                                  Short
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-xs text-slate-300 text-right tabular-nums whitespace-nowrap">
+                              {group.lines.length} items
+                            </span>
+                            <span className="text-sm text-slate-100 text-right tabular-nums font-semibold">{nzd(groupTotal)}</span>
+                          </button>
+                          {open && (
+                            <div className="px-3 pb-3 pl-10 space-y-3">
+                              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                                <Metric label="Bundle value" value={nzd(groupTotal)} />
+                                <Metric label={completed ? "Cost of stock" : "Est. cost of stock"} value={nzd(groupCost)} />
+                                <Metric label="Gross profit" value={groupCost == null ? "—" : nzd(groupTotal - groupCost)} highlight />
+                              </div>
+                              <div className="space-y-1 border-t border-slate-800/60 pt-2">
+                                {group.lines.map((line) => {
+                                  const row = stockById[line.itemId];
+                                  const lineShort = !completed && estimate.short.includes(line.id);
+                                  const unit = line.unit || "unit";
+                                  return (
+                                    <div key={line.id} className="flex items-center justify-between gap-2 text-xs">
+                                      <span className="min-w-0 truncate text-slate-300">
+                                        {line.qty} {unit}
+                                        {line.qty === 1 ? "" : "s"} · {line.name}{" "}
+                                        <span className="text-slate-500">{line.variant}</span>
+                                        {lineShort && (
+                                          <span className="ml-1.5 text-red-400">
+                                            <AlertTriangle size={11} className="inline -mt-0.5" /> only {row?.onHand ?? 0} in stock
+                                          </span>
+                                        )}
+                                      </span>
+                                      <div className="flex items-center gap-2 flex-shrink-0">
+                                        <span className="tabular-nums text-slate-300">{nzd(line.qty * line.unitPriceNzd)}</span>
+                                        {!completed && (
+                                          <button
+                                            type="button"
+                                            className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
+                                            aria-label="Remove item"
+                                            onClick={() => removeLine(line.id)}
+                                          >
+                                            <X size={12} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {!completed && (
+                                <button className={dangerButton} onClick={removeGroup}>
+                                  <Trash2 size={12} /> Remove bundle
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    const line = group.lines[0];
                     const row = stockById[line.itemId];
                     const short = !completed && estimate.short.includes(line.id);
                     const cost = lineCost(line.id);
@@ -557,11 +748,10 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
                     />
                   </Field>
                   <Field label="Date paid">
-                    <input
-                      type="date"
-                      className={inputClass}
+                    <StyledDatePicker
+                      buttonClassName={dateButtonClass}
                       value={data.payment.paidDate ?? ""}
-                      onChange={(e) => set("payment", { ...data.payment, paidDate: e.target.value || null })}
+                      onChange={(v) => set("payment", { ...data.payment, paidDate: v || null })}
                     />
                   </Field>
                   <div className="col-span-2">
@@ -625,11 +815,10 @@ export default function SaleEditor({ record, initialData, inventory, customers, 
                       </datalist>
                     </Field>
                     <Field label="Date sent">
-                      <input
-                        type="date"
-                        className={inputClass}
+                      <StyledDatePicker
+                        buttonClassName={dateButtonClass}
                         value={data.shipping.sentDate ?? ""}
-                        onChange={(e) => set("shipping", { ...data.shipping, sentDate: e.target.value || null })}
+                        onChange={(v) => set("shipping", { ...data.shipping, sentDate: v || null })}
                       />
                     </Field>
                     <div className="col-span-2">

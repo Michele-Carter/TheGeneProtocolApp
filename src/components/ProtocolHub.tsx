@@ -9,6 +9,7 @@ import { ProtocolBuilderState } from "../hooks/useProtocolBuilderState";
 import { ProtocolsRegistry } from "../hooks/useProtocols";
 import { ProtocolSubView } from "./ProtocolBuilder";
 import { getAccentHex } from "../lib/protocolBuilderUtils";
+import { Spinner } from "./LoadingSpinner";
 
 export default function ProtocolHub({
   state,
@@ -134,7 +135,7 @@ export default function ProtocolHub({
                             className="flex-1 min-w-0 bg-slate-950 border border-gold-500/50 rounded-lg px-2 py-1 text-xs text-slate-400 outline-none"
                           />
                           <button type="button" onClick={() => void submitEdit()} disabled={isSaving} className="text-gold-400 hover:text-gold-300 p-1 cursor-pointer outline-none flex-shrink-0">
-                            <Check size={13} />
+                            {isSaving ? <Spinner size={13} /> : <Check size={13} />}
                           </button>
                           <button type="button" onClick={() => setEditingId(null)} className="text-slate-500 hover:text-slate-300 p-1 cursor-pointer outline-none flex-shrink-0">
                             <X size={13} />
@@ -178,7 +179,7 @@ export default function ProtocolHub({
                               className="p-1 text-red-400 hover:text-red-300 cursor-pointer outline-none"
                               title="Confirm delete"
                             >
-                              <Check size={11} />
+                              {isSaving ? <Spinner size={11} /> : <Check size={11} />}
                             </button>
                             <button
                               type="button"
@@ -219,7 +220,7 @@ export default function ProtocolHub({
                         className="flex-1 min-w-0 bg-slate-950 border border-gold-500/50 rounded-lg px-2 py-1 text-xs text-white placeholder:text-slate-600 outline-none"
                       />
                       <button type="button" onClick={() => void submitCreate()} disabled={isSaving} className="text-gold-400 hover:text-gold-300 p-1 cursor-pointer outline-none flex-shrink-0">
-                        <Check size={13} />
+                        {isSaving ? <Spinner size={13} /> : <Check size={13} />}
                       </button>
                       <button type="button" onClick={() => setIsCreating(false)} className="text-slate-500 hover:text-slate-300 p-1 cursor-pointer outline-none flex-shrink-0">
                         <X size={13} />
@@ -257,7 +258,7 @@ export default function ProtocolHub({
                       className="bg-transparent text-xs text-slate-400 outline-none w-24"
                     />
                     <button type="button" onClick={() => void submitEdit()} disabled={isSaving} className="text-gold-400 hover:text-gold-300 p-1 cursor-pointer outline-none">
-                      <Check size={13} />
+                      {isSaving ? <Spinner size={13} /> : <Check size={13} />}
                     </button>
                     <button type="button" onClick={() => setEditingId(null)} className="text-slate-500 hover:text-slate-300 p-1 cursor-pointer outline-none">
                       <X size={13} />
@@ -298,7 +299,7 @@ export default function ProtocolHub({
                   className="bg-transparent text-xs text-white placeholder:text-slate-600 outline-none w-28"
                 />
                 <button type="button" onClick={() => void submitCreate()} disabled={isSaving} className="text-gold-400 hover:text-gold-300 p-1 cursor-pointer outline-none">
-                  <Check size={13} />
+                  {isSaving ? <Spinner size={13} /> : <Check size={13} />}
                 </button>
                 <button type="button" onClick={() => setIsCreating(false)} className="text-slate-500 hover:text-slate-300 p-1 cursor-pointer outline-none">
                   <X size={13} />
