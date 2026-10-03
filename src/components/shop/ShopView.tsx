@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Check, Search, ShoppingCart, X } from "lucide-react";
+import { Check, Package, Search, ShoppingCart, X } from "lucide-react";
+import type { AccountTab } from "../MyAccount";
 import type { ShopOrder, ShopProduct } from "../../../shared/shop";
 import { shopApi } from "../../lib/shopApi";
 import { useCart } from "../../hooks/useCart";
@@ -13,7 +14,7 @@ import { ProductImage, StockBadge, priceRange, productStock, shopPrimary, shopSe
 
 type Page = { name: "list" } | { name: "product"; id: string } | { name: "cart" } | { name: "sent"; order: ShopOrder };
 
-export default function ShopView({ onOpenAccount }: { onOpenAccount: () => void }) {
+export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: AccountTab) => void }) {
   const { getToken } = useAuth();
   const cart = useCart();
   const [products, setProducts] = useState<ShopProduct[] | null>(null);
@@ -70,7 +71,11 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: () => void 
         <h2 className="text-lg font-black text-white tracking-tight">Shop</h2>
         <p className="text-sm text-slate-400">Choose your products and send us your order - we'll confirm it and the shipping cost.</p>
       </div>
-      <button className={`${shopSecondary} relative flex-shrink-0`} onClick={() => go({ name: "cart" })}>
+      <div className="flex items-center gap-2 flex-shrink-0">
+      <button className={shopSecondary} onClick={() => onOpenAccount("orders")}>
+        <Package size={14} /> <span className="hidden sm:inline">My orders</span>
+      </button>
+      <button className={`${shopSecondary} relative`} onClick={() => go({ name: "cart" })}>
         <ShoppingCart size={14} /> Cart
         {cart.count > 0 && (
           <span className="absolute -top-2 -right-2 min-w-[1.25rem] h-5 px-1 rounded-full bg-gold-500 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
@@ -78,6 +83,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: () => void 
           </span>
         )}
       </button>
+      </div>
     </div>
   );
 
@@ -101,7 +107,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: () => void 
           products={products ?? []}
           cart={cart}
           onBack={() => go({ name: "list" })}
-          onOpenAccount={onOpenAccount}
+          onOpenAccount={() => onOpenAccount("details")}
           onStockChanged={load}
           onSent={(order) => {
             cart.clear();
@@ -117,7 +123,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: () => void 
     return (
       <div className="space-y-6">
         {header}
-        <OrderSent order={page.order} onBack={() => go({ name: "list" })} />
+        <OrderSent order={page.order} onBack={() => go({ name: "list" })} onViewOrders={() => onOpenAccount("orders")} />
       </div>
     );
   }

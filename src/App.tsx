@@ -7,7 +7,9 @@ import React, { useState, useRef, useCallback, useEffect, Suspense, lazy } from 
 import { Show, UserButton, useAuth } from "@clerk/react";
 import ProtocolBuilder from "./components/ProtocolBuilder";
 import ShopView from "./components/shop/ShopView";
-import MyAccount from "./components/MyAccount";
+import MyAccount, { type AccountTab } from "./components/MyAccount";
+import NotificationBell from "./components/NotificationBell";
+import { useNotifications } from "./hooks/useNotifications";
 import ReconstitutionCalc from "./components/ReconstitutionCalc";
 import TrackingManager from "./components/TrackingManager";
 import DashboardPage from "./components/DashboardPage";
@@ -112,6 +114,8 @@ export default function App() {
 
   const isAdmin = useIsAdmin(isLoaded && sessionChecked && hasValidSession);
   const { waiting: waitingOrders, refresh: refreshWaitingOrders } = useWaitingOrders(isAdmin);
+  const notifications = useNotifications(isLoaded && sessionChecked && hasValidSession);
+  const [accountTab, setAccountTab] = useState<AccountTab>("orders");
 
   useEffect(() => {
     // Keep each tab landing at the top so page headers are always fully visible.
@@ -142,6 +146,14 @@ export default function App() {
     });
   }, []);
 
+  const openAccount = useCallback(
+    (tab: AccountTab) => {
+      setAccountTab(tab);
+      navigateTab("account");
+    },
+    [navigateTab]
+  );
+
   const navigateAdmin = useCallback((section: AdminSection) => {
     setIsMobileMenuOpen(false);
     setActiveTab("admin");
@@ -161,9 +173,9 @@ export default function App() {
       case "protocol":
         return <ProtocolBuilder key={protocolResetKey} />;
       case "shop":
-        return <ShopView onOpenAccount={() => navigateTab("account")} />;
+        return <ShopView onOpenAccount={openAccount} />;
       case "account":
-        return <MyAccount />;
+        return <MyAccount initialTab={accountTab} onShop={() => navigateTab("shop")} />;
       case "recon":
         return <ReconstitutionCalc />;
       case "logs":
@@ -302,7 +314,7 @@ export default function App() {
                     </button>
 
                     <button
-                      onClick={() => navigateTab("account")}
+                      onClick={() => openAccount("orders")}
                       id="sidebar-btn-account"
                       className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "account"
                         ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
@@ -353,10 +365,17 @@ export default function App() {
               </nav>
             </div>
 
-            <div className="px-2 pb-1">
+            <div className="px-2 pb-1 flex items-center gap-2">
               <div className="rounded-3xl bg-transparent px-2 py-1.5 w-fit">
                 <UserButton />
               </div>
+              <NotificationBell
+                  items={notifications.items}
+                  unread={notifications.unread}
+                  onOpen={() => void notifications.markAllRead()}
+                  onSelect={() => openAccount("orders")}
+                  placement="up"
+                />
             </div>
           </aside>
 
@@ -378,6 +397,13 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-3">
+                <NotificationBell
+                  items={notifications.items}
+                  unread={notifications.unread}
+                  onOpen={() => void notifications.markAllRead()}
+                  onSelect={() => openAccount("orders")}
+                  placement="down"
+                />
                 <div className="rounded-3xl bg-transparent px-2 py-1.5">
                   <UserButton />
                 </div>
@@ -463,7 +489,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => {
-                      navigateTab("account");
+                      openAccount("orders");
                     }}
                     className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "account" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
                       }`}

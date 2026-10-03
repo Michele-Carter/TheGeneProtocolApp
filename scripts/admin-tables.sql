@@ -152,6 +152,19 @@ CREATE TABLE IF NOT EXISTS shop_orders (
 CREATE INDEX IF NOT EXISTS shop_orders_customer_idx ON shop_orders (customer_id, created_at);
 CREATE INDEX IF NOT EXISTS shop_orders_status_idx ON shop_orders (status);
 
+-- Messages shown to a customer in the app (order confirmed, declined, on its way).
+CREATE TABLE IF NOT EXISTS notifications (
+  id text PRIMARY KEY,
+  customer_id text NOT NULL,
+  shop_order_id text,
+  kind text NOT NULL,
+  title text NOT NULL,
+  body text NOT NULL DEFAULT '',
+  read_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notifications_customer_idx ON notifications (customer_id, created_at);
+
 -- Products can be in several categories: carry over the single shop_category briefly used before, then drop it.
 DO $$
 BEGIN

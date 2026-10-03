@@ -20,6 +20,7 @@ import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_PRODUCT, normalizeCategories, type Shop
 import { toAddress } from "../../shared/customers.js";
 import { linkCustomerByEmail, syncCustomersFromLogins } from "../_lib/customers.js";
 import { availableStock, orderDemand } from "../_lib/shopCatalog.js";
+import { confirmedMessage, declinedMessage, notify, notifyIfShipped } from "../_lib/notifications.js";
 import {
     bundles,
     customers,
@@ -870,6 +871,7 @@ async function handleSales(req: any, res: any, db: Db) {
             .set({ customerId: customer.id, customerName: customer.name, orderDate: data.orderDate, data, updatedAt: new Date() })
             .where(eq(sales.id, id!))
             .returning();
+        await notifyIfShipped(db, row.id, existing.data as SaleInput, data);
         return sendJson(res, 200, saleDto(row));
     }
 
@@ -1256,12 +1258,22 @@ async function handleShopOrders(req: any, res: any, db: Db) {
     if (action === "decline") {
         const parsed = declineSchema.safeParse(read.body);
         if (!parsed.success) return validationError(res, parsed.error);
-        const [row] = await db
-            .update(shopOrders)
-            .set({ status: "declined", adminMessage: parsed.data.message.trim(), decidedAt: new Date(), updatedAt: new Date() })
-            .where(and(eq(shopOrders.id, id), eq(shopOrders.status, "submitted")))
-            .returning();
-        if (!row) return sendJson(res, 409, { error: "This order has already been dealt with." });
+        const declined = await db.transaction(async (tx) => {
+            const [row] = await tx
+                .update(shopOrders)
+                .set({ status: "declined", adminMessage: parsed.data.message.trim(), decidedAt: new Date(), updatedAt: new Date() })
+                .where(and(eq(shopOrders.id, id), eq(shopOrders.status, "submitted")))
+                .returning();
+            if (row) {
+                await notify(tx, {
+                    customerId: row.customerId,
+                    shopOrderId: row.id,
+                    ...declinedMessage(row.orderNumber, row.adminMessage),
+                });
+            }
+            return row;
+        });
+        if (!declined) return sendJson(res, 409, { error: "This order has already been dealt with." });
         return sendJson(res, 200, { success: true });
     }
 
@@ -1330,6 +1342,11 @@ async function handleShopOrders(req: any, res: any, db: Db) {
                     updatedAt: new Date(),
                 })
                 .where(eq(shopOrders.id, id));
+            await notify(tx, {
+                customerId: customer.id,
+                shopOrderId: order.id,
+                ...confirmedMessage(order.orderNumber, saleTotals(data).total, parsed.data.message.trim()),
+            });
             return { saleId };
         });
         return sendJson(res, 200, result);

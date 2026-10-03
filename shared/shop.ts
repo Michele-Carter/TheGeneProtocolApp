@@ -113,6 +113,29 @@ export interface ShopOrder {
   adminMessage: string;
   createdAt: string;
   decidedAt: string | null;
+  // Once confirmed: how the order is going, from the customer order it became.
+  progress: {
+    totalNzd: number; // items + shipping, less any discount
+    paymentStatus: "unpaid" | "part-paid" | "paid";
+    balanceNzd: number;
+    shippingStatus: "not-sent" | "sent" | "delivered" | "collected";
+    courier: string;
+    tracking: string;
+    sentDate: string | null;
+    completed: boolean;
+  } | null;
+}
+
+export type NotificationKind = "confirmed" | "declined" | "sent";
+
+export interface CustomerNotification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  shopOrderId: string | null;
+  read: boolean;
+  createdAt: string;
 }
 
 // Product images are resized in the browser before upload, so this is a generous ceiling.

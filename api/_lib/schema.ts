@@ -147,6 +147,22 @@ export const shopOrders = pgTable(
   (t) => [index("shop_orders_customer_idx").on(t.customerId, t.createdAt)]
 );
 
+// A message for a customer about one of their shop orders, shown under the bell in the app.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: text("id").primaryKey(),
+    customerId: text("customer_id").notNull(),
+    shopOrderId: text("shop_order_id"),
+    kind: text("kind").notNull(), // "confirmed" | "declined" | "sent"
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("notifications_customer_idx").on(t.customerId, t.createdAt)]
+);
+
 // A reusable kit of inventory items sold together (e.g. "Pen Starter Bundle"). Holds no stock
 // of its own — selling one expands it into a SaleLine per component (shared/bundles.ts).
 export const bundles = pgTable("bundles", {

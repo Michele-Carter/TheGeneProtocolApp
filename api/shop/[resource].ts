@@ -1,13 +1,14 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
 import { customerForUser } from "../_lib/customers.js";
 import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
-import { customers, shopOrders } from "../_lib/schema.js";
+import { customers, notifications, sales, shopOrders } from "../_lib/schema.js";
 import { loadCatalog, orderDemand } from "../_lib/shopCatalog.js";
 import { isAddressComplete, toAddress } from "../../shared/customers.js";
-import type { ShopOrder, ShopOrderLine } from "../../shared/shop.js";
+import { saleTotals, type SaleInput } from "../../shared/sales.js";
+import type { CustomerNotification, ShopOrder, ShopOrderLine } from "../../shared/shop.js";
 
 // Endpoints for signed-in customers. Everything here only ever reads or changes the caller's own records.
 //   GET  /api/shop/me         the caller's customer details (linked or created on first visit)
@@ -15,6 +16,9 @@ import type { ShopOrder, ShopOrderLine } from "../../shared/shop.js";
 //   GET  /api/shop/products   everything in the shop, with prices and a stock label
 //   GET  /api/shop/orders     the caller's orders
 //   POST /api/shop/orders     send an order { lines: [{ key, qty }], notes } - prices and stock are checked here
+//   POST /api/shop/orders?id=&action=cancel   withdraw an order that hasn't been confirmed yet
+//   GET  /api/shop/notifications              latest notifications + unread count
+//   POST /api/shop/notifications?action=read  mark them all read
 
 type Db = ReturnType<typeof getDb>;
 type CustomerRow = typeof customers.$inferSelect;
@@ -90,7 +94,25 @@ const orderSchema = z.object({
 
 class OrderError extends Error {}
 
-function orderDto(row: typeof shopOrders.$inferSelect): ShopOrder {
+// The customer-facing view of a confirmed order's progress. Only payment and shipping status are shared -
+// never costs or profit.
+function progressOf(sale: typeof sales.$inferSelect | undefined): ShopOrder["progress"] {
+    if (!sale) return null;
+    const data = sale.data as SaleInput;
+    const totals = saleTotals(data);
+    return {
+        totalNzd: totals.total,
+        paymentStatus: totals.paymentStatus,
+        balanceNzd: Math.max(0, totals.balance),
+        shippingStatus: data.shipping.status,
+        courier: data.shipping.courier,
+        tracking: data.shipping.tracking,
+        sentDate: data.shipping.sentDate,
+        completed: sale.status === "completed",
+    };
+}
+
+function orderDto(row: typeof shopOrders.$inferSelect, sale?: typeof sales.$inferSelect): ShopOrder {
     return {
         id: row.id,
         orderNumber: row.orderNumber,
@@ -102,11 +124,13 @@ function orderDto(row: typeof shopOrders.$inferSelect): ShopOrder {
         adminMessage: row.adminMessage,
         createdAt: row.createdAt.toISOString(),
         decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
+        progress: row.status === "confirmed" ? progressOf(sale) : null,
     };
 }
 
 async function handleOrders(req: any, res: any, db: Db, userId: string) {
     const customer = await customerForUser(db, userId);
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
 
     if (req.method === "GET") {
         const rows = await db
@@ -114,7 +138,21 @@ async function handleOrders(req: any, res: any, db: Db, userId: string) {
             .from(shopOrders)
             .where(eq(shopOrders.customerId, customer.id))
             .orderBy(desc(shopOrders.createdAt));
-        return sendJson(res, 200, rows.map(orderDto));
+        const saleIds = rows.map((r) => r.saleId).filter((s): s is string => Boolean(s));
+        const saleRows = saleIds.length ? await db.select().from(sales).where(inArray(sales.id, saleIds)) : [];
+        const salesById = new Map(saleRows.map((s) => [s.id, s]));
+        return sendJson(res, 200, rows.map((row) => orderDto(row, row.saleId ? salesById.get(row.saleId) : undefined)));
+    }
+
+    // A customer can withdraw an order until it's been confirmed.
+    if (req.method === "POST" && id && req.query?.action === "cancel") {
+        const [row] = await db
+            .update(shopOrders)
+            .set({ status: "cancelled", decidedAt: new Date(), updatedAt: new Date() })
+            .where(and(eq(shopOrders.id, id), eq(shopOrders.customerId, customer.id), eq(shopOrders.status, "submitted")))
+            .returning();
+        if (!row) return sendJson(res, 409, { error: "This order can't be cancelled - it may already have been confirmed." });
+        return sendJson(res, 200, orderDto(row));
     }
 
     if (req.method === "POST") {
@@ -207,6 +245,44 @@ async function handleOrders(req: any, res: any, db: Db, userId: string) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+async function handleNotifications(req: any, res: any, db: Db, userId: string) {
+    const customer = await customerForUser(db, userId);
+
+    if (req.method === "GET") {
+        const rows = await db
+            .select()
+            .from(notifications)
+            .where(eq(notifications.customerId, customer.id))
+            .orderBy(desc(notifications.createdAt))
+            .limit(30);
+        const [unread] = await db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(notifications)
+            .where(and(eq(notifications.customerId, customer.id), isNull(notifications.readAt)));
+        const items: CustomerNotification[] = rows.map((r) => ({
+            id: r.id,
+            kind: r.kind as CustomerNotification["kind"],
+            title: r.title,
+            body: r.body,
+            shopOrderId: r.shopOrderId,
+            read: r.readAt != null,
+            createdAt: r.createdAt.toISOString(),
+        }));
+        return sendJson(res, 200, { unread: unread?.n ?? 0, items });
+    }
+
+    if (req.method === "POST" && req.query?.action === "read") {
+        await db
+            .update(notifications)
+            .set({ readAt: new Date() })
+            .where(and(eq(notifications.customerId, customer.id), isNull(notifications.readAt)));
+        return sendJson(res, 200, { success: true });
+    }
+
+    res.setHeader("Allow", "GET, POST");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
 export default async function handler(req: any, res: any) {
     const userId = await requireAuthUserId(req);
     if (!userId) {
@@ -229,6 +305,8 @@ export default async function handler(req: any, res: any) {
                 return await handleProducts(req, res, db);
             case "orders":
                 return await handleOrders(req, res, db, userId);
+            case "notifications":
+                return await handleNotifications(req, res, db, userId);
             default:
                 return sendJson(res, 404, { error: "Not found" });
         }

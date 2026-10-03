@@ -1,5 +1,5 @@
 import type { CustomerDetails, ShippingAddress } from "../../shared/customers";
-import type { CartLine, ShopOrder, ShopProduct } from "../../shared/shop";
+import type { CartLine, CustomerNotification, ShopOrder, ShopProduct } from "../../shared/shop";
 
 // Calls made by signed-in customers (api/shop). The server only ever returns the caller's own data.
 
@@ -39,6 +39,13 @@ export const shopApi = {
   orders: (t: GetToken) => shopFetch<ShopOrder[]>("orders", { method: "GET" }, t),
   sendOrder: (data: { lines: CartLine[]; notes: string }, t: GetToken) =>
     shopFetch<ShopOrder>("orders", { method: "POST", body: JSON.stringify(data) }, t),
+  cancelOrder: (id: string, t: GetToken) =>
+    shopFetch<ShopOrder>(`orders?id=${encodeURIComponent(id)}&action=cancel`, { method: "POST", body: "{}" }, t),
+
+  notifications: (t: GetToken) =>
+    shopFetch<{ unread: number; items: CustomerNotification[] }>("notifications", { method: "GET" }, t),
+  markNotificationsRead: (t: GetToken) =>
+    shopFetch<{ success: true }>("notifications?action=read", { method: "POST", body: "{}" }, t),
 };
 
 export const money = (value: number) =>

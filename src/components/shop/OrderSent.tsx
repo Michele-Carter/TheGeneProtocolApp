@@ -2,9 +2,9 @@ import React from "react";
 import { CheckCircle2 } from "lucide-react";
 import type { ShopOrder } from "../../../shared/shop";
 import { money } from "../../lib/shopApi";
-import { shopPrimary } from "./parts";
+import { shopPrimary, shopSecondary } from "./parts";
 
-export default function OrderSent({ order, onBack }: { order: ShopOrder; onBack: () => void }) {
+export default function OrderSent({ order, onBack, onViewOrders }: { order: ShopOrder; onBack: () => void; onViewOrders: () => void }) {
   return (
     <div className="max-w-xl mx-auto bg-slate-900/40 border border-slate-800 rounded-2xl p-6 md:p-8 space-y-6">
       <div className="text-center space-y-2">
@@ -12,7 +12,7 @@ export default function OrderSent({ order, onBack }: { order: ShopOrder; onBack:
         <h3 className="text-xl font-black text-white">Order #{order.orderNumber} sent</h3>
         <p className="text-sm text-slate-400">
           Thanks! We'll check everything is in stock and confirm your order along with the shipping cost. Nothing has been
-          charged.
+          charged - you'll get a notification (the bell) when it's confirmed.
         </p>
       </div>
 
@@ -35,7 +35,10 @@ export default function OrderSent({ order, onBack }: { order: ShopOrder; onBack:
         </div>
       </div>
 
-      <div className="text-center">
+      <div className="flex flex-wrap justify-center gap-2">
+        <button className={shopSecondary} onClick={onViewOrders}>
+          View my orders
+        </button>
         <button className={shopPrimary} onClick={onBack}>
           Back to shop
         </button>

@@ -4,6 +4,7 @@ import { CheckCircle2, MapPin, Save } from "lucide-react";
 import { emptyAddress, isAddressComplete, type ShippingAddress } from "../../shared/customers";
 import { shopApi, type MyDetails } from "../lib/shopApi";
 import AddressFields from "./AddressFields";
+import MyOrders from "./shop/MyOrders";
 import { Card, ErrorNote, Field, inputClass, primaryButton } from "./admin/ui";
 import LoadingSpinner, { Spinner } from "./LoadingSpinner";
 
@@ -15,8 +16,12 @@ interface Form {
 
 const toForm = (d: MyDetails): Form => ({ name: d.name, email: d.email, shippingAddress: d.shippingAddress });
 
-export default function MyAccount() {
+export type AccountTab = "orders" | "details";
+
+export default function MyAccount({ initialTab = "orders", onShop }: { initialTab?: AccountTab; onShop: () => void }) {
   const { getToken } = useAuth();
+  const [tab, setTab] = useState<AccountTab>(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const [saved, setSaved] = useState<Form | null>(null);
   const [form, setForm] = useState<Form>({ name: "", email: "", shippingAddress: emptyAddress() });
   const [error, setError] = useState<string | null>(null);
@@ -60,12 +65,32 @@ export default function MyAccount() {
     <div className="space-y-8">
       <div className="space-y-1">
         <h2 className="text-lg font-black text-white tracking-tight">My Account</h2>
-        <p className="text-sm text-slate-400">Your contact and shipping details for orders.</p>
+        <p className="text-sm text-slate-400">Your orders, and the details we use to send them.</p>
       </div>
 
-      {saved == null && !error && <LoadingSpinner label="Loading your details..." />}
+      <div className="flex gap-2 border-b border-slate-800/80 pb-3">
+        {(["orders", "details"] as AccountTab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
+              tab === t ? "border-gold-500/60 text-gold-400" : "border-transparent text-slate-400 hover:text-white hover:bg-slate-900/40"
+            }`}
+          >
+            {t === "orders" ? "My Orders" : "My Details"}
+          </button>
+        ))}
+      </div>
 
-      {saved != null && (
+      {tab === "orders" && (
+        <div className="max-w-2xl">
+          <MyOrders onShop={onShop} />
+        </div>
+      )}
+
+      {tab === "details" && saved == null && !error && <LoadingSpinner label="Loading your details..." />}
+
+      {tab === "details" && saved != null && (
         <div className="max-w-2xl space-y-5">
           {!isAddressComplete(saved.shippingAddress) && (
             <div className="flex items-start gap-2 text-xs text-amber-300 bg-amber-950/30 border border-amber-900/60 rounded-lg px-3 py-2">
@@ -114,7 +139,7 @@ export default function MyAccount() {
         </div>
       )}
 
-      {saved == null && <ErrorNote message={error} />}
+      {tab === "details" && saved == null && <ErrorNote message={error} />}
     </div>
   );
 }
