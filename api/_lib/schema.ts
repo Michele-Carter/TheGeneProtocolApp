@@ -1,4 +1,5 @@
 import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import type { ShopOrderLine } from "../../shared/shop.js";
 
 export const userStateScopeEnum = pgEnum("user_state_scope", [
   "protocol",
@@ -122,6 +123,29 @@ export const sales = pgTable("sales", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// An order a customer sent from the shop: "submitted" until the owner confirms it (creating the sale in
+// saleId) or declines it. Prices are fixed when it's sent; shippingNzd is set by the owner when confirming.
+export const shopOrders = pgTable(
+  "shop_orders",
+  {
+    id: text("id").primaryKey(),
+    orderNumber: integer("order_number").notNull(),
+    customerId: text("customer_id").notNull(),
+    status: text("status").notNull().default("submitted"), // ShopOrderStatus (shared/shop.ts)
+    lines: jsonb("lines").$type<ShopOrderLine[]>().notNull(),
+    subtotalNzd: numeric("subtotal_nzd", { precision: 14, scale: 2, mode: "number" }).notNull(),
+    shippingNzd: numeric("shipping_nzd", { precision: 14, scale: 2, mode: "number" }),
+    notes: text("notes").notNull().default(""),
+    shippingAddress: jsonb("shipping_address").notNull(),
+    adminMessage: text("admin_message").notNull().default(""),
+    saleId: text("sale_id"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("shop_orders_customer_idx").on(t.customerId, t.createdAt)]
+);
 
 // A reusable kit of inventory items sold together (e.g. "Pen Starter Bundle"). Holds no stock
 // of its own — selling one expands it into a SaleLine per component (shared/bundles.ts).

@@ -755,13 +755,14 @@ html.dark footer {
   border-color: var(--theme-dark-border) !important;
 }
 
-/* Main content surfaces (exclude tiny pills/dots) */
+/* Main content surfaces (exclude tiny pills/dots, and .theme-keep-bg - elements whose own colour matters,
+   like solid gold buttons and the white panels behind product photos) */
 html.dark main :is(.rounded-md,
   .rounded-lg,
   .rounded-xl,
   [class*="rounded-md"],
   [class*="rounded-lg"],
-  [class*="rounded-xl"]):not(.rounded-full):not([class*="rounded-full"]):not(.protocol-goal-button):not(.protocol-selected-chip):not(.protocol-dose-checkbox):not(.protocol-unit-toggle) {
+  [class*="rounded-xl"]):not(.rounded-full):not([class*="rounded-full"]):not(.protocol-goal-button):not(.protocol-selected-chip):not(.protocol-dose-checkbox):not(.protocol-unit-toggle):not(.theme-keep-bg) {
   background-color: var(--theme-dark-surface) !important;
   border-color: var(--theme-dark-border) !important;
 }

@@ -4,11 +4,11 @@
 import React from "react";
 import {
   Beaker,
-  Search,
   Scale,
   ClipboardList,
   ArrowRight,
-  BookOpen
+  BookOpen,
+  ShoppingCart
 } from "lucide-react";
 import { PEPTIDEDB_ENTRIES } from "../data/peptideDb";
 
@@ -22,7 +22,7 @@ declare global {
 }
 
 interface DashboardPageProps {
-  setActiveTab: (tab: "dashboard" | "protocol" | "pricing" | "recon" | "logs" | "peptideDb") => void;
+  setActiveTab: (tab: "dashboard" | "protocol" | "shop" | "recon" | "logs" | "peptideDb") => void;
 }
 
 export default function DashboardPage({ setActiveTab }: DashboardPageProps) {
@@ -41,11 +41,11 @@ export default function DashboardPage({ setActiveTab }: DashboardPageProps) {
       borderStates: "focus-within:border-gold-500 hover:border-gold-500/70",
     },
     {
-      id: "pricing" as const,
-      title: "Pricing",
-      description: "Browse our current product lineup and pricing by vial size.",
-      icon: Search,
-      badge: "Product Catalog",
+      id: "shop" as const,
+      title: "Shop",
+      description: "Browse our products, check what's in stock and send us your order.",
+      icon: ShoppingCart,
+      badge: "Order Online",
       color: "from-gold-500 to-blue-500",
       accentText: "text-gold-400",
       bgHover: "hover:border-gold-500/30 hover:bg-gold-950/5",

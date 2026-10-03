@@ -103,7 +103,7 @@ export default function ProductImages({
           {images.map((url, index) => (
             <div
               key={url}
-              className={`relative group aspect-square rounded-xl overflow-hidden bg-white border ${
+              className={`theme-keep-bg relative group aspect-square rounded-xl overflow-hidden bg-white border ${
                 index === 0 ? "border-gold-500/70" : "border-slate-800"
               }`}
             >

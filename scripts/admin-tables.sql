@@ -129,6 +129,29 @@ UPDATE sales s SET customer_id = c.id
 FROM customers c
 WHERE s.customer_id IS NULL AND lower(c.name) = lower(trim(s.customer_name));
 
+-- Orders customers send from the shop. They wait as "submitted" until the owner confirms them
+-- (which turns them into a normal customer order in `sales`) or declines them. Stock only moves via the sale.
+-- lines: ShopOrderLine[] with prices fixed at the time of ordering (shared/shop.ts).
+CREATE SEQUENCE IF NOT EXISTS shop_order_number_seq START 1001;
+CREATE TABLE IF NOT EXISTS shop_orders (
+  id text PRIMARY KEY,
+  order_number integer NOT NULL DEFAULT nextval('shop_order_number_seq'),
+  customer_id text NOT NULL,
+  status text NOT NULL DEFAULT 'submitted',
+  lines jsonb NOT NULL,
+  subtotal_nzd numeric(14, 2) NOT NULL,
+  shipping_nzd numeric(14, 2),
+  notes text NOT NULL DEFAULT '',
+  shipping_address jsonb NOT NULL,
+  admin_message text NOT NULL DEFAULT '',
+  sale_id text,
+  decided_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS shop_orders_customer_idx ON shop_orders (customer_id, created_at);
+CREATE INDEX IF NOT EXISTS shop_orders_status_idx ON shop_orders (status);
+
 -- Products can be in several categories: carry over the single shop_category briefly used before, then drop it.
 DO $$
 BEGIN

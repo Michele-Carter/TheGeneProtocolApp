@@ -6,7 +6,7 @@
 import React, { useState, useRef, useCallback, useEffect, Suspense, lazy } from "react";
 import { Show, UserButton, useAuth } from "@clerk/react";
 import ProtocolBuilder from "./components/ProtocolBuilder";
-import MyPricing from "./components/MyPricing";
+import ShopView from "./components/shop/ShopView";
 import MyAccount from "./components/MyAccount";
 import ReconstitutionCalc from "./components/ReconstitutionCalc";
 import TrackingManager from "./components/TrackingManager";
@@ -19,7 +19,6 @@ import { useIsAdmin } from "./hooks/useIsAdmin";
 import type { AdminSection } from "./components/admin/AdminArea";
 import {
   Beaker,
-  Search,
   Scale,
   ClipboardList,
   ShieldAlert,
@@ -37,12 +36,13 @@ import {
   Receipt,
   Users,
   UserRound,
+  ShoppingCart,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
 const AdminArea = lazy(() => import("./components/admin/AdminArea"));
 
-type ActiveTab = "dashboard" | "protocol" | "pricing" | "account" | "recon" | "logs" | "peptideDb" | "admin";
+type ActiveTab = "dashboard" | "protocol" | "shop" | "account" | "recon" | "logs" | "peptideDb" | "admin";
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard size={13} /> },
@@ -156,8 +156,8 @@ export default function App() {
         return <DashboardPage setActiveTab={navigateTab} />;
       case "protocol":
         return <ProtocolBuilder key={protocolResetKey} />;
-      case "pricing":
-        return <MyPricing />;
+      case "shop":
+        return <ShopView onOpenAccount={() => navigateTab("account")} />;
       case "account":
         return <MyAccount />;
       case "recon":
@@ -281,15 +281,15 @@ export default function App() {
                 <div>
                   <div className="space-y-1.5">
                     <button
-                      onClick={() => navigateTab("pricing")}
-                      id="sidebar-btn-pricing"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "pricing"
+                      onClick={() => navigateTab("shop")}
+                      id="sidebar-btn-shop"
+                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "shop"
                         ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
                         : "text-slate-400 hover:text-white hover:bg-slate-900/40"
                         }`}
                     >
-                      <Search size={14} />
-                      <span>Pricing</span>
+                      <ShoppingCart size={14} />
+                      <span>Shop</span>
                     </button>
 
                     <button
@@ -442,13 +442,13 @@ export default function App() {
                 <div className="flex flex-col gap-1">
                   <button
                     onClick={() => {
-                      navigateTab("pricing");
+                      navigateTab("shop");
                     }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "pricing" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
+                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "shop" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
                       }`}
                   >
-                    <Search size={14} />
-                    <span>Pricing</span>
+                    <ShoppingCart size={14} />
+                    <span>Shop</span>
                   </button>
                   <button
                     onClick={() => {
