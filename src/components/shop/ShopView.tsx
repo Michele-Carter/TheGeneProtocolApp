@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { Check, Package, Search, ShoppingCart, X } from "lucide-react";
 import type { AccountTab } from "../MyAccount";
-import type { ShopOrder, ShopProduct } from "../../../shared/shop";
+import { SHOP_SECTIONS, type ShopOrder, type ShopProduct, type ShopSection } from "../../../shared/shop";
 import { shopApi } from "../../lib/shopApi";
 import { useCart } from "../../hooks/useCart";
 import { ErrorNote } from "../admin/ui";
@@ -20,6 +20,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
   const [products, setProducts] = useState<ShopProduct[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<Page>({ name: "list" });
+  const [section, setSection] = useState<ShopSection | null>(null);
   const [category, setCategory] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [justAdded, setJustAdded] = useState<string | null>(null);
@@ -42,20 +43,32 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
     document.querySelector(".app-main-scroller")?.scrollTo({ top: 0 });
   };
 
-  const categories = useMemo(
-    () => Array.from(new Set((products ?? []).flatMap((p) => p.categories))).sort((a, b) => a.localeCompare(b)),
-    [products]
+  const inSection = useMemo(
+    () => (products ?? []).filter((p) => section == null || p.section === section),
+    [products, section]
   );
+  // Only the categories used in the chosen tab.
+  const categories = useMemo(
+    () => Array.from(new Set(inSection.flatMap((p) => p.categories))).sort((a, b) => a.localeCompare(b)),
+    [inSection]
+  );
+  const sectionCount = (id: ShopSection | null) => (products ?? []).filter((p) => id == null || p.section === id).length;
+  // Tabs with nothing in them are left out.
+  const sections = SHOP_SECTIONS.filter((s) => sectionCount(s.id) > 0);
+  const chooseSection = (id: ShopSection | null) => {
+    setSection(id);
+    setCategory(null);
+  };
 
   const q = query.trim().toLowerCase();
   const visible = useMemo(
     () =>
-      (products ?? []).filter((p) => {
+      inSection.filter((p) => {
         if (category && !p.categories.includes(category)) return false;
         if (!q) return true;
         return [p.name, p.description, ...p.categories, ...p.variants.map((v) => v.label)].join(" ").toLowerCase().includes(q);
       }),
-    [products, category, q]
+    [inSection, category, q]
   );
 
   const quickAdd = (product: ShopProduct) => {
@@ -131,6 +144,25 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
   return (
     <div className="space-y-6">
       {header}
+
+      {sections.length > 1 && (
+        <div className="flex flex-wrap gap-1 border-b border-slate-800" role="tablist" aria-label="Product type">
+          {[{ id: null, label: "All" } as { id: ShopSection | null; label: string }, ...sections].map((s) => (
+            <button
+              key={s.id ?? "all"}
+              role="tab"
+              aria-selected={section === s.id}
+              onClick={() => chooseSection(s.id)}
+              className={`px-4 py-2.5 -mb-px text-sm font-black border-b-2 transition cursor-pointer ${
+                section === s.id ? "border-gold-500 text-white" : "border-transparent text-slate-400 hover:text-white"
+              }`}
+            >
+              {s.label}
+              <span className="ml-1.5 text-[11px] font-bold text-slate-500 tabular-nums">{sectionCount(s.id)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {[null, ...categories].map((c) => (

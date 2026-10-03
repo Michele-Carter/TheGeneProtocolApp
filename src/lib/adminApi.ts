@@ -3,7 +3,7 @@ import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sal
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
-import type { PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
+import type { ItemShopSection, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 
 export interface SaleRecord {
   id: string;
@@ -122,6 +122,7 @@ export interface InvItem {
   shopVisible: boolean;
   shopCategories: string[];
   shopDescription: string;
+  shopSection: ItemShopSection | null; // shop tab; null = by kind (itemSection)
   images: string[]; // first is the main image
   createdAt: string;
   updatedAt: string;
@@ -130,7 +131,7 @@ export interface InvItem {
 export type ItemPatch = Partial<
   Pick<
     InvItem,
-    "name" | "variant" | "unit" | "reorderLevel" | "sellPriceNzd" | "shopVisible" | "shopCategories" | "shopDescription"
+    "name" | "variant" | "unit" | "reorderLevel" | "sellPriceNzd" | "shopVisible" | "shopCategories" | "shopDescription" | "shopSection"
   >
 > & { applyToSizes?: boolean };
 

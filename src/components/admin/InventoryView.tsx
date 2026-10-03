@@ -11,6 +11,7 @@ import {
   type StockMovement,
 } from "../../lib/adminApi";
 import CategoryPicker from "./CategoryPicker";
+import { SHOP_SECTIONS, itemSection, type ItemShopSection } from "../../../shared/shop";
 import ProductImages from "./ProductImages";
 import { Card, ErrorNote, Field, NumberField, StatRow, dateButtonClass, inputClass, primaryButton, secondaryButton } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
@@ -235,7 +236,11 @@ export default function InventoryView() {
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     <span className="text-slate-200 font-semibold">{nzd(row.item.sellPriceNzd)}</span>
-                    {row.item.shopVisible && <div className="text-[10px] text-emerald-400">In shop</div>}
+                    {row.item.shopVisible && (
+                      <div className="text-[10px] text-emerald-400">
+                        In shop · {itemSection(row.item) === "supplies" ? "Supplies" : "Peptides"}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-gold-400 font-bold">{nzd(row.nextCostNzd, 3)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{nzd(row.averageCostNzd, 3)}</td>
@@ -278,6 +283,7 @@ function ShopCard({
   const [visible, setVisible] = useState(item.shopVisible);
   const [categories, setCategories] = useState(item.shopCategories);
   const [description, setDescription] = useState(item.shopDescription);
+  const [section, setSection] = useState<ItemShopSection>(itemSection(item));
   const [images, setImages] = useState(item.images);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -295,7 +301,8 @@ function ShopCard({
     price !== item.sellPriceNzd ||
     visible !== item.shopVisible ||
     categories.join("\n") !== item.shopCategories.join("\n") ||
-    description !== item.shopDescription;
+    description !== item.shopDescription ||
+    section !== itemSection(item);
 
   const save = async () => {
     if (visible && price == null) {
@@ -312,6 +319,7 @@ function ShopCard({
           shopVisible: visible,
           shopCategories: categories,
           shopDescription: description,
+          shopSection: section,
           applyToSizes: otherSizes.length > 0 && applyToSizes,
         },
         getToken
@@ -340,6 +348,27 @@ function ShopCard({
             </label>
           </div>
           <div className="space-y-1">
+            <span className="block text-[11px] font-bold text-white">Shows under</span>
+            <div className="flex gap-2">
+              {SHOP_SECTIONS.filter((s) => s.id !== "bundles").map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSection(s.id as ItemShopSection)}
+                  aria-pressed={section === s.id}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                    section === s.id
+                      ? "border-gold-500/60 text-gold-400 bg-gold-500/10"
+                      : "border-slate-800 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <span className="block text-[11px] text-slate-500">The shop tab this appears in.</span>
+          </div>
+          <div className="space-y-1">
             <span className="block text-[11px] font-bold text-white">Categories</span>
             <CategoryPicker value={categories} known={knownCategories} onChange={setCategories} />
           </div>
@@ -354,7 +383,7 @@ function ShopCard({
             <label className="flex items-start gap-2 text-[11px] text-slate-400 cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={applyToSizes} onChange={(e) => setApplyToSizes(e.target.checked)} />
               <span>
-                Use these categories and this description for the other {otherSizes.length === 1 ? "size" : "sizes"} too (
+                Use this tab, these categories and this description for the other {otherSizes.length === 1 ? "size" : "sizes"} too (
                 {otherSizes.map((row) => row.item.variant || "no size").join(", ")})
               </span>
             </label>

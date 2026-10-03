@@ -132,6 +132,7 @@ const itemPatchSchema = z.object({
     shopVisible: z.boolean().optional(),
     shopCategories: z.array(z.string()).transform(normalizeCategories).optional(),
     shopDescription: z.string().optional(),
+    shopSection: z.enum(["peptides", "supplies"]).nullable().optional(),
     // Also give every other size of this product (same name and kind) these categories and description.
     applyToSizes: z.boolean().optional(),
 });
@@ -325,12 +326,16 @@ async function handleItems(req: any, res: any, db: Db) {
                 .where(eq(invItems.id, id))
                 .returning();
             if (!updated) return null;
-            if (applyToSizes && (patch.shopCategories !== undefined || patch.shopDescription !== undefined)) {
+            if (
+                applyToSizes &&
+                (patch.shopCategories !== undefined || patch.shopDescription !== undefined || patch.shopSection !== undefined)
+            ) {
                 await tx
                     .update(invItems)
                     .set({
                         ...(patch.shopCategories !== undefined ? { shopCategories: patch.shopCategories } : {}),
                         ...(patch.shopDescription !== undefined ? { shopDescription: patch.shopDescription } : {}),
+                        ...(patch.shopSection !== undefined ? { shopSection: patch.shopSection } : {}),
                         updatedAt: new Date(),
                     })
                     .where(and(eq(invItems.name, updated.name), eq(invItems.kind, updated.kind), ne(invItems.id, id)));

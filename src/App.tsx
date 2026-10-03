@@ -38,7 +38,8 @@ import {
   Boxes,
   Receipt,
   Users,
-  UserRound,
+  Package,
+  MapPin,
   ShoppingCart,
   Inbox,
   Landmark,
@@ -177,6 +178,18 @@ export default function App() {
       }
     });
   }, []);
+
+  // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings.
+  const accountButton = (
+    <UserButton>
+      <UserButton.MenuItems>
+        <UserButton.Action label="My orders" labelIcon={<Package size={15} />} onClick={() => openAccount("orders")} />
+        <UserButton.Action label="My details" labelIcon={<MapPin size={15} />} onClick={() => openAccount("details")} />
+        <UserButton.Action label="manageAccount" />
+        <UserButton.Action label="signOut" />
+      </UserButton.MenuItems>
+    </UserButton>
+  );
 
   // Renders the appropriate component based on the active tab
   const renderTabContent = () => {
@@ -326,18 +339,6 @@ export default function App() {
                       <ShoppingCart size={14} />
                       <span>Shop</span>
                     </button>
-
-                    <button
-                      onClick={() => openAccount("orders")}
-                      id="sidebar-btn-account"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "account"
-                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-                        }`}
-                    >
-                      <UserRound size={14} />
-                      <span>My Account</span>
-                    </button>
                   </div>
                 </div>
 
@@ -381,7 +382,7 @@ export default function App() {
 
             <div className="px-2 pb-1 flex items-center gap-2 flex-shrink-0">
               <div className="rounded-3xl bg-transparent px-2 py-1.5 w-fit">
-                <UserButton />
+                {accountButton}
               </div>
               <NotificationBell
                   items={notifications.items}
@@ -419,7 +420,7 @@ export default function App() {
                   placement="down"
                 />
                 <div className="rounded-3xl bg-transparent px-2 py-1.5">
-                  <UserButton />
+                  {accountButton}
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -500,16 +501,6 @@ export default function App() {
                   >
                     <ShoppingCart size={14} />
                     <span>Shop</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      openAccount("orders");
-                    }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "account" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
-                      }`}
-                  >
-                    <UserRound size={14} />
-                    <span>My Account</span>
                   </button>
                 </div>
 

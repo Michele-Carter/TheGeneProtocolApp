@@ -41,6 +41,7 @@ export const invItems = pgTable("inv_items", {
   shopVisible: boolean("shop_visible").notNull().default(false),
   shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
   shopDescription: text("shop_description").notNull().default(""),
+  shopSection: text("shop_section"), // "peptides" | "supplies"; null = by kind (shared/shop.ts itemSection)
   images: jsonb("images").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
