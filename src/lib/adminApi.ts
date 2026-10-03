@@ -3,6 +3,7 @@ import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sal
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
+import type { ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 
 export interface SaleRecord {
   id: string;
@@ -78,6 +79,28 @@ export interface CustomerSummary extends CustomerRecord {
 
 export interface CustomerDetail extends CustomerSummary {
   orders: SaleRecord[];
+}
+
+export interface ShopOrderSummary {
+  id: string;
+  orderNumber: number;
+  status: ShopOrderStatus;
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  units: number;
+  subtotalNzd: number;
+  shippingNzd: number | null;
+  saleId: string | null; // the customer order it became, once confirmed
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export interface ShopOrderDetail extends ShopOrderSummary {
+  lines: (ShopOrderLine & { available: number })[]; // available: free for this order right now
+  notes: string;
+  adminMessage: string;
+  shippingAddress: ShippingAddress;
 }
 
 type GetToken = () => Promise<string | null>;
@@ -274,6 +297,26 @@ export const adminApi = {
     adminFetch<CustomerRecord>(
       `customers?id=${q(id)}&action=merge`,
       { method: "POST", body: JSON.stringify({ intoId }) },
+      t
+    ),
+
+  listShopOrders: (t: GetToken) => adminFetch<ShopOrderSummary[]>("shop-orders", { method: "GET" }, t),
+  waitingShopOrders: (t: GetToken) => adminFetch<{ waiting: number }>("shop-orders?count=1", { method: "GET" }, t),
+  getShopOrder: (id: string, t: GetToken) => adminFetch<ShopOrderDetail>(`shop-orders?id=${q(id)}`, { method: "GET" }, t),
+  confirmShopOrder: (
+    id: string,
+    payload: { lines: { key: string; qty: number }[]; shippingNzd: number; message: string },
+    t: GetToken
+  ) =>
+    adminFetch<{ saleId: string }>(
+      `shop-orders?id=${q(id)}&action=confirm`,
+      { method: "POST", body: JSON.stringify(payload) },
+      t
+    ),
+  declineShopOrder: (id: string, message: string, t: GetToken) =>
+    adminFetch<{ success: true }>(
+      `shop-orders?id=${q(id)}&action=decline`,
+      { method: "POST", body: JSON.stringify({ message }) },
       t
     ),
 

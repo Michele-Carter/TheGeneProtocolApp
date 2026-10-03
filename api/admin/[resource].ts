@@ -14,12 +14,23 @@ import {
     undoAdjustment,
 } from "../_lib/inventory.js";
 import { calculateOrder, isExpenseLine, type OrderInput } from "../../shared/landedCost.js";
-import { EXPENSE_CATEGORIES, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
+import { EXPENSE_CATEGORIES, emptySale, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
 import { expenseSummary, expenseTotals } from "../../shared/expenses.js";
-import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_PRODUCT, normalizeCategories } from "../../shared/shop.js";
+import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_PRODUCT, normalizeCategories, type ShopOrderLine } from "../../shared/shop.js";
 import { toAddress } from "../../shared/customers.js";
 import { linkCustomerByEmail, syncCustomersFromLogins } from "../_lib/customers.js";
-import { bundles, customers, expenses, invItems, inventoryLots, purchaseOrders, sales, stockMovements } from "../_lib/schema.js";
+import { availableStock, orderDemand } from "../_lib/shopCatalog.js";
+import {
+    bundles,
+    customers,
+    expenses,
+    invItems,
+    inventoryLots,
+    purchaseOrders,
+    sales,
+    shopOrders,
+    stockMovements,
+} from "../_lib/schema.js";
 
 // All owner-only endpoints live in this one function (keeps us under Vercel's function limit):
 //   GET    /api/admin/me
@@ -40,6 +51,9 @@ import { bundles, customers, expenses, invItems, inventoryLots, purchaseOrders, 
 //   GET    /api/admin/customers[?id=]       POST /api/admin/customers
 //   PATCH  /api/admin/customers?id=         DELETE /api/admin/customers?id=
 //   POST   /api/admin/customers?id=&action=merge   { intoId }
+//   GET    /api/admin/shop-orders[?id=|?count=1]
+//   POST   /api/admin/shop-orders?id=&action=confirm   { lines: [{ key, qty }], shippingNzd, message }
+//   POST   /api/admin/shop-orders?id=&action=decline   { message }
 
 const money = z.number().finite();
 const costEntry = z.object({ id: z.string(), label: z.string(), amount: money });
@@ -1102,6 +1116,230 @@ async function handleCustomers(req: any, res: any, db: Db) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+// ---- Orders sent from the shop ----
+
+const confirmSchema = z.object({
+    lines: z.array(z.object({ key: z.string().min(1), qty: z.number().int().min(0).max(999) })).min(1),
+    shippingNzd: money.min(0),
+    message: z.string().max(2000).default(""),
+});
+const declineSchema = z.object({ message: z.string().max(2000).default("") });
+
+const nzToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Pacific/Auckland" });
+
+// Stock free for this order: what's available to new orders, plus what this order is itself holding back.
+async function stockFreeFor(db: Db | Tx, order: typeof shopOrders.$inferSelect) {
+    const available = await availableStock(db);
+    const own = order.status === "submitted" ? orderDemand(order.lines) : new Map<string, number>();
+    return (itemId: string) => Math.max(0, (available.get(itemId) ?? 0) + (own.get(itemId) ?? 0));
+}
+
+function lineAvailability(line: ShopOrderLine, free: (itemId: string) => number) {
+    if (line.kind === "item") return free(line.refId);
+    const components = line.components ?? [];
+    return components.length ? Math.min(...components.map((c) => Math.floor(free(c.itemId) / Math.max(1, c.qty)))) : 0;
+}
+
+function shopOrderSummary(row: typeof shopOrders.$inferSelect, customer: typeof customers.$inferSelect | undefined) {
+    return {
+        id: row.id,
+        orderNumber: row.orderNumber,
+        status: row.status,
+        customerId: row.customerId,
+        customerName: customer?.name ?? "Unknown customer",
+        customerEmail: customer?.email ?? "",
+        units: row.lines.reduce((t, l) => t + l.qty, 0),
+        subtotalNzd: row.subtotalNzd,
+        shippingNzd: row.shippingNzd,
+        saleId: row.saleId,
+        createdAt: row.createdAt,
+        decidedAt: row.decidedAt,
+    };
+}
+
+// The customer-order lines a confirmed shop order becomes. A bundle is split into its components, with the
+// bundle price shared across them by stock cost (as the sale editor does), so the lines add up to the price.
+async function saleLinesFor(tx: Tx, lines: ShopOrderLine[]): Promise<SaleInput["lines"]> {
+    const itemIds = Array.from(orderDemand(lines).keys());
+    const [items, lots] = await Promise.all([
+        itemIds.length ? tx.select().from(invItems).where(inArray(invItems.id, itemIds)) : Promise.resolve([]),
+        itemIds.length
+            ? tx
+                  .select()
+                  .from(inventoryLots)
+                  .where(and(inArray(inventoryLots.itemId, itemIds), gt(inventoryLots.qtyRemaining, 0)))
+                  .orderBy(asc(inventoryLots.receivedAt), asc(inventoryLots.createdAt))
+            : Promise.resolve([]),
+    ]);
+    const itemsById = new Map(items.map((i) => [i.id, i]));
+    const nextCost = new Map<string, number>();
+    for (const lot of lots) if (!nextCost.has(lot.itemId)) nextCost.set(lot.itemId, lot.unitCostNzd);
+
+    const describe = (itemId: string) => {
+        const item = itemsById.get(itemId);
+        return {
+            itemId,
+            kind: (item?.kind ?? "peptide") as "peptide" | "supply",
+            name: item?.name ?? "Unknown item",
+            variant: item?.variant ?? "",
+            unit: item?.unit ?? "unit",
+        };
+    };
+
+    const result: SaleInput["lines"] = [];
+    for (const line of lines) {
+        if (line.kind === "item") {
+            result.push({ id: crypto.randomUUID(), ...describe(line.refId), qty: line.qty, unitPriceNzd: line.unitPriceNzd });
+            continue;
+        }
+        const parts = (line.components ?? []).map((c) => {
+            const qty = c.qty * line.qty;
+            return { itemId: c.itemId, qty, weight: qty * (nextCost.get(c.itemId) ?? 0) };
+        });
+        const totalWeight = parts.reduce((t, p) => t + p.weight, 0);
+        const lineTotal = line.unitPriceNzd * line.qty;
+        for (const part of parts) {
+            const share = totalWeight > 0 ? part.weight / totalWeight : 1 / parts.length;
+            result.push({
+                id: crypto.randomUUID(),
+                ...describe(part.itemId),
+                qty: part.qty,
+                unitPriceNzd: part.qty > 0 ? (lineTotal * share) / part.qty : 0,
+                bundleName: line.name,
+            });
+        }
+    }
+    return result;
+}
+
+async function handleShopOrders(req: any, res: any, db: Db) {
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
+    const action = typeof req.query?.action === "string" ? req.query.action : null;
+
+    if (req.method === "GET") {
+        if (req.query?.count) {
+            const [row] = await db
+                .select({ n: sql<number>`count(*)::int` })
+                .from(shopOrders)
+                .where(eq(shopOrders.status, "submitted"));
+            return sendJson(res, 200, { waiting: row?.n ?? 0 });
+        }
+        if (id) {
+            const [order] = await db.select().from(shopOrders).where(eq(shopOrders.id, id));
+            if (!order) return sendJson(res, 404, { error: "Order not found" });
+            const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId));
+            const free = await stockFreeFor(db, order);
+            return sendJson(res, 200, {
+                ...shopOrderSummary(order, customer),
+                lines: order.lines.map((line) => ({ ...line, available: lineAvailability(line, free) })),
+                notes: order.notes,
+                adminMessage: order.adminMessage,
+                shippingAddress: toAddress(order.shippingAddress),
+            });
+        }
+        const [rows, customerRows] = await Promise.all([
+            db.select().from(shopOrders).orderBy(desc(shopOrders.createdAt)),
+            db.select().from(customers),
+        ]);
+        const byId = new Map(customerRows.map((c) => [c.id, c]));
+        return sendJson(res, 200, rows.map((row) => shopOrderSummary(row, byId.get(row.customerId))));
+    }
+
+    if (req.method !== "POST" || !id || (action !== "confirm" && action !== "decline")) {
+        res.setHeader("Allow", "GET, POST");
+        return sendJson(res, 405, { error: "Method not allowed" });
+    }
+
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+
+    if (action === "decline") {
+        const parsed = declineSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const [row] = await db
+            .update(shopOrders)
+            .set({ status: "declined", adminMessage: parsed.data.message.trim(), decidedAt: new Date(), updatedAt: new Date() })
+            .where(and(eq(shopOrders.id, id), eq(shopOrders.status, "submitted")))
+            .returning();
+        if (!row) return sendJson(res, 409, { error: "This order has already been dealt with." });
+        return sendJson(res, 200, { success: true });
+    }
+
+    const parsed = confirmSchema.safeParse(read.body);
+    if (!parsed.success) return validationError(res, parsed.error);
+
+    try {
+        const result = await db.transaction(async (tx) => {
+            // Same lock as customers sending orders, so stock can't be promised twice.
+            await tx.execute(sql`select pg_advisory_xact_lock(724101)`);
+            const [order] = await tx.select().from(shopOrders).where(eq(shopOrders.id, id)).for("update");
+            if (!order) throw new NotFoundError("Order not found");
+            if (order.status !== "submitted") throw new InventoryError("This order has already been dealt with.");
+
+            const qtyByKey = new Map(parsed.data.lines.map((l) => [l.key, l.qty]));
+            const lines = order.lines
+                .map((line) => ({ ...line, qty: qtyByKey.get(line.key) ?? line.qty }))
+                .filter((line) => line.qty > 0);
+            if (lines.length === 0) throw new InventoryError("Every item has been removed - decline the order instead.");
+
+            const free = await stockFreeFor(tx, order);
+            for (const [itemId, qty] of orderDemand(lines)) {
+                const left = free(itemId);
+                if (qty <= left) continue;
+                const line =
+                    lines.find((l) => l.kind === "item" && l.refId === itemId) ??
+                    lines.find((l) => l.components?.some((c) => c.itemId === itemId))!;
+                throw new InventoryError(
+                    `Not enough stock for ${[line.name, line.variant].filter(Boolean).join(" ")}: ${left} available. Reduce the quantity or remove it.`
+                );
+            }
+
+            const [customer] = await tx.select().from(customers).where(eq(customers.id, order.customerId));
+            if (!customer) throw new NotFoundError("This order's customer no longer exists.");
+
+            const data: SaleInput = {
+                ...emptySale(nzToday()),
+                customerName: customer.name,
+                customerContact: customer.email,
+                orderNumber: `Shop #${order.orderNumber}`,
+                lines: await saleLinesFor(tx, lines),
+                shippingChargedNzd: parsed.data.shippingNzd,
+                notes: order.notes ? `Customer note: ${order.notes}` : "",
+            };
+            const saleId = crypto.randomUUID();
+            await tx.insert(sales).values({
+                id: saleId,
+                customerId: customer.id,
+                customerName: customer.name,
+                orderDate: data.orderDate,
+                status: "open",
+                data,
+            });
+
+            const subtotal = Math.round(lines.reduce((t, l) => t + l.qty * l.unitPriceNzd, 0) * 100) / 100;
+            await tx
+                .update(shopOrders)
+                .set({
+                    status: "confirmed",
+                    lines,
+                    subtotalNzd: subtotal,
+                    shippingNzd: parsed.data.shippingNzd,
+                    adminMessage: parsed.data.message.trim(),
+                    saleId,
+                    decidedAt: new Date(),
+                    updatedAt: new Date(),
+                })
+                .where(eq(shopOrders.id, id));
+            return { saleId };
+        });
+        return sendJson(res, 200, result);
+    } catch (error) {
+        if (error instanceof NotFoundError) return sendJson(res, 404, { error: error.message });
+        if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
+        throw error;
+    }
+}
+
 async function handleExpenses(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
 
@@ -1353,6 +1591,8 @@ export default async function handler(req: any, res: any) {
                 return await handleImages(req, res, db);
             case "customers":
                 return await handleCustomers(req, res, db);
+            case "shop-orders":
+                return await handleShopOrders(req, res, db);
             default:
                 return sendJson(res, 404, { error: "Not found" });
         }

@@ -16,6 +16,7 @@ import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useIsAdmin } from "./hooks/useIsAdmin";
+import { useWaitingOrders } from "./hooks/useWaitingOrders";
 import type { AdminSection } from "./components/admin/AdminArea";
 import {
   Beaker,
@@ -37,6 +38,7 @@ import {
   Users,
   UserRound,
   ShoppingCart,
+  Inbox,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
@@ -46,6 +48,7 @@ type ActiveTab = "dashboard" | "protocol" | "shop" | "account" | "recon" | "logs
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard size={13} /> },
+  { id: "new-orders", label: "New Orders", icon: <Inbox size={13} /> },
   { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={13} /> },
   { id: "customers", label: "Customers", icon: <Users size={13} /> },
   { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={13} /> },
@@ -108,6 +111,7 @@ export default function App() {
   }, [getToken, isLoaded, isSignedIn]);
 
   const isAdmin = useIsAdmin(isLoaded && sessionChecked && hasValidSession);
+  const { waiting: waitingOrders, refresh: refreshWaitingOrders } = useWaitingOrders(isAdmin);
 
   useEffect(() => {
     // Keep each tab landing at the top so page headers are always fully visible.
@@ -169,7 +173,12 @@ export default function App() {
       case "admin":
         return isAdmin ? (
           <Suspense fallback={<LoadingSpinner label="Loading admin..." />}>
-            <AdminArea section={adminSection} onNavigate={navigateAdmin} />
+            <AdminArea
+              section={adminSection}
+              onNavigate={navigateAdmin}
+              waitingOrders={waitingOrders}
+              onOrdersChanged={() => void refreshWaitingOrders()}
+            />
           </Suspense>
         ) : (
           <DashboardPage setActiveTab={navigateTab} />
@@ -318,6 +327,7 @@ export default function App() {
                     >
                       <Lock size={14} />
                       <span>Admin</span>
+                      {waitingOrders > 0 && activeTab !== "admin" && <WaitingBadge count={waitingOrders} />}
                     </button>
 
                     {activeTab === "admin" && (
@@ -333,6 +343,7 @@ export default function App() {
                           >
                             {s.icon}
                             <span>{s.label}</span>
+                            {s.id === "new-orders" && waitingOrders > 0 && <WaitingBadge count={waitingOrders} />}
                           </button>
                         ))}
                       </div>
@@ -473,6 +484,7 @@ export default function App() {
                     >
                       <Lock size={14} />
                       <span>Admin</span>
+                      {waitingOrders > 0 && activeTab !== "admin" && <WaitingBadge count={waitingOrders} />}
                     </button>
 
                     {activeTab === "admin" && (
@@ -488,6 +500,7 @@ export default function App() {
                           >
                             {s.icon}
                             <span>{s.label}</span>
+                            {s.id === "new-orders" && waitingOrders > 0 && <WaitingBadge count={waitingOrders} />}
                           </button>
                         ))}
                       </div>
@@ -534,5 +547,14 @@ export default function App() {
         <AuthPage />
       )}
     </>
+  );
+}
+
+// Count of shop orders waiting to be confirmed, shown on the admin menu.
+function WaitingBadge({ count }: { count: number }) {
+  return (
+    <span className="ml-auto min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
+      {count}
+    </span>
   );
 }

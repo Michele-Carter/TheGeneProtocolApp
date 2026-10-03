@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Clock, PiggyBank, Receipt, ShoppingBag, Truck, Wallet } from "lucide-react";
+import { ChevronRight, Clock, Inbox, PiggyBank, Receipt, ShoppingBag, Truck, Wallet } from "lucide-react";
 import { adminApi, nzd, type ExpenseRecord, type SaleRecord } from "../../lib/adminApi";
 import { Card, ErrorNote } from "./ui";
 import LoadingSpinner from "../LoadingSpinner";
@@ -273,7 +273,13 @@ function ProfitChart({ months, values }: { months: string[]; values: number[] })
   );
 }
 
-export default function AdminDashboard({ onNavigate }: { onNavigate: (section: AdminSection) => void }) {
+export default function AdminDashboard({
+  onNavigate,
+  waitingOrders,
+}: {
+  onNavigate: (section: AdminSection) => void;
+  waitingOrders: number;
+}) {
   const { getToken } = useAuth();
   const [sales, setSales] = useState<SaleRecord[] | null>(null);
   const [expenses, setExpenses] = useState<ExpenseRecord[] | null>(null);
@@ -335,6 +341,19 @@ export default function AdminDashboard({ onNavigate }: { onNavigate: (section: A
 
   return (
     <div className="space-y-5">
+      {waitingOrders > 0 && (
+        <button
+          onClick={() => onNavigate("new-orders")}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-left cursor-pointer hover:bg-amber-500/15 transition"
+        >
+          <Inbox size={16} className="text-amber-300 flex-shrink-0" />
+          <span className="flex-1 text-sm font-bold text-amber-200">
+            {waitingOrders} new shop order{waitingOrders === 1 ? "" : "s"} waiting for you to confirm
+          </span>
+          <ChevronRight size={15} className="text-amber-300" />
+        </button>
+      )}
+
       {/* Primary financial metrics — leads top-left, matching how the eye scans the page first. */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatTile
