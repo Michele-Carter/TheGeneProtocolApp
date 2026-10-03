@@ -2,7 +2,6 @@ import React, { useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Package, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { fifoEstimate, saleProfit, saleTotals, type SaleInput, type SaleLine, type ShippingStatus } from "../../../shared/sales";
-import { MY_PRODUCTS } from "../../data/myProducts";
 import { adminApi, nzd, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
 import {
   Card,
@@ -19,13 +18,6 @@ import {
 } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
 import { Spinner } from "../LoadingSpinner";
-
-// Selling prices from the customer Pricing page (NZD per vial; the data field is named priceUsd).
-const PRICE_LIST: Record<string, number> = Object.fromEntries(
-  MY_PRODUCTS.flatMap((product) =>
-    product.options.filter((o) => o.code).map((o) => [`cat:${o.code}`, o.priceUsd] as const)
-  )
-);
 
 const SHIPPING_STATUSES: { id: ShippingStatus; label: string }[] = [
   { id: "not-sent", label: "Not sent" },
@@ -64,6 +56,8 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
   const totals = useMemo(() => saleTotals(data), [data]);
 
   const stockById = useMemo(() => Object.fromEntries(inventory.map((row) => [row.item.id, row])), [inventory]);
+  // Each item's sell price, set on the item in Inventory.
+  const listPrice = (itemId: string) => stockById[itemId]?.item.sellPriceNzd ?? null;
   const estimate = useMemo(
     () => fifoEstimate(data.lines, Object.fromEntries(inventory.map((row) => [row.item.id, row.fifo]))),
     [data.lines, inventory]
@@ -109,7 +103,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
       name: row.item.name,
       variant: row.item.variant,
       unit: row.item.unit,
-      unitPriceNzd: PRICE_LIST[itemId] ?? lastPrices[itemId] ?? 0,
+      unitPriceNzd: listPrice(itemId) ?? lastPrices[itemId] ?? 0,
     }));
   };
 
@@ -207,7 +201,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
         variant: l.variant,
         unit: l.unit,
         qty: l.qty,
-        unitPriceNzd: PRICE_LIST[l.itemId] ?? lastPrices[l.itemId] ?? 0,
+        unitPriceNzd: listPrice(l.itemId) ?? lastPrices[l.itemId] ?? 0,
         bundleName: bundle.name,
       }));
     }
@@ -451,10 +445,10 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                   <Field
                     label={`Price per ${draft.unit || "unit"} (NZD)`}
                     hint={
-                      draft.itemId && PRICE_LIST[draft.itemId] != null && PRICE_LIST[draft.itemId] !== draft.unitPriceNzd
-                        ? `Price list: ${nzd(PRICE_LIST[draft.itemId])}`
-                        : draft.itemId && PRICE_LIST[draft.itemId] == null
-                          ? "Not on the price list — last price you charged."
+                      draft.itemId && listPrice(draft.itemId) != null && listPrice(draft.itemId) !== draft.unitPriceNzd
+                        ? `Sell price: ${nzd(listPrice(draft.itemId))}`
+                        : draft.itemId && listPrice(draft.itemId) == null
+                          ? "No sell price set — last price you charged."
                           : undefined
                     }
                   >

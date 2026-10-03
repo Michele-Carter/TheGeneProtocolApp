@@ -14,8 +14,11 @@ export interface BundleInput {
   // What the whole bundle sells for. Null = no package price — components go on the
   // order at their normal individual prices with no automatic discount.
   priceNzd: number | null;
+  // Customer shop. Images are uploaded separately (they need the bundle saved first).
+  shopVisible: boolean;
+  shopCategories: string[];
 }
 
 export function emptyBundle(): BundleInput {
-  return { name: "", description: "", components: [], priceNzd: null };
+  return { name: "", description: "", components: [], priceNzd: null, shopVisible: false, shopCategories: [] };
 }

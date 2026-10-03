@@ -1,4 +1,5 @@
-import { asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
+import { del, put } from "@vercel/blob";
 import { z } from "zod";
 import { getAdminStatus } from "../_lib/admin.js";
 import { getDb } from "../_lib/db.js";
@@ -13,9 +14,24 @@ import {
     undoAdjustment,
 } from "../_lib/inventory.js";
 import { calculateOrder, isExpenseLine, type OrderInput } from "../../shared/landedCost.js";
-import { EXPENSE_CATEGORIES, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
+import { EXPENSE_CATEGORIES, emptySale, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
 import { expenseSummary, expenseTotals } from "../../shared/expenses.js";
-import { bundles, expenses, invItems, inventoryLots, purchaseOrders, sales, stockMovements } from "../_lib/schema.js";
+import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_PRODUCT, normalizeCategories, type ShopOrderLine } from "../../shared/shop.js";
+import { toAddress } from "../../shared/customers.js";
+import { linkCustomerByEmail, syncCustomersFromLogins } from "../_lib/customers.js";
+import { availableStock, orderDemand } from "../_lib/shopCatalog.js";
+import { confirmedMessage, declinedMessage, notify, notifyIfShipped } from "../_lib/notifications.js";
+import {
+    bundles,
+    customers,
+    expenses,
+    invItems,
+    inventoryLots,
+    purchaseOrders,
+    sales,
+    shopOrders,
+    stockMovements,
+} from "../_lib/schema.js";
 
 // All owner-only endpoints live in this one function (keeps us under Vercel's function limit):
 //   GET    /api/admin/me
@@ -32,6 +48,13 @@ import { bundles, expenses, invItems, inventoryLots, purchaseOrders, sales, stoc
 //   PATCH  /api/admin/expenses?id=          DELETE /api/admin/expenses?id=
 //   GET    /api/admin/bundles               POST /api/admin/bundles
 //   PATCH  /api/admin/bundles?id=           DELETE /api/admin/bundles?id=
+//   POST   /api/admin/images?target=item|bundle&id=   PATCH (reorder)   DELETE /api/admin/images?...&url=
+//   GET    /api/admin/customers[?id=]       POST /api/admin/customers
+//   PATCH  /api/admin/customers?id=         DELETE /api/admin/customers?id=
+//   POST   /api/admin/customers?id=&action=merge   { intoId }
+//   GET    /api/admin/shop-orders[?id=|?count=1]
+//   POST   /api/admin/shop-orders?id=&action=confirm   { lines: [{ key, qty }], shippingNzd, message }
+//   POST   /api/admin/shop-orders?id=&action=decline   { message }
 
 const money = z.number().finite();
 const costEntry = z.object({ id: z.string(), label: z.string(), amount: money });
@@ -87,6 +110,12 @@ const itemPatchSchema = z.object({
     variant: z.string().optional(),
     unit: z.string().optional(),
     reorderLevel: z.number().int().min(0).nullable().optional(),
+    sellPriceNzd: money.min(0).nullable().optional(),
+    shopVisible: z.boolean().optional(),
+    shopCategories: z.array(z.string()).transform(normalizeCategories).optional(),
+    shopDescription: z.string().optional(),
+    // Also give every other size of this product (same name and kind) these categories and description.
+    applyToSizes: z.boolean().optional(),
 });
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -181,6 +210,8 @@ const bundleSchema = z.object({
         })
     ).min(1, "Add at least one item"),
     priceNzd: money.min(0).nullable(),
+    shopVisible: z.boolean().default(false),
+    shopCategories: z.array(z.string()).default([]).transform(normalizeCategories),
 });
 
 class NotFoundError extends Error {}
@@ -267,11 +298,27 @@ async function handleItems(req: any, res: any, db: Db) {
     if (req.method === "PATCH" && id) {
         const parsed = itemPatchSchema.safeParse(read.body);
         if (!parsed.success) return validationError(res, parsed.error);
-        const [row] = await db
-            .update(invItems)
-            .set({ ...parsed.data, updatedAt: new Date() })
-            .where(eq(invItems.id, id))
-            .returning();
+        const { applyToSizes, ...patch } = parsed.data;
+
+        const row = await db.transaction(async (tx) => {
+            const [updated] = await tx
+                .update(invItems)
+                .set({ ...patch, updatedAt: new Date() })
+                .where(eq(invItems.id, id))
+                .returning();
+            if (!updated) return null;
+            if (applyToSizes && (patch.shopCategories !== undefined || patch.shopDescription !== undefined)) {
+                await tx
+                    .update(invItems)
+                    .set({
+                        ...(patch.shopCategories !== undefined ? { shopCategories: patch.shopCategories } : {}),
+                        ...(patch.shopDescription !== undefined ? { shopDescription: patch.shopDescription } : {}),
+                        updatedAt: new Date(),
+                    })
+                    .where(and(eq(invItems.name, updated.name), eq(invItems.kind, updated.kind), ne(invItems.id, id)));
+            }
+            return updated;
+        });
         if (!row) return sendJson(res, 404, { error: "Item not found" });
         return sendJson(res, 200, row);
     }
@@ -683,6 +730,7 @@ function saleDto(row: typeof sales.$inferSelect) {
     const data = row.data as SaleInput;
     return {
         id: row.id,
+        customerId: row.customerId,
         customerName: row.customerName,
         orderDate: row.orderDate,
         status: row.status,
@@ -794,9 +842,18 @@ async function handleSales(req: any, res: any, db: Db) {
         let data = parsed.data as SaleInput;
 
         if (req.method === "POST") {
+            const customer = await resolveSaleCustomer(db, data.customerName, null);
+            data = { ...data, customerName: customer.name };
             const [row] = await db
                 .insert(sales)
-                .values({ id: crypto.randomUUID(), customerName: data.customerName, orderDate: data.orderDate, status: "open", data })
+                .values({
+                    id: crypto.randomUUID(),
+                    customerId: customer.id,
+                    customerName: customer.name,
+                    orderDate: data.orderDate,
+                    status: "open",
+                    data,
+                })
                 .returning();
             return sendJson(res, 201, saleDto(row));
         }
@@ -807,16 +864,497 @@ async function handleSales(req: any, res: any, db: Db) {
             // Stock has been taken out for these lines - they stay as they were. Everything else can change.
             data = { ...data, lines: (existing.data as SaleInput).lines };
         }
+        const customer = await resolveSaleCustomer(db, data.customerName, existing.customerId);
+        data = { ...data, customerName: customer.name };
         const [row] = await db
             .update(sales)
-            .set({ customerName: data.customerName, orderDate: data.orderDate, data, updatedAt: new Date() })
+            .set({ customerId: customer.id, customerName: customer.name, orderDate: data.orderDate, data, updatedAt: new Date() })
             .where(eq(sales.id, id!))
             .returning();
+        await notifyIfShipped(db, row.id, existing.data as SaleInput, data);
         return sendJson(res, 200, saleDto(row));
     }
 
     res.setHeader("Allow", "GET, POST, PATCH, DELETE");
     return sendJson(res, 405, { error: "Method not allowed" });
+}
+
+// The customer a sale belongs to, going by the name typed on it: the sale's current customer if the
+// name still matches, otherwise the customer with that name, otherwise a new customer.
+async function resolveSaleCustomer(db: Db, name: string, currentId: string | null) {
+    const trimmed = name.trim();
+    if (currentId) {
+        const [current] = await db.select().from(customers).where(eq(customers.id, currentId));
+        if (current && current.name.toLowerCase() === trimmed.toLowerCase()) return current;
+    }
+    const [match] = await db
+        .select()
+        .from(customers)
+        .where(sql`lower(${customers.name}) = ${trimmed.toLowerCase()}`)
+        .orderBy(asc(customers.createdAt))
+        .limit(1);
+    if (match) return match;
+    const [created] = await db.insert(customers).values({ id: crypto.randomUUID(), name: trimmed }).returning();
+    return created;
+}
+
+const addressSchema = z.object({
+    line1: z.string().trim().default(""),
+    line2: z.string().trim().default(""),
+    suburb: z.string().trim().default(""),
+    city: z.string().trim().default(""),
+    postcode: z.string().trim().default(""),
+    country: z.string().trim().default("New Zealand"),
+});
+
+const customerSchema = z.object({
+    name: z.string().trim().min(1, "Name is required"),
+    email: z.union([z.string().trim().toLowerCase().email("That email address doesn't look right"), z.literal("")]).default(""),
+    shippingAddress: addressSchema,
+    notes: z.string().default(""),
+});
+
+const mergeSchema = z.object({ intoId: z.string().min(1) });
+
+function customerDto(row: typeof customers.$inferSelect) {
+    return {
+        id: row.id,
+        hasLogin: row.clerkUserId != null,
+        name: row.name,
+        email: row.email,
+        shippingAddress: toAddress(row.shippingAddress),
+        notes: row.notes,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+    };
+}
+
+function customerStats(rows: (typeof sales.$inferSelect)[]) {
+    let spentNzd = 0;
+    let profitNzd = 0;
+    let owedNzd = 0;
+    let lastOrderDate: string | null = null;
+    for (const row of rows) {
+        const data = row.data as SaleInput;
+        const totals = saleTotals(data);
+        owedNzd += Math.max(0, totals.balance);
+        if (row.status === "completed") {
+            spentNzd += totals.total;
+            profitNzd += saleProfit(data, row.cogsNzd).profit ?? 0;
+        }
+        if (!lastOrderDate || row.orderDate > lastOrderDate) lastOrderDate = row.orderDate;
+    }
+    return {
+        orders: rows.length,
+        openOrders: rows.filter((r) => r.status === "open").length,
+        spentNzd,
+        profitNzd,
+        owedNzd,
+        lastOrderDate,
+    };
+}
+
+// Another customer already using this name or email, so duplicates aren't created by accident.
+async function customerClash(db: Db, input: { name: string; email: string }, exceptId: string | null) {
+    const others = await db
+        .select()
+        .from(customers)
+        .where(
+            and(
+                exceptId ? ne(customers.id, exceptId) : undefined,
+                or(
+                    sql`lower(${customers.name}) = ${input.name.toLowerCase()}`,
+                    input.email ? sql`lower(${customers.email}) = ${input.email.toLowerCase()}` : sql`false`
+                )
+            )
+        );
+    const byName = others.find((c) => c.name.toLowerCase() === input.name.toLowerCase());
+    if (byName) return `There's already a customer called ${byName.name}.`;
+    for (const other of others) {
+        // A record the app made automatically for a login, with no orders, is folded into this one on save.
+        if (other.clerkUserId) {
+            const [order] = await db.select({ id: sales.id }).from(sales).where(eq(sales.customerId, other.id)).limit(1);
+            if (!order) continue;
+        }
+        return `${other.name} already uses that email address - use Merge to combine them.`;
+    }
+    return null;
+}
+
+// Links the app login registered with the customer's email, if there is one. The customer is already
+// saved, so a problem reaching the login service doesn't fail the save - it links on a later save or sign-in.
+async function linkLogin(db: Db, row: typeof customers.$inferSelect) {
+    try {
+        return await linkCustomerByEmail(db, row);
+    } catch (error) {
+        console.error("Linking customer to app login failed:", error);
+        return row;
+    }
+}
+
+// Keeps the name shown on a customer's orders in step with the customer record.
+async function renameCustomerSales(tx: Tx | Db, customerId: string, name: string) {
+    await tx
+        .update(sales)
+        .set({ customerName: name, data: sql`jsonb_set(${sales.data}, '{customerName}', to_jsonb(${name}::text))` })
+        .where(eq(sales.customerId, customerId));
+}
+
+async function handleCustomers(req: any, res: any, db: Db) {
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
+    const action = typeof req.query?.action === "string" ? req.query.action : null;
+
+    if (req.method === "GET") {
+        if (id) {
+            const [row] = await db.select().from(customers).where(eq(customers.id, id));
+            if (!row) return sendJson(res, 404, { error: "Customer not found" });
+            const orders = await db
+                .select()
+                .from(sales)
+                .where(eq(sales.customerId, id))
+                .orderBy(desc(sales.orderDate), desc(sales.createdAt));
+            return sendJson(res, 200, { ...customerDto(row), stats: customerStats(orders), orders: orders.map(saleDto) });
+        }
+        try {
+            await syncCustomersFromLogins(db);
+        } catch (error) {
+            // The list still works from what's already saved; new sign-ups appear next time.
+            console.error("Pulling customers from app logins failed:", error);
+        }
+        const [rows, allSales] = await Promise.all([
+            db.select().from(customers).orderBy(asc(customers.name)),
+            db.select().from(sales),
+        ]);
+        return sendJson(
+            res,
+            200,
+            rows.map((row) => ({ ...customerDto(row), stats: customerStats(allSales.filter((s) => s.customerId === row.id)) }))
+        );
+    }
+
+    if (req.method === "DELETE" && id) {
+        const [order] = await db.select({ id: sales.id }).from(sales).where(eq(sales.customerId, id)).limit(1);
+        if (order) {
+            return sendJson(res, 409, { error: "This customer has orders. Merge them into another customer instead of deleting." });
+        }
+        await db.delete(customers).where(eq(customers.id, id));
+        return sendJson(res, 200, { success: true });
+    }
+
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+
+    if (req.method === "POST" && id && action === "merge") {
+        const parsed = mergeSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const intoId = parsed.data.intoId;
+        if (intoId === id) return sendJson(res, 400, { error: "Choose a different customer to merge into." });
+
+        try {
+            const merged = await db.transaction(async (tx) => {
+                const [from] = await tx.select().from(customers).where(eq(customers.id, id)).for("update");
+                const [into] = await tx.select().from(customers).where(eq(customers.id, intoId)).for("update");
+                if (!from || !into) throw new NotFoundError("Customer not found");
+                if (from.clerkUserId && into.clerkUserId) {
+                    throw new InventoryError("Both customers have their own app login, so they can't be merged.");
+                }
+
+                await tx.update(sales).set({ customerId: into.id }).where(eq(sales.customerId, from.id));
+                await renameCustomerSales(tx, into.id, into.name);
+                // Delete first so the login can move across without clashing with itself.
+                await tx.delete(customers).where(eq(customers.id, from.id));
+
+                const intoAddress = toAddress(into.shippingAddress);
+                const [updated] = await tx
+                    .update(customers)
+                    .set({
+                        clerkUserId: into.clerkUserId ?? from.clerkUserId,
+                        email: into.email || from.email,
+                        shippingAddress: intoAddress.line1.trim() ? intoAddress : toAddress(from.shippingAddress),
+                        notes: [into.notes, from.notes].map((n) => n.trim()).filter(Boolean).join("\n\n"),
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(customers.id, into.id))
+                    .returning();
+                return updated;
+            });
+            return sendJson(res, 200, customerDto(merged));
+        } catch (error) {
+            if (error instanceof NotFoundError) return sendJson(res, 404, { error: error.message });
+            if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
+            throw error;
+        }
+    }
+
+    const parsed = customerSchema.safeParse(read.body);
+    if (!parsed.success) return validationError(res, parsed.error);
+    const input = parsed.data;
+
+    if ((req.method === "POST" && !id) || (req.method === "PATCH" && id)) {
+        const clash = await customerClash(db, input, id);
+        if (clash) return sendJson(res, 409, { error: clash });
+    }
+
+    if (req.method === "POST" && !id) {
+        const [row] = await db.insert(customers).values({ id: crypto.randomUUID(), ...input }).returning();
+        return sendJson(res, 201, customerDto(await linkLogin(db, row)));
+    }
+
+    if (req.method === "PATCH" && id) {
+        const row = await db.transaction(async (tx) => {
+            const [updated] = await tx
+                .update(customers)
+                .set({ ...input, updatedAt: new Date() })
+                .where(eq(customers.id, id))
+                .returning();
+            if (updated) await renameCustomerSales(tx, id, updated.name);
+            return updated;
+        });
+        if (!row) return sendJson(res, 404, { error: "Customer not found" });
+        return sendJson(res, 200, customerDto(await linkLogin(db, row)));
+    }
+
+    res.setHeader("Allow", "GET, POST, PATCH, DELETE");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
+// ---- Orders sent from the shop ----
+
+const confirmSchema = z.object({
+    lines: z.array(z.object({ key: z.string().min(1), qty: z.number().int().min(0).max(999) })).min(1),
+    shippingNzd: money.min(0),
+    message: z.string().max(2000).default(""),
+});
+const declineSchema = z.object({ message: z.string().max(2000).default("") });
+
+const nzToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Pacific/Auckland" });
+
+// Stock free for this order: what's available to new orders, plus what this order is itself holding back.
+async function stockFreeFor(db: Db | Tx, order: typeof shopOrders.$inferSelect) {
+    const available = await availableStock(db);
+    const own = order.status === "submitted" ? orderDemand(order.lines) : new Map<string, number>();
+    return (itemId: string) => Math.max(0, (available.get(itemId) ?? 0) + (own.get(itemId) ?? 0));
+}
+
+function lineAvailability(line: ShopOrderLine, free: (itemId: string) => number) {
+    if (line.kind === "item") return free(line.refId);
+    const components = line.components ?? [];
+    return components.length ? Math.min(...components.map((c) => Math.floor(free(c.itemId) / Math.max(1, c.qty)))) : 0;
+}
+
+function shopOrderSummary(row: typeof shopOrders.$inferSelect, customer: typeof customers.$inferSelect | undefined) {
+    return {
+        id: row.id,
+        orderNumber: row.orderNumber,
+        status: row.status,
+        customerId: row.customerId,
+        customerName: customer?.name ?? "Unknown customer",
+        customerEmail: customer?.email ?? "",
+        units: row.lines.reduce((t, l) => t + l.qty, 0),
+        subtotalNzd: row.subtotalNzd,
+        shippingNzd: row.shippingNzd,
+        saleId: row.saleId,
+        createdAt: row.createdAt,
+        decidedAt: row.decidedAt,
+    };
+}
+
+// The customer-order lines a confirmed shop order becomes. A bundle is split into its components, with the
+// bundle price shared across them by stock cost (as the sale editor does), so the lines add up to the price.
+async function saleLinesFor(tx: Tx, lines: ShopOrderLine[]): Promise<SaleInput["lines"]> {
+    const itemIds = Array.from(orderDemand(lines).keys());
+    const [items, lots] = await Promise.all([
+        itemIds.length ? tx.select().from(invItems).where(inArray(invItems.id, itemIds)) : Promise.resolve([]),
+        itemIds.length
+            ? tx
+                  .select()
+                  .from(inventoryLots)
+                  .where(and(inArray(inventoryLots.itemId, itemIds), gt(inventoryLots.qtyRemaining, 0)))
+                  .orderBy(asc(inventoryLots.receivedAt), asc(inventoryLots.createdAt))
+            : Promise.resolve([]),
+    ]);
+    const itemsById = new Map(items.map((i) => [i.id, i]));
+    const nextCost = new Map<string, number>();
+    for (const lot of lots) if (!nextCost.has(lot.itemId)) nextCost.set(lot.itemId, lot.unitCostNzd);
+
+    const describe = (itemId: string) => {
+        const item = itemsById.get(itemId);
+        return {
+            itemId,
+            kind: (item?.kind ?? "peptide") as "peptide" | "supply",
+            name: item?.name ?? "Unknown item",
+            variant: item?.variant ?? "",
+            unit: item?.unit ?? "unit",
+        };
+    };
+
+    const result: SaleInput["lines"] = [];
+    for (const line of lines) {
+        if (line.kind === "item") {
+            result.push({ id: crypto.randomUUID(), ...describe(line.refId), qty: line.qty, unitPriceNzd: line.unitPriceNzd });
+            continue;
+        }
+        const parts = (line.components ?? []).map((c) => {
+            const qty = c.qty * line.qty;
+            return { itemId: c.itemId, qty, weight: qty * (nextCost.get(c.itemId) ?? 0) };
+        });
+        const totalWeight = parts.reduce((t, p) => t + p.weight, 0);
+        const lineTotal = line.unitPriceNzd * line.qty;
+        for (const part of parts) {
+            const share = totalWeight > 0 ? part.weight / totalWeight : 1 / parts.length;
+            result.push({
+                id: crypto.randomUUID(),
+                ...describe(part.itemId),
+                qty: part.qty,
+                unitPriceNzd: part.qty > 0 ? (lineTotal * share) / part.qty : 0,
+                bundleName: line.name,
+            });
+        }
+    }
+    return result;
+}
+
+async function handleShopOrders(req: any, res: any, db: Db) {
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
+    const action = typeof req.query?.action === "string" ? req.query.action : null;
+
+    if (req.method === "GET") {
+        if (req.query?.count) {
+            const [row] = await db
+                .select({ n: sql<number>`count(*)::int` })
+                .from(shopOrders)
+                .where(eq(shopOrders.status, "submitted"));
+            return sendJson(res, 200, { waiting: row?.n ?? 0 });
+        }
+        if (id) {
+            const [order] = await db.select().from(shopOrders).where(eq(shopOrders.id, id));
+            if (!order) return sendJson(res, 404, { error: "Order not found" });
+            const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId));
+            const free = await stockFreeFor(db, order);
+            return sendJson(res, 200, {
+                ...shopOrderSummary(order, customer),
+                lines: order.lines.map((line) => ({ ...line, available: lineAvailability(line, free) })),
+                notes: order.notes,
+                adminMessage: order.adminMessage,
+                shippingAddress: toAddress(order.shippingAddress),
+            });
+        }
+        const [rows, customerRows] = await Promise.all([
+            db.select().from(shopOrders).orderBy(desc(shopOrders.createdAt)),
+            db.select().from(customers),
+        ]);
+        const byId = new Map(customerRows.map((c) => [c.id, c]));
+        return sendJson(res, 200, rows.map((row) => shopOrderSummary(row, byId.get(row.customerId))));
+    }
+
+    if (req.method !== "POST" || !id || (action !== "confirm" && action !== "decline")) {
+        res.setHeader("Allow", "GET, POST");
+        return sendJson(res, 405, { error: "Method not allowed" });
+    }
+
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+
+    if (action === "decline") {
+        const parsed = declineSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const declined = await db.transaction(async (tx) => {
+            const [row] = await tx
+                .update(shopOrders)
+                .set({ status: "declined", adminMessage: parsed.data.message.trim(), decidedAt: new Date(), updatedAt: new Date() })
+                .where(and(eq(shopOrders.id, id), eq(shopOrders.status, "submitted")))
+                .returning();
+            if (row) {
+                await notify(tx, {
+                    customerId: row.customerId,
+                    shopOrderId: row.id,
+                    ...declinedMessage(row.orderNumber, row.adminMessage),
+                });
+            }
+            return row;
+        });
+        if (!declined) return sendJson(res, 409, { error: "This order has already been dealt with." });
+        return sendJson(res, 200, { success: true });
+    }
+
+    const parsed = confirmSchema.safeParse(read.body);
+    if (!parsed.success) return validationError(res, parsed.error);
+
+    try {
+        const result = await db.transaction(async (tx) => {
+            // Same lock as customers sending orders, so stock can't be promised twice.
+            await tx.execute(sql`select pg_advisory_xact_lock(724101)`);
+            const [order] = await tx.select().from(shopOrders).where(eq(shopOrders.id, id)).for("update");
+            if (!order) throw new NotFoundError("Order not found");
+            if (order.status !== "submitted") throw new InventoryError("This order has already been dealt with.");
+
+            const qtyByKey = new Map(parsed.data.lines.map((l) => [l.key, l.qty]));
+            const lines = order.lines
+                .map((line) => ({ ...line, qty: qtyByKey.get(line.key) ?? line.qty }))
+                .filter((line) => line.qty > 0);
+            if (lines.length === 0) throw new InventoryError("Every item has been removed - decline the order instead.");
+
+            const free = await stockFreeFor(tx, order);
+            for (const [itemId, qty] of orderDemand(lines)) {
+                const left = free(itemId);
+                if (qty <= left) continue;
+                const line =
+                    lines.find((l) => l.kind === "item" && l.refId === itemId) ??
+                    lines.find((l) => l.components?.some((c) => c.itemId === itemId))!;
+                throw new InventoryError(
+                    `Not enough stock for ${[line.name, line.variant].filter(Boolean).join(" ")}: ${left} available. Reduce the quantity or remove it.`
+                );
+            }
+
+            const [customer] = await tx.select().from(customers).where(eq(customers.id, order.customerId));
+            if (!customer) throw new NotFoundError("This order's customer no longer exists.");
+
+            const data: SaleInput = {
+                ...emptySale(nzToday()),
+                customerName: customer.name,
+                customerContact: customer.email,
+                orderNumber: `Shop #${order.orderNumber}`,
+                lines: await saleLinesFor(tx, lines),
+                shippingChargedNzd: parsed.data.shippingNzd,
+                notes: order.notes ? `Customer note: ${order.notes}` : "",
+            };
+            const saleId = crypto.randomUUID();
+            await tx.insert(sales).values({
+                id: saleId,
+                customerId: customer.id,
+                customerName: customer.name,
+                orderDate: data.orderDate,
+                status: "open",
+                data,
+            });
+
+            const subtotal = Math.round(lines.reduce((t, l) => t + l.qty * l.unitPriceNzd, 0) * 100) / 100;
+            await tx
+                .update(shopOrders)
+                .set({
+                    status: "confirmed",
+                    lines,
+                    subtotalNzd: subtotal,
+                    shippingNzd: parsed.data.shippingNzd,
+                    adminMessage: parsed.data.message.trim(),
+                    saleId,
+                    decidedAt: new Date(),
+                    updatedAt: new Date(),
+                })
+                .where(eq(shopOrders.id, id));
+            await notify(tx, {
+                customerId: customer.id,
+                shopOrderId: order.id,
+                ...confirmedMessage(order.orderNumber, saleTotals(data).total, parsed.data.message.trim()),
+            });
+            return { saleId };
+        });
+        return sendJson(res, 200, result);
+    } catch (error) {
+        if (error instanceof NotFoundError) return sendJson(res, 404, { error: error.message });
+        if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
+        throw error;
+    }
 }
 
 async function handleExpenses(req: any, res: any, db: Db) {
@@ -878,7 +1416,8 @@ async function handleBundles(req: any, res: any, db: Db) {
     }
 
     if (req.method === "DELETE" && id) {
-        await db.delete(bundles).where(eq(bundles.id, id));
+        const [row] = await db.delete(bundles).where(eq(bundles.id, id)).returning();
+        if (row) await deleteBlobs(row.images);
         return sendJson(res, 200, { success: true });
     }
 
@@ -906,6 +1445,122 @@ async function handleBundles(req: any, res: any, db: Db) {
     }
 
     res.setHeader("Allow", "GET, POST, PATCH, DELETE");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
+// Same images, possibly in a different order.
+function sameImages(next: string[], current: string[]) {
+    return next.length === current.length && [...next].sort().join("\n") === [...current].sort().join("\n");
+}
+
+// Blob calls pass the read-write token explicitly. Otherwise @vercel/blob prefers Vercel's OIDC login
+// whenever BLOB_STORE_ID is set, and that isn't enabled for local development.
+async function deleteBlobs(urls: string[]) {
+    if (urls.length === 0 || !process.env.BLOB_READ_WRITE_TOKEN) return;
+    try {
+        await del(urls, { token: process.env.BLOB_READ_WRITE_TOKEN });
+    } catch (error) {
+        // The product no longer points at them, so a leftover file is harmless.
+        console.error("Deleting product images failed:", error);
+    }
+}
+
+const imageUploadSchema = z.object({ dataUrl: z.string() });
+const imageOrderSchema = z.object({ images: z.array(z.string()) });
+const IMAGE_DATA_URL = /^data:image\/(webp|jpeg|png);base64,([A-Za-z0-9+/=]+)$/;
+
+type ImageTarget = "item" | "bundle";
+
+async function currentImages(db: Db, target: ImageTarget, id: string): Promise<string[] | null> {
+    const rows =
+        target === "item"
+            ? await db.select({ images: invItems.images }).from(invItems).where(eq(invItems.id, id))
+            : await db.select({ images: bundles.images }).from(bundles).where(eq(bundles.id, id));
+    return rows[0]?.images ?? null;
+}
+
+async function saveImages(db: Db, target: ImageTarget, id: string, change: { append: string } | { set: string[] }) {
+    const table = target === "item" ? invItems : bundles;
+    // Appending in SQL keeps two uploads that land at once from overwriting each other.
+    const images = "append" in change ? sql`${table.images} || ${JSON.stringify([change.append])}::jsonb` : change.set;
+    const rows =
+        target === "item"
+            ? await db.update(invItems).set({ images, updatedAt: new Date() }).where(eq(invItems.id, id)).returning({ images: invItems.images })
+            : await db.update(bundles).set({ images, updatedAt: new Date() }).where(eq(bundles.id, id)).returning({ images: bundles.images });
+    return rows[0]?.images ?? [];
+}
+
+// Product images for the shop, stored in Vercel Blob. Each call returns the product's updated image list.
+//   POST   /api/admin/images?target=item|bundle&id=          { dataUrl }  adds an image
+//   PATCH  /api/admin/images?target=item|bundle&id=          { images }   reorders (first = main image)
+//   DELETE /api/admin/images?target=item|bundle&id=&url=                  removes one
+async function handleImages(req: any, res: any, db: Db) {
+    const target = req.query?.target;
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
+    if ((target !== "item" && target !== "bundle") || !id) {
+        return sendJson(res, 400, { error: "Say which item or bundle the image belongs to." });
+    }
+
+    const images = await currentImages(db, target, id);
+    if (images == null) return sendJson(res, 404, { error: target === "item" ? "Item not found" : "Bundle not found" });
+
+    if (req.method === "DELETE") {
+        const url = typeof req.query?.url === "string" ? req.query.url : "";
+        if (!images.includes(url)) return sendJson(res, 404, { error: "Image not found" });
+        const updated = await saveImages(db, target, id, { set: images.filter((u) => u !== url) });
+        await deleteBlobs([url]);
+        return sendJson(res, 200, { images: updated });
+    }
+
+    if (req.method === "PATCH") {
+        const read = await readBody(req, res);
+        if (!read.ok) return;
+        const parsed = imageOrderSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        if (!sameImages(parsed.data.images, images)) {
+            return sendJson(res, 409, { error: "The images changed while you were editing - reload and try again." });
+        }
+        const updated = await saveImages(db, target, id, { set: parsed.data.images });
+        return sendJson(res, 200, { images: updated });
+    }
+
+    if (req.method === "POST") {
+        if (!process.env.BLOB_READ_WRITE_TOKEN) {
+            return sendJson(res, 503, {
+                error: "Image storage isn't set up yet. Connect a Blob store to this project in Vercel (Storage tab), then try again.",
+            });
+        }
+        if (images.length >= MAX_IMAGES_PER_PRODUCT) {
+            return sendJson(res, 409, { error: `A product can have up to ${MAX_IMAGES_PER_PRODUCT} images.` });
+        }
+
+        const read = await readBody(req, res);
+        if (!read.ok) return;
+        const parsed = imageUploadSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const match = IMAGE_DATA_URL.exec(parsed.data.dataUrl);
+        if (!match) return sendJson(res, 400, { error: "Images must be WebP, JPEG or PNG." });
+        const bytes = Buffer.from(match[2], "base64");
+        if (bytes.length > MAX_IMAGE_BYTES) return sendJson(res, 413, { error: "That image is too large." });
+
+        const ext = match[1] === "jpeg" ? "jpg" : match[1];
+        const folder = id.replace(/[^\w-]/g, "_");
+        let blob;
+        try {
+            blob = await put(`shop/${target}/${folder}/${crypto.randomUUID()}.${ext}`, bytes, {
+                access: "public",
+                contentType: `image/${match[1]}`,
+                token: process.env.BLOB_READ_WRITE_TOKEN,
+            });
+        } catch (error) {
+            console.error("Image upload failed:", error);
+            return sendJson(res, 502, { error: `Image storage refused the upload: ${(error as Error).message}` });
+        }
+        const updated = await saveImages(db, target, id, { append: blob.url });
+        return sendJson(res, 200, { images: updated });
+    }
+
+    res.setHeader("Allow", "POST, PATCH, DELETE");
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
@@ -949,6 +1604,12 @@ export default async function handler(req: any, res: any) {
                 return await handleExpenses(req, res, db);
             case "bundles":
                 return await handleBundles(req, res, db);
+            case "images":
+                return await handleImages(req, res, db);
+            case "customers":
+                return await handleCustomers(req, res, db);
+            case "shop-orders":
+                return await handleShopOrders(req, res, db);
             default:
                 return sendJson(res, 404, { error: "Not found" });
         }

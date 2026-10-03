@@ -6,7 +6,10 @@
 import React, { useState, useRef, useCallback, useEffect, Suspense, lazy } from "react";
 import { Show, UserButton, useAuth } from "@clerk/react";
 import ProtocolBuilder from "./components/ProtocolBuilder";
-import MyPricing from "./components/MyPricing";
+import ShopView from "./components/shop/ShopView";
+import MyAccount, { type AccountTab } from "./components/MyAccount";
+import NotificationBell from "./components/NotificationBell";
+import { useNotifications } from "./hooks/useNotifications";
 import ReconstitutionCalc from "./components/ReconstitutionCalc";
 import TrackingManager from "./components/TrackingManager";
 import DashboardPage from "./components/DashboardPage";
@@ -15,10 +18,10 @@ import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useIsAdmin } from "./hooks/useIsAdmin";
+import { useWaitingOrders } from "./hooks/useWaitingOrders";
 import type { AdminSection } from "./components/admin/AdminArea";
 import {
   Beaker,
-  Search,
   Scale,
   ClipboardList,
   ShieldAlert,
@@ -34,16 +37,22 @@ import {
   Truck,
   Boxes,
   Receipt,
+  Users,
+  UserRound,
+  ShoppingCart,
+  Inbox,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
 const AdminArea = lazy(() => import("./components/admin/AdminArea"));
 
-type ActiveTab = "dashboard" | "protocol" | "pricing" | "recon" | "logs" | "peptideDb" | "admin";
+type ActiveTab = "dashboard" | "protocol" | "shop" | "account" | "recon" | "logs" | "peptideDb" | "admin";
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard size={13} /> },
+  { id: "new-orders", label: "New Orders", icon: <Inbox size={13} /> },
   { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={13} /> },
+  { id: "customers", label: "Customers", icon: <Users size={13} /> },
   { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={13} /> },
   { id: "supply-orders", label: "Supply Orders", icon: <Truck size={13} /> },
   { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
@@ -104,6 +113,15 @@ export default function App() {
   }, [getToken, isLoaded, isSignedIn]);
 
   const isAdmin = useIsAdmin(isLoaded && sessionChecked && hasValidSession);
+  const { waiting: waitingOrders, refresh: refreshWaitingOrders } = useWaitingOrders(isAdmin);
+  const notifications = useNotifications(isLoaded && sessionChecked && hasValidSession);
+  // Moving around the app also checks for new notifications / waiting orders, so they show up promptly.
+  const refreshNotifications = notifications.refresh;
+  useEffect(() => {
+    void refreshNotifications();
+    void refreshWaitingOrders();
+  }, [activeTab, adminSection, refreshNotifications, refreshWaitingOrders]);
+  const [accountTab, setAccountTab] = useState<AccountTab>("orders");
 
   useEffect(() => {
     // Keep each tab landing at the top so page headers are always fully visible.
@@ -134,6 +152,14 @@ export default function App() {
     });
   }, []);
 
+  const openAccount = useCallback(
+    (tab: AccountTab) => {
+      setAccountTab(tab);
+      navigateTab("account");
+    },
+    [navigateTab]
+  );
+
   const navigateAdmin = useCallback((section: AdminSection) => {
     setIsMobileMenuOpen(false);
     setActiveTab("admin");
@@ -152,8 +178,10 @@ export default function App() {
         return <DashboardPage setActiveTab={navigateTab} />;
       case "protocol":
         return <ProtocolBuilder key={protocolResetKey} />;
-      case "pricing":
-        return <MyPricing />;
+      case "shop":
+        return <ShopView onOpenAccount={openAccount} />;
+      case "account":
+        return <MyAccount initialTab={accountTab} onShop={() => navigateTab("shop")} />;
       case "recon":
         return <ReconstitutionCalc />;
       case "logs":
@@ -163,7 +191,12 @@ export default function App() {
       case "admin":
         return isAdmin ? (
           <Suspense fallback={<LoadingSpinner label="Loading admin..." />}>
-            <AdminArea section={adminSection} onNavigate={navigateAdmin} />
+            <AdminArea
+              section={adminSection}
+              onNavigate={navigateAdmin}
+              waitingOrders={waitingOrders}
+              onOrdersChanged={() => void refreshWaitingOrders()}
+            />
           </Suspense>
         ) : (
           <DashboardPage setActiveTab={navigateTab} />
@@ -182,8 +215,8 @@ export default function App() {
           <div className="absolute bottom-0 right-0 w-[25rem] h-[25rem] bg-gold-500/5 rounded-full blur-[120px] pointer-events-none translate-x-1/2 translate-y-1/2" />
 
           {/* DESKTOP LEFT SIDEBAR */}
-          <aside className="hidden md:flex flex-col w-64 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 min-h-dvh p-5 justify-between flex-shrink-0 z-30">
-            <div className="space-y-8">
+          <aside className="hidden md:flex flex-col w-64 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 h-dvh p-5 gap-4 flex-shrink-0 z-30">
+            <div className="app-side-scroller flex-1 min-h-0 overflow-y-auto -mr-3 pr-3 space-y-8">
               {/* Brand Logo & Name */}
               <div className="flex items-center px-1">
                 <div className="flex items-center gap-1">
@@ -275,15 +308,27 @@ export default function App() {
                 <div>
                   <div className="space-y-1.5">
                     <button
-                      onClick={() => navigateTab("pricing")}
-                      id="sidebar-btn-pricing"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "pricing"
+                      onClick={() => navigateTab("shop")}
+                      id="sidebar-btn-shop"
+                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "shop"
                         ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
                         : "text-slate-400 hover:text-white hover:bg-slate-900/40"
                         }`}
                     >
-                      <Search size={14} />
-                      <span>Pricing</span>
+                      <ShoppingCart size={14} />
+                      <span>Shop</span>
+                    </button>
+
+                    <button
+                      onClick={() => openAccount("orders")}
+                      id="sidebar-btn-account"
+                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "account"
+                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
+                        }`}
+                    >
+                      <UserRound size={14} />
+                      <span>My Account</span>
                     </button>
                   </div>
                 </div>
@@ -300,6 +345,7 @@ export default function App() {
                     >
                       <Lock size={14} />
                       <span>Admin</span>
+                      {waitingOrders > 0 && activeTab !== "admin" && <WaitingBadge count={waitingOrders} />}
                     </button>
 
                     {activeTab === "admin" && (
@@ -315,6 +361,7 @@ export default function App() {
                           >
                             {s.icon}
                             <span>{s.label}</span>
+                            {s.id === "new-orders" && waitingOrders > 0 && <WaitingBadge count={waitingOrders} />}
                           </button>
                         ))}
                       </div>
@@ -324,10 +371,17 @@ export default function App() {
               </nav>
             </div>
 
-            <div className="px-2 pb-1">
+            <div className="px-2 pb-1 flex items-center gap-2 flex-shrink-0">
               <div className="rounded-3xl bg-transparent px-2 py-1.5 w-fit">
                 <UserButton />
               </div>
+              <NotificationBell
+                  items={notifications.items}
+                  unread={notifications.unread}
+                  onOpen={() => void notifications.markAllRead()}
+                  onSelect={() => openAccount("orders")}
+                  placement="up"
+                />
             </div>
           </aside>
 
@@ -349,6 +403,13 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-3">
+                <NotificationBell
+                  items={notifications.items}
+                  unread={notifications.unread}
+                  onOpen={() => void notifications.markAllRead()}
+                  onSelect={() => openAccount("orders")}
+                  placement="down"
+                />
                 <div className="rounded-3xl bg-transparent px-2 py-1.5">
                   <UserButton />
                 </div>
@@ -424,13 +485,23 @@ export default function App() {
                 <div className="flex flex-col gap-1">
                   <button
                     onClick={() => {
-                      navigateTab("pricing");
+                      navigateTab("shop");
                     }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "pricing" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
+                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "shop" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
                       }`}
                   >
-                    <Search size={14} />
-                    <span>Pricing</span>
+                    <ShoppingCart size={14} />
+                    <span>Shop</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      openAccount("orders");
+                    }}
+                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "account" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
+                      }`}
+                  >
+                    <UserRound size={14} />
+                    <span>My Account</span>
                   </button>
                 </div>
 
@@ -445,6 +516,7 @@ export default function App() {
                     >
                       <Lock size={14} />
                       <span>Admin</span>
+                      {waitingOrders > 0 && activeTab !== "admin" && <WaitingBadge count={waitingOrders} />}
                     </button>
 
                     {activeTab === "admin" && (
@@ -460,6 +532,7 @@ export default function App() {
                           >
                             {s.icon}
                             <span>{s.label}</span>
+                            {s.id === "new-orders" && waitingOrders > 0 && <WaitingBadge count={waitingOrders} />}
                           </button>
                         ))}
                       </div>
@@ -506,5 +579,14 @@ export default function App() {
         <AuthPage />
       )}
     </>
+  );
+}
+
+// Count of shop orders waiting to be confirmed, shown on the admin menu.
+function WaitingBadge({ count }: { count: number }) {
+  return (
+    <span className="ml-auto min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
+      {count}
+    </span>
   );
 }

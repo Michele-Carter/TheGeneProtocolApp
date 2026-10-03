@@ -2,9 +2,12 @@ import type { CheckStatus, ItemKind, OrderInput } from "../../shared/landedCost"
 import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sales";
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
+import type { ShippingAddress } from "../../shared/customers";
+import type { ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 
 export interface SaleRecord {
   id: string;
+  customerId: string | null;
   customerName: string;
   orderDate: string;
   status: "open" | "completed";
@@ -42,8 +45,62 @@ export interface ExpenseRecord extends Omit<ExpenseInput, "detail"> {
 
 export interface BundleRecord extends BundleInput {
   id: string;
+  images: string[]; // first is the main image
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CustomerInput {
+  name: string;
+  email: string;
+  shippingAddress: ShippingAddress;
+  notes: string;
+}
+
+export interface CustomerStats {
+  orders: number;
+  openOrders: number;
+  spentNzd: number; // completed orders
+  profitNzd: number; // completed orders
+  owedNzd: number;
+  lastOrderDate: string | null;
+}
+
+export interface CustomerRecord extends CustomerInput {
+  id: string;
+  hasLogin: boolean; // linked to an app login
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerSummary extends CustomerRecord {
+  stats: CustomerStats;
+}
+
+export interface CustomerDetail extends CustomerSummary {
+  orders: SaleRecord[];
+}
+
+export interface ShopOrderSummary {
+  id: string;
+  orderNumber: number;
+  status: ShopOrderStatus;
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  units: number;
+  subtotalNzd: number;
+  shippingNzd: number | null;
+  saleId: string | null; // the customer order it became, once confirmed
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export interface ShopOrderDetail extends ShopOrderSummary {
+  lines: (ShopOrderLine & { available: number })[]; // available: free for this order right now
+  notes: string;
+  adminMessage: string;
+  shippingAddress: ShippingAddress;
 }
 
 type GetToken = () => Promise<string | null>;
@@ -56,9 +113,23 @@ export interface InvItem {
   unit: string;
   catalogCode: string | null;
   reorderLevel: number | null;
+  sellPriceNzd: number | null;
+  shopVisible: boolean;
+  shopCategories: string[];
+  shopDescription: string;
+  images: string[]; // first is the main image
   createdAt: string;
   updatedAt: string;
 }
+
+export type ItemPatch = Partial<
+  Pick<
+    InvItem,
+    "name" | "variant" | "unit" | "reorderLevel" | "sellPriceNzd" | "shopVisible" | "shopCategories" | "shopDescription"
+  >
+> & { applyToSizes?: boolean };
+
+export type ImageTarget = "item" | "bundle";
 
 export interface PurchaseOrderRecord {
   id: string;
@@ -146,7 +217,7 @@ export const adminApi = {
   me: (t: GetToken) => adminFetch<{ isAdmin: boolean }>("me", { method: "GET" }, t),
 
   listItems: (t: GetToken) => adminFetch<InvItem[]>("items", { method: "GET" }, t),
-  updateItem: (id: string, patch: Partial<Pick<InvItem, "name" | "variant" | "unit" | "reorderLevel">>, t: GetToken) =>
+  updateItem: (id: string, patch: ItemPatch, t: GetToken) =>
     adminFetch<InvItem>(`items?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(patch) }, t),
 
   listOrders: (t: GetToken) => adminFetch<PurchaseOrderRecord[]>("orders", { method: "GET" }, t),
@@ -213,6 +284,56 @@ export const adminApi = {
     adminFetch<BundleRecord>(`bundles?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
   deleteBundle: (id: string, t: GetToken) =>
     adminFetch<{ success: true }>(`bundles?id=${q(id)}`, { method: "DELETE" }, t),
+
+  listCustomers: (t: GetToken) => adminFetch<CustomerSummary[]>("customers", { method: "GET" }, t),
+  getCustomer: (id: string, t: GetToken) => adminFetch<CustomerDetail>(`customers?id=${q(id)}`, { method: "GET" }, t),
+  createCustomer: (data: CustomerInput, t: GetToken) =>
+    adminFetch<CustomerRecord>("customers", { method: "POST", body: JSON.stringify(data) }, t),
+  updateCustomer: (id: string, data: CustomerInput, t: GetToken) =>
+    adminFetch<CustomerRecord>(`customers?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
+  deleteCustomer: (id: string, t: GetToken) =>
+    adminFetch<{ success: true }>(`customers?id=${q(id)}`, { method: "DELETE" }, t),
+  mergeCustomer: (id: string, intoId: string, t: GetToken) =>
+    adminFetch<CustomerRecord>(
+      `customers?id=${q(id)}&action=merge`,
+      { method: "POST", body: JSON.stringify({ intoId }) },
+      t
+    ),
+
+  listShopOrders: (t: GetToken) => adminFetch<ShopOrderSummary[]>("shop-orders", { method: "GET" }, t),
+  waitingShopOrders: (t: GetToken) => adminFetch<{ waiting: number }>("shop-orders?count=1", { method: "GET" }, t),
+  getShopOrder: (id: string, t: GetToken) => adminFetch<ShopOrderDetail>(`shop-orders?id=${q(id)}`, { method: "GET" }, t),
+  confirmShopOrder: (
+    id: string,
+    payload: { lines: { key: string; qty: number }[]; shippingNzd: number; message: string },
+    t: GetToken
+  ) =>
+    adminFetch<{ saleId: string }>(
+      `shop-orders?id=${q(id)}&action=confirm`,
+      { method: "POST", body: JSON.stringify(payload) },
+      t
+    ),
+  declineShopOrder: (id: string, message: string, t: GetToken) =>
+    adminFetch<{ success: true }>(
+      `shop-orders?id=${q(id)}&action=decline`,
+      { method: "POST", body: JSON.stringify({ message }) },
+      t
+    ),
+
+  addImage: (target: ImageTarget, id: string, dataUrl: string, t: GetToken) =>
+    adminFetch<{ images: string[] }>(
+      `images?target=${target}&id=${q(id)}`,
+      { method: "POST", body: JSON.stringify({ dataUrl }) },
+      t
+    ),
+  reorderImages: (target: ImageTarget, id: string, images: string[], t: GetToken) =>
+    adminFetch<{ images: string[] }>(
+      `images?target=${target}&id=${q(id)}`,
+      { method: "PATCH", body: JSON.stringify({ images }) },
+      t
+    ),
+  removeImage: (target: ImageTarget, id: string, url: string, t: GetToken) =>
+    adminFetch<{ images: string[] }>(`images?target=${target}&id=${q(id)}&url=${q(url)}`, { method: "DELETE" }, t),
 };
 
 export const money = (value: number | null | undefined, currency: "USD" | "NZD", digits = 2) => {

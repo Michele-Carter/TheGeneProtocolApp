@@ -5,8 +5,10 @@ import { emptyBundle, type BundleInput } from "../../../shared/bundles";
 import { adminApi, nzd, type BundleRecord, type InventorySummaryRow } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, dangerButton, inputClass, primaryButton, secondaryButton } from "./ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
+import CategoryPicker from "./CategoryPicker";
+import ProductImages from "./ProductImages";
 
-type Editing = { id: string | null; data: BundleInput } | null;
+type Editing = { id: string | null; data: BundleInput; images: string[] } | null;
 
 export default function BundlesView({ inventory }: { inventory: InventorySummaryRow[] }) {
   const { getToken } = useAuth();
@@ -51,15 +53,31 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
     setError(null);
     setDraftItemId("");
     setDraftQty(1);
-    setEditing({ id: null, data: emptyBundle() });
+    setEditing({ id: null, data: emptyBundle(), images: [] });
   };
 
   const startEdit = (row: BundleRecord) => {
     setError(null);
     setDraftItemId("");
     setDraftQty(1);
-    setEditing({ id: row.id, data: { name: row.name, description: row.description, components: row.components, priceNzd: row.priceNzd } });
+    setEditing({
+      id: row.id,
+      data: {
+        name: row.name,
+        description: row.description,
+        components: row.components,
+        priceNzd: row.priceNzd,
+        shopVisible: row.shopVisible,
+        shopCategories: row.shopCategories,
+      },
+      images: row.images,
+    });
   };
+
+  const knownCategories = useMemo(
+    () => [...inventory.flatMap((row) => row.item.shopCategories), ...(rows ?? []).flatMap((b) => b.shopCategories)],
+    [inventory, rows]
+  );
 
   const addComponent = () => {
     if (!editing || !draftItemId || !(draftQty && draftQty >= 1)) return;
@@ -87,10 +105,18 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
     if (!editing) return;
     if (!editing.data.name.trim()) return setError("Name is required.");
     if (editing.data.components.length === 0) return setError("Add at least one item.");
+    if (editing.data.shopVisible && editing.data.priceNzd == null) {
+      return setError("Set a package price before showing this bundle in the shop.");
+    }
     run("save", async () => {
-      if (editing.id) await adminApi.updateBundle(editing.id, editing.data, getToken);
-      else await adminApi.createBundle(editing.data, getToken);
-      setEditing(null);
+      if (editing.id) {
+        await adminApi.updateBundle(editing.id, editing.data, getToken);
+        setEditing(null);
+      } else {
+        // Stay on a new bundle once it's saved so images can be added straight away.
+        const created = await adminApi.createBundle(editing.data, getToken);
+        setEditing({ id: created.id, data: editing.data, images: created.images });
+      }
       await load();
     });
   };
@@ -132,13 +158,51 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
             />
           </Field>
           <div className="sm:col-span-2">
-            <Field label="Description (optional)">
-              <input
-                className={inputClass}
+            <Field label="Description (optional)" hint="Also shown on the shop page when the bundle is in the shop.">
+              <textarea
+                className={`${inputClass} min-h-[4.5rem] resize-y`}
                 value={editing.data.description}
                 onChange={(e) => setEditing((ed) => (ed ? { ...ed, data: { ...ed.data, description: e.target.value } } : ed))}
               />
             </Field>
+          </div>
+        </div>
+
+        <div className="mt-5 pt-4 border-t border-slate-800/60 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-3">
+            <span className="block text-[11px] font-bold text-white">Shop</span>
+            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editing.data.shopVisible}
+                onChange={(e) => setEditing((ed) => (ed ? { ...ed, data: { ...ed.data, shopVisible: e.target.checked } } : ed))}
+              />
+              Show in shop
+            </label>
+            <div className="space-y-1">
+              <span className="block text-[11px] font-bold text-white">Categories</span>
+              <CategoryPicker
+                value={editing.data.shopCategories}
+                known={knownCategories}
+                onChange={(shopCategories) => setEditing((ed) => (ed ? { ...ed, data: { ...ed.data, shopCategories } } : ed))}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <span className="block text-[11px] font-bold text-white">Images</span>
+            {editing.id ? (
+              <ProductImages
+                target="bundle"
+                id={editing.id}
+                images={editing.images}
+                onChange={(images) => {
+                  setEditing((ed) => (ed ? { ...ed, images } : ed));
+                  setRows((rs) => rs?.map((r) => (r.id === editing.id ? { ...r, images } : r)) ?? rs);
+                }}
+              />
+            ) : (
+              <p className="text-xs text-slate-500">Save the bundle first, then add images.</p>
+            )}
           </div>
         </div>
 
@@ -260,6 +324,7 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white truncate">{row.name}</span>
                   {row.priceNzd != null && <span className="text-xs tabular-nums text-gold-400 font-semibold">{nzd(row.priceNzd)}</span>}
+                  {row.shopVisible && <span className="text-[10px] font-bold text-emerald-400">In shop</span>}
                 </div>
                 <div className="text-[11px] text-slate-500 truncate">
                   {row.components

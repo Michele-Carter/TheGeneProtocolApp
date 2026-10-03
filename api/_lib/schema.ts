@@ -1,4 +1,5 @@
-import { index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import type { ShopOrderLine } from "../../shared/shop.js";
 
 export const userStateScopeEnum = pgEnum("user_state_scope", [
   "protocol",
@@ -35,6 +36,12 @@ export const invItems = pgTable("inv_items", {
   unit: text("unit").notNull().default("unit"),
   catalogCode: text("catalog_code"),
   reorderLevel: integer("reorder_level"),
+  // Shop front. images: string[] of image URLs, the first is the main image.
+  sellPriceNzd: numeric("sell_price_nzd", { precision: 14, scale: 2, mode: "number" }),
+  shopVisible: boolean("shop_visible").notNull().default(false),
+  shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
+  shopDescription: text("shop_description").notNull().default(""),
+  images: jsonb("images").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -87,10 +94,25 @@ export const stockMovements = pgTable(
   (t) => [index("stock_movements_item_idx").on(t.itemId, t.occurredAt)]
 );
 
+// A customer. clerkUserId links them to their app login (null until they first sign in);
+// shippingAddress is a ShippingAddress (shared/customers.ts).
+export const customers = pgTable("customers", {
+  id: text("id").primaryKey(),
+  clerkUserId: text("clerk_user_id"),
+  name: text("name").notNull(),
+  email: text("email").notNull().default(""),
+  shippingAddress: jsonb("shipping_address").notNull().default({}),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Customer orders. Stock is taken out oldest-first when an order is completed;
 // costDetail records the cost of each line at that moment ({ [lineId]: costNzd }).
+// customerName is kept in step with the linked customer's name.
 export const sales = pgTable("sales", {
   id: text("id").primaryKey(),
+  customerId: text("customer_id"),
   customerName: text("customer_name").notNull(),
   orderDate: text("order_date").notNull(), // yyyy-mm-dd
   status: text("status").notNull().default("open"), // "open" | "completed"
@@ -102,6 +124,45 @@ export const sales = pgTable("sales", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// An order a customer sent from the shop: "submitted" until the owner confirms it (creating the sale in
+// saleId) or declines it. Prices are fixed when it's sent; shippingNzd is set by the owner when confirming.
+export const shopOrders = pgTable(
+  "shop_orders",
+  {
+    id: text("id").primaryKey(),
+    orderNumber: integer("order_number").notNull(),
+    customerId: text("customer_id").notNull(),
+    status: text("status").notNull().default("submitted"), // ShopOrderStatus (shared/shop.ts)
+    lines: jsonb("lines").$type<ShopOrderLine[]>().notNull(),
+    subtotalNzd: numeric("subtotal_nzd", { precision: 14, scale: 2, mode: "number" }).notNull(),
+    shippingNzd: numeric("shipping_nzd", { precision: 14, scale: 2, mode: "number" }),
+    notes: text("notes").notNull().default(""),
+    shippingAddress: jsonb("shipping_address").notNull(),
+    adminMessage: text("admin_message").notNull().default(""),
+    saleId: text("sale_id"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("shop_orders_customer_idx").on(t.customerId, t.createdAt)]
+);
+
+// A message for a customer about one of their shop orders, shown under the bell in the app.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: text("id").primaryKey(),
+    customerId: text("customer_id").notNull(),
+    shopOrderId: text("shop_order_id"),
+    kind: text("kind").notNull(), // "confirmed" | "declined" | "sent"
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("notifications_customer_idx").on(t.customerId, t.createdAt)]
+);
+
 // A reusable kit of inventory items sold together (e.g. "Pen Starter Bundle"). Holds no stock
 // of its own — selling one expands it into a SaleLine per component (shared/bundles.ts).
 export const bundles = pgTable("bundles", {
@@ -110,6 +171,9 @@ export const bundles = pgTable("bundles", {
   description: text("description").notNull().default(""),
   components: jsonb("components").notNull(), // BundleComponent[] (shared/bundles.ts)
   priceNzd: numeric("price_nzd", { precision: 14, scale: 2, mode: "number" }),
+  shopVisible: boolean("shop_visible").notNull().default(false),
+  shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
+  images: jsonb("images").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

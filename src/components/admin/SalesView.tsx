@@ -18,9 +18,10 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 type Editing = { record: SaleRecord | null; data: SaleInput } | null;
 
-export default function SalesView() {
+export default function SalesView({ openSaleId, onOpened }: { openSaleId?: string | null; onOpened?: () => void } = {}) {
   const { getToken } = useAuth();
   const [sales, setSales] = useState<SaleRecord[] | null>(null);
+  const [customerNames, setCustomerNames] = useState<string[]>([]);
   const [inventory, setInventory] = useState<InventorySummaryRow[]>([]);
   const [bundles, setBundles] = useState<BundleRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -32,14 +33,16 @@ export default function SalesView() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [saleRows, stock, bundleRows] = await Promise.all([
+      const [saleRows, stock, bundleRows, customerRows] = await Promise.all([
         adminApi.listSales(getToken),
         adminApi.inventory(getToken),
         adminApi.listBundles(getToken),
+        adminApi.listCustomers(getToken),
       ]);
       setSales(saleRows);
       setInventory(stock);
       setBundles(bundleRows);
+      setCustomerNames(customerRows.map((c) => c.name));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -49,9 +52,18 @@ export default function SalesView() {
     void load();
   }, [load]);
 
+  // Opens the order chosen on a customer's page.
+  useEffect(() => {
+    if (!openSaleId || !sales) return;
+    const sale = sales.find((s) => s.id === openSaleId);
+    if (sale) setEditing({ record: sale, data: sale.data });
+    onOpened?.();
+  }, [openSaleId, sales, onOpened]);
+
+  // Existing customers, suggested when typing a name. A new name creates a new customer.
   const customers = useMemo(
-    () => Array.from(new Set((sales ?? []).map((s) => s.customerName).filter(Boolean))).sort(),
-    [sales]
+    () => Array.from(new Set([...customerNames, ...(sales ?? []).map((s) => s.customerName)].filter(Boolean))).sort(),
+    [customerNames, sales]
   );
 
   // Most recent price charged per item — the default for items that aren't on the price list.

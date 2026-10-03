@@ -7,8 +7,11 @@ import {
   todayIso,
   type InventoryDetail,
   type InventorySummaryRow,
+  type InvItem,
   type StockMovement,
 } from "../../lib/adminApi";
+import CategoryPicker from "./CategoryPicker";
+import ProductImages from "./ProductImages";
 import { Card, ErrorNote, Field, NumberField, StatRow, dateButtonClass, inputClass, primaryButton, secondaryButton } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
@@ -112,6 +115,7 @@ export default function InventoryView() {
     return (
       <ItemDetail
         itemId={selectedId}
+        inventory={rows ?? []}
         onBack={() => {
           setSelectedId(null);
           void load();
@@ -193,11 +197,12 @@ export default function InventoryView() {
 
       {filtered.length > 0 && (
         <div className="border border-slate-800 rounded-2xl overflow-x-auto">
-          <table className="w-full text-xs min-w-[40rem]">
+          <table className="w-full text-xs min-w-[46rem]">
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wider text-white bg-slate-900/60">
                 <th className="px-4 py-2.5 font-bold">Item</th>
                 <th className="px-3 py-2.5 font-bold text-right">On hand</th>
+                <th className="px-3 py-2.5 font-bold text-right">Sell price</th>
                 <th className="px-3 py-2.5 font-bold text-right" title="Cost of the next unit sold (oldest batch)">
                   Next unit cost
                 </th>
@@ -228,6 +233,10 @@ export default function InventoryView() {
                     <span className="text-slate-500">{row.item.unit}s</span>
                     {isLowStock(row) && <div className="text-[10px] text-amber-400">Low stock</div>}
                   </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">
+                    <span className="text-slate-200 font-semibold">{nzd(row.item.sellPriceNzd)}</span>
+                    {row.item.shopVisible && <div className="text-[10px] text-emerald-400">In shop</div>}
+                  </td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-gold-400 font-bold">{nzd(row.nextCostNzd, 3)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{nzd(row.averageCostNzd, 3)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-200 font-semibold">{nzd(row.valueNzd)}</td>
@@ -255,7 +264,133 @@ function Tile({ label, value, warn }: { label: string; value: string; warn?: boo
   );
 }
 
-function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) {
+function ShopCard({
+  item,
+  inventory,
+  onSaved,
+}: {
+  item: InvItem;
+  inventory: InventorySummaryRow[];
+  onSaved: (item: InvItem) => void;
+}) {
+  const { getToken } = useAuth();
+  const [price, setPrice] = useState<number | null>(item.sellPriceNzd);
+  const [visible, setVisible] = useState(item.shopVisible);
+  const [categories, setCategories] = useState(item.shopCategories);
+  const [description, setDescription] = useState(item.shopDescription);
+  const [images, setImages] = useState(item.images);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  // Other sizes of the same product, e.g. Retatrutide 5mg / 10mg / 20mg.
+  const otherSizes = inventory.filter(
+    (row) => row.item.id !== item.id && row.item.name === item.name && row.item.kind === item.kind
+  );
+  const [applyToSizes, setApplyToSizes] = useState(true);
+
+  const knownCategories = useMemo(() => inventory.flatMap((row) => row.item.shopCategories), [inventory]);
+
+  const dirty =
+    price !== item.sellPriceNzd ||
+    visible !== item.shopVisible ||
+    categories.join("\n") !== item.shopCategories.join("\n") ||
+    description !== item.shopDescription;
+
+  const save = async () => {
+    if (visible && price == null) {
+      setError("Set a sell price before showing this in the shop.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await adminApi.updateItem(
+        item.id,
+        {
+          sellPriceNzd: price,
+          shopVisible: visible,
+          shopCategories: categories,
+          shopDescription: description,
+          applyToSizes: otherSizes.length > 0 && applyToSizes,
+        },
+        getToken
+      );
+      onSaved(updated);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title="Shop">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 items-end">
+            <Field label={`Sell price per ${item.unit} (NZD)`}>
+              <NumberField value={price} onChange={setPrice} placeholder="0.00" />
+            </Field>
+            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pb-2">
+              <input type="checkbox" checked={visible} onChange={(e) => setVisible(e.target.checked)} />
+              Show in shop
+            </label>
+          </div>
+          <div className="space-y-1">
+            <span className="block text-[11px] font-bold text-white">Categories</span>
+            <CategoryPicker value={categories} known={knownCategories} onChange={setCategories} />
+          </div>
+          <Field label="Description" hint="Shown on the product page.">
+            <textarea
+              className={`${inputClass} min-h-[7rem] resize-y`}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </Field>
+          {otherSizes.length > 0 && (
+            <label className="flex items-start gap-2 text-[11px] text-slate-400 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={applyToSizes} onChange={(e) => setApplyToSizes(e.target.checked)} />
+              <span>
+                Use these categories and this description for the other {otherSizes.length === 1 ? "size" : "sizes"} too (
+                {otherSizes.map((row) => row.item.variant || "no size").join(", ")})
+              </span>
+            </label>
+          )}
+          <ErrorNote message={error} />
+          <button className={primaryButton} onClick={save} disabled={busy || !dirty}>
+            {busy && <Spinner size={13} />} {saved && !dirty ? "Saved" : "Save shop details"}
+          </button>
+        </div>
+
+        <div className="space-y-1">
+          <span className="block text-[11px] font-bold text-white">Images</span>
+          <ProductImages
+            target="item"
+            id={item.id}
+            images={images}
+            onChange={(next) => {
+              setImages(next);
+              onSaved({ ...item, images: next });
+            }}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ItemDetail({
+  itemId,
+  inventory,
+  onBack,
+}: {
+  itemId: string;
+  inventory: InventorySummaryRow[];
+  onBack: () => void;
+}) {
   const { getToken } = useAuth();
   const [detail, setDetail] = useState<InventoryDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -402,6 +537,13 @@ function ItemDetail({ itemId, onBack }: { itemId: string; onBack: () => void }) 
       {detail && (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem] gap-5 items-start">
           <div className="space-y-5 min-w-0">
+            <ShopCard
+              key={detail.item.id}
+              item={detail.item}
+              inventory={inventory}
+              onSaved={(updated) => setDetail((d) => (d ? { ...d, item: updated } : d))}
+            />
+
             <Card title="Batches (used oldest first)">
               {detail.lots.length === 0 ? (
                 <p className="text-xs text-slate-500">No stock has been received for this item yet.</p>
