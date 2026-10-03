@@ -41,6 +41,22 @@ export function normalizeCategories(categories: string[]): string[] {
 
 // ---- What customers see in the shop ----
 
+// The shop's tabs. Bundles always go under Bundles; items under Peptides or Supplies.
+export type ShopSection = "peptides" | "bundles" | "supplies";
+export type ItemShopSection = Exclude<ShopSection, "bundles">;
+
+export const SHOP_SECTIONS: { id: ShopSection; label: string }[] = [
+  { id: "peptides", label: "Peptides" },
+  { id: "bundles", label: "Bundles" },
+  { id: "supplies", label: "Supplies" },
+];
+
+// Where an item shows: as set in admin, otherwise by whether it's stocked as a peptide or a supply.
+export function itemSection(item: { kind: string; shopSection: string | null }): ItemShopSection {
+  if (item.shopSection === "peptides" || item.shopSection === "supplies") return item.shopSection;
+  return item.kind === "supply" ? "supplies" : "peptides";
+}
+
 // Customers see a label, not the exact count.
 export type StockLevel = "in" | "low" | "out";
 
@@ -57,6 +73,7 @@ export interface ShopVariant {
 export interface ShopProduct {
   id: string;
   kind: "product" | "bundle";
+  section: ShopSection;
   name: string;
   categories: string[];
   description: string;

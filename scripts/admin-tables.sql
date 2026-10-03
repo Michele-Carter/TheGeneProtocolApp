@@ -156,6 +156,12 @@ CREATE INDEX IF NOT EXISTS shop_orders_status_idx ON shop_orders (status);
 ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS payment_reported_at timestamptz;
 ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS payment_reference text NOT NULL DEFAULT '';
 
+-- Which shop tab an item shows under: 'peptides' or 'supplies'. Null = by its kind (bundles are always 'bundles').
+ALTER TABLE inv_items ADD COLUMN IF NOT EXISTS shop_section text;
+-- Items already filed under the "Supplies" category (e.g. bac water, stocked as a peptide) go under Supplies.
+UPDATE inv_items SET shop_section = 'supplies'
+WHERE shop_section IS NULL AND kind <> 'supply' AND shop_categories ? 'Supplies';
+
 -- Who cancelled a cancelled shop order: "customer" (before it was confirmed) or "owner" (deleted its customer order).
 ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS cancelled_by text;
 

@@ -4,6 +4,7 @@ import { bundles, invItems, inventoryLots, sales, shopOrders } from "./schema.js
 import type { SaleInput } from "../../shared/sales.js";
 import {
   compareSizes,
+  itemSection,
   normalizeCategories,
   stockLevel,
   type ShopOrderLine,
@@ -86,6 +87,7 @@ export async function loadCatalog(db: Db | Tx) {
     products.push({
       id: `p-${slug(first.kind === "supply" ? `supply ${first.name}` : first.name)}`,
       kind: "product",
+      section: itemSection(first),
       name: first.name,
       categories: normalizeCategories(sizes.flatMap((s) => s.shopCategories)),
       description: sizes.find((s) => s.shopDescription.trim())?.shopDescription ?? "",
@@ -117,6 +119,7 @@ export async function loadCatalog(db: Db | Tx) {
     products.push({
       id: `b-${bundle.id}`,
       kind: "bundle",
+      section: "bundles",
       name: bundle.name,
       categories: bundle.shopCategories,
       description: bundle.description,
