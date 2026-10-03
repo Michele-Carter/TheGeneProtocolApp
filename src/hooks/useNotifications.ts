@@ -5,7 +5,8 @@ import { shopApi } from "../lib/shopApi";
 
 const REFRESH_MS = 60_000;
 
-// The signed-in customer's notifications (order confirmed / declined / on its way), checked every minute.
+// The signed-in customer's notifications (order confirmed / declined / on its way), checked every minute,
+// when the tab regains focus, and whenever `refresh` is called (e.g. on moving to another page of the app).
 export function useNotifications(enabled: boolean) {
   const { getToken } = useAuth();
   const [items, setItems] = useState<CustomerNotification[]>([]);
@@ -26,7 +27,15 @@ export function useNotifications(enabled: boolean) {
     if (!enabled) return;
     void refresh();
     const timer = window.setInterval(() => void refresh(), REFRESH_MS);
-    return () => window.clearInterval(timer);
+    // Also check straight away when someone comes back to the tab.
+    const onVisible = () => document.visibilityState === "visible" && void refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [enabled, refresh]);
 
   const markAllRead = useCallback(async () => {

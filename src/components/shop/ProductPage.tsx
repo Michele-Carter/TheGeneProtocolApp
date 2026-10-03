@@ -17,6 +17,8 @@ export default function ProductPage({
   onViewCart: () => void;
 }) {
   const single = product.variants.length === 1;
+  // "Size" for 5mg / 10mg / 3ml; "Option" for anything else, e.g. pen colours.
+  const choiceLabel = product.variants.every((v) => /^\d/.test(v.label.trim())) ? "Size" : "Option";
   // Like most shops, a product with several sizes starts on "Choose an option".
   const [variantKey, setVariantKey] = useState<string>(single ? product.variants[0].key : "");
   const variant = product.variants.find((v) => v.key === variantKey) ?? null;
@@ -100,7 +102,7 @@ export default function ProductPage({
           <div className="border-t border-slate-800 pt-5 space-y-4">
             {!single && (
               <label className="flex items-center gap-4">
-                <span className="text-sm text-slate-400 w-12">Size</span>
+                <span className="text-sm text-slate-400 w-14">{choiceLabel}</span>
                 <select
                   value={variantKey}
                   onChange={(e) => setVariantKey(e.target.value)}

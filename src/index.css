@@ -124,28 +124,34 @@ body {
   cursor: not-allowed;
 }
 
-/* Slim, dark-themed scrollbar on the main content scroller (kept visible - long pages like Price Finder need it). */
-.app-main-scroller {
+/* Slim, dark-themed scrollbar on the main content scroller (kept visible - long pages like Price Finder need it)
+   and on the sidebar menu, which scrolls when it's taller than the screen. */
+.app-main-scroller,
+.app-side-scroller {
   scrollbar-width: thin;
   scrollbar-color: rgba(100, 116, 139, 0.5) transparent;
 }
 
-.app-main-scroller::-webkit-scrollbar {
+.app-main-scroller::-webkit-scrollbar,
+.app-side-scroller::-webkit-scrollbar {
   width: 10px;
 }
 
-.app-main-scroller::-webkit-scrollbar-track {
+.app-main-scroller::-webkit-scrollbar-track,
+.app-side-scroller::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.app-main-scroller::-webkit-scrollbar-thumb {
+.app-main-scroller::-webkit-scrollbar-thumb,
+.app-side-scroller::-webkit-scrollbar-thumb {
   background-color: rgba(100, 116, 139, 0.5);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-.app-main-scroller::-webkit-scrollbar-thumb:hover {
+.app-main-scroller::-webkit-scrollbar-thumb:hover,
+.app-side-scroller::-webkit-scrollbar-thumb:hover {
   background-color: rgba(194, 145, 31, 0.6);
 }
 

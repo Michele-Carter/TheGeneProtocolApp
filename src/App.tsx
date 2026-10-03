@@ -115,6 +115,12 @@ export default function App() {
   const isAdmin = useIsAdmin(isLoaded && sessionChecked && hasValidSession);
   const { waiting: waitingOrders, refresh: refreshWaitingOrders } = useWaitingOrders(isAdmin);
   const notifications = useNotifications(isLoaded && sessionChecked && hasValidSession);
+  // Moving around the app also checks for new notifications / waiting orders, so they show up promptly.
+  const refreshNotifications = notifications.refresh;
+  useEffect(() => {
+    void refreshNotifications();
+    void refreshWaitingOrders();
+  }, [activeTab, adminSection, refreshNotifications, refreshWaitingOrders]);
   const [accountTab, setAccountTab] = useState<AccountTab>("orders");
 
   useEffect(() => {
@@ -209,8 +215,8 @@ export default function App() {
           <div className="absolute bottom-0 right-0 w-[25rem] h-[25rem] bg-gold-500/5 rounded-full blur-[120px] pointer-events-none translate-x-1/2 translate-y-1/2" />
 
           {/* DESKTOP LEFT SIDEBAR */}
-          <aside className="hidden md:flex flex-col w-64 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 min-h-dvh p-5 justify-between flex-shrink-0 z-30">
-            <div className="space-y-8">
+          <aside className="hidden md:flex flex-col w-64 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 h-dvh p-5 gap-4 flex-shrink-0 z-30">
+            <div className="app-side-scroller flex-1 min-h-0 overflow-y-auto -mr-3 pr-3 space-y-8">
               {/* Brand Logo & Name */}
               <div className="flex items-center px-1">
                 <div className="flex items-center gap-1">
@@ -365,7 +371,7 @@ export default function App() {
               </nav>
             </div>
 
-            <div className="px-2 pb-1 flex items-center gap-2">
+            <div className="px-2 pb-1 flex items-center gap-2 flex-shrink-0">
               <div className="rounded-3xl bg-transparent px-2 py-1.5 w-fit">
                 <UserButton />
               </div>
