@@ -4,16 +4,16 @@ import { adminApi } from "../lib/adminApi";
 
 const REFRESH_MS = 60_000;
 
-// How many shop orders are waiting for the owner to confirm, for the badge on the admin menu.
-// Checks every minute while the app is open, and again whenever `refresh` is called.
+// Shop orders needing the owner: new ones to confirm, and ones the customer says they've paid.
+// Checked every minute while the app is open, and again whenever `refresh` is called.
 export function useWaitingOrders(enabled: boolean) {
   const { getToken } = useAuth();
-  const [waiting, setWaiting] = useState(0);
+  const [counts, setCounts] = useState({ waiting: 0, paymentsToCheck: 0 });
 
   const refresh = useCallback(async () => {
     if (!enabled) return;
     try {
-      setWaiting((await adminApi.waitingShopOrders(getToken)).waiting);
+      setCounts(await adminApi.waitingShopOrders(getToken));
     } catch {
       // Keep the last count; the next check will try again.
     }
@@ -21,7 +21,7 @@ export function useWaitingOrders(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) {
-      setWaiting(0);
+      setCounts({ waiting: 0, paymentsToCheck: 0 });
       return;
     }
     void refresh();
@@ -29,5 +29,5 @@ export function useWaitingOrders(enabled: boolean) {
     return () => window.clearInterval(timer);
   }, [enabled, refresh]);
 
-  return { waiting, refresh };
+  return { ...counts, total: counts.waiting + counts.paymentsToCheck, refresh };
 }

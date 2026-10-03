@@ -294,7 +294,11 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
       onBack();
       return;
     }
-    if (!window.confirm("Delete this customer order? This can't be undone.")) return;
+    const fromShop = (record?.data.orderNumber ?? "").startsWith("Shop #");
+    const message = fromShop
+      ? "Delete this customer order? This can't be undone.\n\nIt came from the shop, so the customer's order will be marked cancelled and they'll get a notification."
+      : "Delete this customer order? This can't be undone.";
+    if (!window.confirm(message)) return;
     run("delete", async () => {
       await adminApi.deleteSale(current.id, getToken);
       onDeleted();

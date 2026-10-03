@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { MessageSquare, Package, Truck } from "lucide-react";
+import { Landmark, MessageSquare, Package, Send, Truck } from "lucide-react";
 import type { ShopOrder } from "../../../shared/shop";
 import { money, shopApi } from "../../lib/shopApi";
 import { ErrorNote } from "../admin/ui";
@@ -21,7 +21,11 @@ function statusOf(order: ShopOrder): { label: string; tone: Tone; detail: string
     return { label: "Waiting for confirmation", tone: "warn", detail: "We're checking your order and will confirm it with the shipping cost." };
   }
   if (order.status === "declined") return { label: "Declined", tone: "bad", detail: "" };
-  if (order.status === "cancelled") return { label: "Cancelled", tone: "muted", detail: "You cancelled this order." };
+  if (order.status === "cancelled") {
+    return order.cancelledBy === "owner"
+      ? { label: "Cancelled", tone: "bad", detail: "We've cancelled this order. Please get in touch if you have any questions." }
+      : { label: "Cancelled", tone: "muted", detail: "You cancelled this order." };
+  }
   const p = order.progress;
   if (!p) return { label: "Confirmed", tone: "good", detail: "" };
   if (p.shippingStatus === "delivered") return { label: "Delivered", tone: "good", detail: "" };
@@ -159,6 +163,10 @@ export default function MyOrders({ onShop }: { onShop: () => void }) {
               )}
             </div>
 
+            {p && p.paymentStatus !== "paid" && !p.completed && (
+              <PaymentBox order={order} onReported={load} />
+            )}
+
             {order.notes && <p className="text-xs text-slate-500">Your note: {order.notes}</p>}
 
             {order.status === "submitted" && (
@@ -169,6 +177,115 @@ export default function MyOrders({ onShop }: { onShop: () => void }) {
           </section>
         );
       })}
+    </div>
+  );
+}
+
+// How to pay a confirmed order, and the button to tell us it's been paid.
+function PaymentBox({ order, onReported }: { order: ShopOrder; onReported: () => Promise<void> }) {
+  const { getToken } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [reference, setReference] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const p = order.progress!;
+  const d = order.paymentDetails;
+  const [copied, setCopied] = useState(false);
+  const copyAccount = async () => {
+    if (!d) return;
+    try {
+      await navigator.clipboard.writeText(d.accountNumber);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked - the number is still selectable.
+    }
+  };
+
+  const report = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await shopApi.reportPayment(order.id, reference, getToken);
+      setOpen(false);
+      await onReported();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border border-slate-800 rounded-2xl p-4 space-y-3">
+      <div className="flex items-start gap-2.5">
+        <Landmark size={15} className="text-gold-400 flex-shrink-0 mt-0.5" />
+        <div className="space-y-1 text-sm">
+          <div className="font-bold text-white">
+            How to pay: <span className="tabular-nums">{money(p.balanceNzd)}</span>
+          </div>
+          {d ? (
+            <div className="text-slate-300 space-y-0.5">
+              {d.bankName && <div>Bank: {d.bankName}</div>}
+              <div>Account name: {d.accountName}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span>
+                  Account number: <span className="font-mono text-white select-all">{d.accountNumber}</span>
+                </span>
+                <button
+                  onClick={() => void copyAccount()}
+                  className="text-[11px] font-bold text-gold-400 hover:text-gold-300 cursor-pointer"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <div>
+                Reference: <span className="font-bold text-white">#{order.orderNumber}</span>
+              </div>
+              {d.instructions && <p className="text-slate-400 whitespace-pre-line pt-1">{d.instructions}</p>}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">
+              We'll send you payment details shortly. Please use <span className="font-bold text-white">#{order.orderNumber}</span>{" "}
+              as your reference.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {order.paymentReportedAt ? (
+        <p className="text-xs text-emerald-300">
+          You told us you paid on {date(order.paymentReportedAt)}
+          {order.paymentReference ? ` (reference "${order.paymentReference}")` : ""}. We'll confirm as soon as it arrives.
+        </p>
+      ) : open ? (
+        <div className="space-y-2">
+          <label className="block text-xs text-slate-400" htmlFor={`ref-${order.id}`}>
+            Payment reference or note (optional)
+          </label>
+          <input
+            id={`ref-${order.id}`}
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            maxLength={200}
+            placeholder={`e.g. #${order.orderNumber}`}
+            className="w-full bg-slate-950/70 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-gold-500/60"
+          />
+          <ErrorNote message={error} />
+          <div className="flex flex-wrap gap-2">
+            <button className={shopPrimary} onClick={report} disabled={busy}>
+              {busy ? <Spinner size={13} /> : <Send size={13} />} Let us know
+            </button>
+            <button className={shopSecondary} onClick={() => setOpen(false)} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className={shopPrimary} onClick={() => setOpen(true)}>
+          I've made payment
+        </button>
+      )}
     </div>
   );
 }

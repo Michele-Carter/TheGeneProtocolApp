@@ -140,12 +140,23 @@ export const shopOrders = pgTable(
     shippingAddress: jsonb("shipping_address").notNull(),
     adminMessage: text("admin_message").notNull().default(""),
     saleId: text("sale_id"),
+    // Set when the customer says they've paid; the owner then checks and marks the order paid.
+    paymentReportedAt: timestamp("payment_reported_at", { withTimezone: true }),
+    paymentReference: text("payment_reference").notNull().default(""),
+    cancelledBy: text("cancelled_by"), // "customer" | "owner" when status is "cancelled"
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("shop_orders_customer_idx").on(t.customerId, t.createdAt)]
 );
+
+// Owner settings by key, e.g. "payment_instructions" -> string.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
 
 // A message for a customer about one of their shop orders, shown under the bell in the app.
 export const notifications = pgTable(
@@ -154,7 +165,7 @@ export const notifications = pgTable(
     id: text("id").primaryKey(),
     customerId: text("customer_id").notNull(),
     shopOrderId: text("shop_order_id"),
-    kind: text("kind").notNull(), // "confirmed" | "declined" | "sent"
+    kind: text("kind").notNull(), // NotificationKind (shared/shop.ts)
     title: text("title").notNull(),
     body: text("body").notNull().default(""),
     readAt: timestamp("read_at", { withTimezone: true }),

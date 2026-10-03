@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { notifications, shopOrders } from "./schema.js";
 import type { NotificationKind } from "../../shared/shop.js";
-import type { SaleInput } from "../../shared/sales.js";
+import { saleTotals, type SaleInput } from "../../shared/sales.js";
 
 type Db = ReturnType<typeof getDb>;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -20,7 +20,9 @@ export function confirmedMessage(orderNumber: number, totalNzd: number, adminMes
   return {
     kind: "confirmed" as const,
     title: `Order #${orderNumber} confirmed`,
-    body: [`Total ${money(totalNzd)} including shipping.`, adminMessage].filter(Boolean).join("\n\n"),
+    body: [`Total ${money(totalNzd)} including shipping - see My Orders for how to pay.`, adminMessage]
+      .filter(Boolean)
+      .join("\n\n"),
   };
 }
 
@@ -30,6 +32,38 @@ export function declinedMessage(orderNumber: number, adminMessage: string) {
     title: `Order #${orderNumber} declined`,
     body: adminMessage || "Sorry, we can't fill this order right now.",
   };
+}
+
+// When the owner deletes the customer order a confirmed shop order became, the shop order is cancelled
+// and the customer told. Returns nothing if the sale didn't come from the shop.
+export async function cancelShopOrderForDeletedSale(db: Db | Tx, saleId: string) {
+  const [order] = await db
+    .update(shopOrders)
+    .set({ status: "cancelled", cancelledBy: "owner", saleId: null, decidedAt: new Date(), updatedAt: new Date() })
+    .where(eq(shopOrders.saleId, saleId))
+    .returning();
+  if (!order) return;
+  await notify(db, {
+    customerId: order.customerId,
+    shopOrderId: order.id,
+    kind: "cancelled",
+    title: `Order #${order.orderNumber} cancelled`,
+    body: "We've cancelled this order. Please get in touch if you have any questions.",
+  });
+}
+
+// When a customer order from the shop becomes fully paid (however the owner recorded it), thanks the customer.
+export async function notifyIfPaid(db: Db | Tx, saleId: string, before: SaleInput, after: SaleInput) {
+  if (saleTotals(before).paymentStatus === "paid" || saleTotals(after).paymentStatus !== "paid") return;
+  const [order] = await db.select().from(shopOrders).where(eq(shopOrders.saleId, saleId));
+  if (!order) return;
+  await notify(db, {
+    customerId: order.customerId,
+    shopOrderId: order.id,
+    kind: "paid",
+    title: `Payment received for order #${order.orderNumber}`,
+    body: "Thank you! We'll let you know when it's on its way.",
+  });
 }
 
 // When the owner marks a customer order from the shop as sent, tells the customer it's on its way.

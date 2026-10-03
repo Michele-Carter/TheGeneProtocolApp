@@ -113,6 +113,10 @@ export interface ShopOrder {
   adminMessage: string;
   createdAt: string;
   decidedAt: string | null;
+  paymentReportedAt: string | null; // when the customer said they'd paid
+  paymentReference: string;
+  cancelledBy: "customer" | "owner" | null;
+  paymentDetails: PaymentDetails | null; // how to pay - only while confirmed and not yet paid
   // Once confirmed: how the order is going, from the customer order it became.
   progress: {
     totalNzd: number; // items + shipping, less any discount
@@ -126,7 +130,43 @@ export interface ShopOrder {
   } | null;
 }
 
-export type NotificationKind = "confirmed" | "declined" | "sent";
+export type NotificationKind = "confirmed" | "declined" | "sent" | "paid" | "cancelled";
+
+// ---- How customers pay ----
+
+// The owner's bank details. Only ever sent to a customer as part of one of their confirmed, unpaid orders.
+export interface PaymentDetails {
+  bankName: string;
+  accountName: string;
+  accountNumber: string; // NZ format, e.g. 12-3456-7890123-00
+  instructions: string; // anything extra, optional
+}
+
+export const PAYMENT_DETAILS_KEY = "payment_details";
+
+export function toPaymentDetails(value: unknown): PaymentDetails {
+  const v = (value ?? {}) as Partial<Record<keyof PaymentDetails, unknown>>;
+  const text = (x: unknown) => (typeof x === "string" ? x : "");
+  return {
+    bankName: text(v.bankName),
+    accountName: text(v.accountName),
+    accountNumber: text(v.accountNumber),
+    instructions: text(v.instructions),
+  };
+}
+
+// Enough for a customer to pay.
+export function hasPaymentDetails(d: PaymentDetails): boolean {
+  return Boolean(d.accountName.trim() && d.accountNumber.trim());
+}
+
+// NZ bank account numbers are bank (2) - branch (4) - account (7) - suffix (2 or 3) digits.
+// Returns the number with dashes, or null if it isn't one.
+export function formatNzAccountNumber(input: string): string | null {
+  const digits = input.replace(/\D/g, "");
+  if (digits.length !== 15 && digits.length !== 16) return null;
+  return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6, 13)}-${digits.slice(13)}`;
+}
 
 export interface CustomerNotification {
   id: string;

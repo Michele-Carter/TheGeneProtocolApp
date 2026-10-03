@@ -39,6 +39,12 @@ export const shopApi = {
   orders: (t: GetToken) => shopFetch<ShopOrder[]>("orders", { method: "GET" }, t),
   sendOrder: (data: { lines: CartLine[]; notes: string }, t: GetToken) =>
     shopFetch<ShopOrder>("orders", { method: "POST", body: JSON.stringify(data) }, t),
+  reportPayment: (id: string, reference: string, t: GetToken) =>
+    shopFetch<ShopOrder>(
+      `orders?id=${encodeURIComponent(id)}&action=paid`,
+      { method: "POST", body: JSON.stringify({ reference }) },
+      t
+    ),
   cancelOrder: (id: string, t: GetToken) =>
     shopFetch<ShopOrder>(`orders?id=${encodeURIComponent(id)}&action=cancel`, { method: "POST", body: "{}" }, t),
 

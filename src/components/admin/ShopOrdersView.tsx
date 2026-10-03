@@ -1,16 +1,27 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, ExternalLink, RefreshCw, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  BadgeCheck,
+  CheckCircle2,
+  ChevronRight,
+  ExternalLink,
+  Landmark,
+  RefreshCw,
+  XCircle,
+} from "lucide-react";
 import { addressLines } from "../../../shared/customers";
-import type { ShopOrderStatus } from "../../../shared/shop";
+import { hasPaymentDetails, type ShopOrderStatus } from "../../../shared/shop";
 import { adminApi, nzd, type ShopOrderDetail, type ShopOrderSummary } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, StatRow, StatusDot, dangerButton, inputClass, primaryButton, secondaryButton } from "./ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 
-type Tab = "submitted" | "confirmed" | "declined" | "all";
+type Tab = "submitted" | "payments" | "confirmed" | "declined" | "all";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "submitted", label: "Waiting" },
+  { id: "payments", label: "Payment sent" },
   { id: "confirmed", label: "Confirmed" },
   { id: "declined", label: "Declined" },
   { id: "all", label: "All" },
@@ -23,15 +34,28 @@ const STATUS: Record<ShopOrderStatus, { label: string; tone: "good" | "warn" | "
   cancelled: { label: "Cancelled", tone: "muted" },
 };
 
+// Status shown in the list: a confirmed order is followed through to payment.
+function rowStatus(order: ShopOrderSummary): { label: string; tone: "good" | "warn" | "muted" } {
+  if (order.status === "cancelled") {
+    return { label: order.cancelledBy === "owner" ? "Cancelled by you" : "Cancelled by customer", tone: "muted" };
+  }
+  if (order.status !== "confirmed") return STATUS[order.status];
+  if (order.paymentStatus === "paid") return { label: "Paid", tone: "good" };
+  if (order.paymentToCheck) return { label: "Payment sent", tone: "warn" };
+  return { label: "Awaiting payment", tone: "muted" };
+}
+
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-NZ", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 export default function ShopOrdersView({
   onOpenSale,
   onChanged,
+  onSetUpPayment,
 }: {
   onOpenSale: (saleId: string) => void;
   onChanged: () => void;
+  onSetUpPayment: () => void;
 }) {
   const { getToken } = useAuth();
   const [rows, setRows] = useState<ShopOrderSummary[] | null>(null);
@@ -53,15 +77,18 @@ export default function ShopOrdersView({
   }, [load]);
 
   const counts = useMemo(() => {
-    const c: Record<Tab, number> = { submitted: 0, confirmed: 0, declined: 0, all: 0 };
+    const c: Record<Tab, number> = { submitted: 0, payments: 0, confirmed: 0, declined: 0, all: 0 };
     for (const r of rows ?? []) {
       c.all++;
+      if (r.paymentToCheck) c.payments++;
       if (r.status === "submitted" || r.status === "confirmed" || r.status === "declined") c[r.status]++;
     }
     return c;
   }, [rows]);
 
-  const filtered = (rows ?? []).filter((r) => tab === "all" || r.status === tab);
+  const filtered = (rows ?? []).filter((r) =>
+    tab === "all" ? true : tab === "payments" ? r.paymentToCheck : r.status === tab
+  );
 
   if (selectedId) {
     return (
@@ -82,6 +109,8 @@ export default function ShopOrdersView({
 
   return (
     <div className="space-y-4">
+      <PaymentDetailsReminder onSetUp={onSetUpPayment} />
+
       <div className="flex flex-wrap items-center gap-2">
         {TABS.map((t) => (
           <button
@@ -106,7 +135,11 @@ export default function ShopOrdersView({
       {rows && filtered.length === 0 && (
         <div className="text-center py-14 border border-dashed border-slate-800 rounded-2xl">
           <p className="text-sm text-slate-400">
-            {tab === "submitted" ? "No orders waiting - you're all caught up." : "No orders here."}
+            {tab === "submitted"
+              ? "No orders waiting - you're all caught up."
+              : tab === "payments"
+                ? "No payments to check."
+                : "No orders here."}
           </p>
           {rows.length === 0 && (
             <p className="text-xs text-slate-500 mt-1">Orders customers send from the shop appear here for you to confirm.</p>
@@ -131,7 +164,7 @@ export default function ShopOrdersView({
                 </span>
                 <span className="text-xs text-slate-400 tabular-nums">{order.units} units</span>
                 <span className="text-xs tabular-nums text-slate-200 font-semibold">{nzd(order.subtotalNzd)}</span>
-                <StatusDot tone={STATUS[order.status].tone}>{STATUS[order.status].label}</StatusDot>
+                <StatusDot tone={rowStatus(order).tone}>{rowStatus(order).label}</StatusDot>
               </div>
               <ChevronRight size={15} className="text-slate-600 flex-shrink-0" />
             </button>
@@ -159,7 +192,7 @@ function OrderReview({
   const [shipping, setShipping] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "confirm" | "decline">(null);
+  const [busy, setBusy] = useState<null | "confirm" | "decline" | "paid">(null);
 
   const load = useCallback(async () => {
     try {
@@ -203,6 +236,21 @@ function OrderReview({
     } catch (e) {
       setError((e as Error).message);
       await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const markPaid = async () => {
+    if (!order || !window.confirm(`Mark order #${order.orderNumber} as fully paid? The customer will be told you've received it.`)) return;
+    setBusy("paid");
+    setError(null);
+    try {
+      await adminApi.markShopOrderPaid(order.id, getToken);
+      onDecided();
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setBusy(null);
     }
@@ -377,6 +425,29 @@ function OrderReview({
                 {order.status === "confirmed" && (
                   <StatRow label="Total" value={nzd(order.subtotalNzd + (order.shippingNzd ?? 0))} strong />
                 )}
+                {order.status === "confirmed" && (
+                  <StatRow
+                    label="Payment"
+                    value={order.paymentStatus === "paid" ? "Paid" : order.paymentStatus === "part-paid" ? "Part paid" : "Not paid yet"}
+                    tone={order.paymentStatus === "paid" ? "good" : "bad"}
+                  />
+                )}
+                {order.paymentReportedAt && (
+                  <div
+                    className={`mt-3 text-xs rounded-lg px-3 py-2 border ${
+                      order.paymentToCheck ? "text-amber-200 bg-amber-500/10 border-amber-500/30" : "text-slate-400 border-slate-800"
+                    }`}
+                  >
+                    Customer says they paid on {when(order.paymentReportedAt)}
+                    {order.paymentReference ? ` - reference "${order.paymentReference}"` : ""}.
+                    {order.paymentToCheck && " Check your bank, then mark it paid."}
+                  </div>
+                )}
+                {order.status === "confirmed" && order.paymentStatus !== "paid" && (
+                  <button className={`${primaryButton} mt-3`} onClick={markPaid} disabled={busy != null}>
+                    {busy === "paid" ? <Spinner size={13} /> : <BadgeCheck size={13} />} Mark as paid
+                  </button>
+                )}
                 {order.adminMessage && (
                   <div className="mt-3">
                     <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Your message</div>
@@ -384,7 +455,7 @@ function OrderReview({
                   </div>
                 )}
                 {order.saleId && (
-                  <button className={`${primaryButton} mt-4`} onClick={() => onOpenSale(order.saleId!)}>
+                  <button className={`${secondaryButton} mt-3 ml-2`} onClick={() => onOpenSale(order.saleId!)}>
                     <ExternalLink size={13} /> Open customer order
                   </button>
                 )}
@@ -394,5 +465,32 @@ function OrderReview({
         </div>
       )}
     </div>
+  );
+}
+
+// Shown until payment details are set up - customers can't pay a confirmed order without them.
+function PaymentDetailsReminder({ onSetUp }: { onSetUp: () => void }) {
+  const { getToken } = useAuth();
+  const [missing, setMissing] = useState(false);
+
+  useEffect(() => {
+    adminApi
+      .getSettings(getToken)
+      .then(({ paymentDetails }) => setMissing(!hasPaymentDetails(paymentDetails)))
+      .catch(() => setMissing(false));
+  }, [getToken]);
+
+  if (!missing) return null;
+  return (
+    <button
+      onClick={onSetUp}
+      className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-left cursor-pointer hover:bg-amber-500/15 transition"
+    >
+      <Landmark size={16} className="text-amber-300 flex-shrink-0" />
+      <span className="flex-1 text-sm font-bold text-amber-200">
+        Add your bank details in Payment Details so customers know how to pay confirmed orders.
+      </span>
+      <ChevronRight size={15} className="text-amber-300" />
+    </button>
   );
 }

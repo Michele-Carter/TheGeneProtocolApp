@@ -7,6 +7,7 @@ import CustomersView from "./CustomersView";
 import OrdersView from "./OrdersView";
 import InventoryView from "./InventoryView";
 import ExpensesView from "./ExpensesView";
+import PaymentDetailsView from "./PaymentDetailsView";
 
 export type AdminSection =
   | "overview"
@@ -16,7 +17,8 @@ export type AdminSection =
   | "peptide-orders"
   | "supply-orders"
   | "inventory"
-  | "expenses";
+  | "expenses"
+  | "payment-details";
 
 const SECTION_COPY: Record<AdminSection, { title: string; description: string }> = {
   overview: { title: "Admin", description: "Your business at a glance. Only visible to you." },
@@ -33,6 +35,10 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
   },
   inventory: { title: "Inventory", description: "Stock on hand, valued at cost, with batch and expiry tracking." },
   expenses: { title: "Expenses", description: "Business costs outside of supply orders — equipment, software, marketing and more." },
+  "payment-details": {
+    title: "Payment Details",
+    description: "The bank account customers pay into. They only see it once you've confirmed their order.",
+  },
 };
 
 // Owner-only business area. Loaded lazily so regular users never download it.
@@ -40,12 +46,14 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
 export default function AdminArea({
   section,
   onNavigate,
-  waitingOrders,
+  newOrders,
+  paymentsToCheck,
   onOrdersChanged,
 }: {
   section: AdminSection;
   onNavigate: (section: AdminSection) => void;
-  waitingOrders: number; // shop orders waiting to be confirmed
+  newOrders: number; // shop orders waiting to be confirmed
+  paymentsToCheck: number; // confirmed orders the customer says they've paid
   onOrdersChanged: () => void;
 }) {
   const copy = SECTION_COPY[section];
@@ -65,14 +73,19 @@ export default function AdminArea({
         <p className="text-sm text-slate-400">{copy.description}</p>
       </div>
 
-      {section === "overview" && <AdminDashboard onNavigate={onNavigate} waitingOrders={waitingOrders} />}
-      {section === "new-orders" && <ShopOrdersView onOpenSale={openSale} onChanged={onOrdersChanged} />}
+      {section === "overview" && <AdminDashboard onNavigate={onNavigate} newOrders={newOrders} paymentsToCheck={paymentsToCheck} />}
+      {section === "new-orders" && <ShopOrdersView
+          onOpenSale={openSale}
+          onChanged={onOrdersChanged}
+          onSetUpPayment={() => onNavigate("payment-details")}
+        />}
       {section === "sales" && <SalesView openSaleId={openSaleId} onOpened={() => setOpenSaleId(null)} />}
       {section === "customers" && <CustomersView onOpenSale={openSale} />}
       {section === "peptide-orders" && <OrdersView key="peptides" orderType="peptides" />}
       {section === "supply-orders" && <OrdersView key="supplies" orderType="supplies" />}
       {section === "inventory" && <InventoryView />}
       {section === "expenses" && <ExpensesView />}
+      {section === "payment-details" && <PaymentDetailsView />}
     </div>
   );
 }

@@ -9,6 +9,12 @@ export const shopButton =
 export const shopPrimary = `${shopButton} theme-keep-bg border-gold-500 bg-gold-500 text-slate-950 hover:bg-gold-400 hover:border-gold-400`;
 export const shopSecondary = `${shopButton} border-slate-700 text-slate-200 hover:text-white hover:border-slate-500`;
 
+// Compact versions for the product cards in the shop grid.
+const cardButton =
+  "inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-[11px] leading-4 font-black border whitespace-nowrap transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
+export const cardPrimary = `${cardButton} theme-keep-bg border-gold-500 bg-gold-500 text-slate-950 hover:bg-gold-400 hover:border-gold-400`;
+export const cardSecondary = `${cardButton} border-slate-700 text-slate-300`;
+
 export function StockBadge({ stock }: { stock: StockLevel }) {
   const style =
     stock === "in"

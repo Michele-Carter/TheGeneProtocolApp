@@ -10,7 +10,7 @@ import LoadingSpinner from "../LoadingSpinner";
 import ProductPage from "./ProductPage";
 import CartPage from "./CartPage";
 import OrderSent from "./OrderSent";
-import { ProductImage, StockBadge, priceRange, productStock, shopPrimary, shopSecondary } from "./parts";
+import { ProductImage, StockBadge, priceRange, productStock, cardPrimary, cardSecondary, shopSecondary } from "./parts";
 
 type Page = { name: "list" } | { name: "product"; id: string } | { name: "cart" } | { name: "sent"; order: ShopOrder };
 
@@ -211,16 +211,16 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
               </button>
               <div className="mt-auto flex items-end justify-between gap-2">
                 <div className="space-y-1.5">
-                  <div className="text-base font-black text-white tabular-nums">{priceRange(product.variants)}</div>
+                  <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">{priceRange(product.variants)}</div>
                   <StockBadge stock={stock} />
                 </div>
                 {stock === "out" ? (
-                  <button className={shopSecondary} disabled>
+                  <button className={cardSecondary} disabled>
                     Sold out
                   </button>
                 ) : single ? (
                   <button
-                    className={shopPrimary}
+                    className={cardPrimary}
                     onClick={() => quickAdd(product)}
                     disabled={cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty}
                     title={
@@ -238,7 +238,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                     )}
                   </button>
                 ) : (
-                  <button className={shopPrimary} onClick={() => go({ name: "product", id: product.id })}>
+                  <button className={cardPrimary} onClick={() => go({ name: "product", id: product.id })}>
                     Select options
                   </button>
                 )}

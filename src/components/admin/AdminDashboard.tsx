@@ -275,11 +275,17 @@ function ProfitChart({ months, values }: { months: string[]; values: number[] })
 
 export default function AdminDashboard({
   onNavigate,
-  waitingOrders,
+  newOrders,
+  paymentsToCheck,
 }: {
   onNavigate: (section: AdminSection) => void;
-  waitingOrders: number;
+  newOrders: number;
+  paymentsToCheck: number;
 }) {
+  const attention = [
+    newOrders > 0 ? `${newOrders} new shop order${newOrders === 1 ? "" : "s"} to confirm` : "",
+    paymentsToCheck > 0 ? `${paymentsToCheck} payment${paymentsToCheck === 1 ? "" : "s"} to check` : "",
+  ].filter(Boolean);
   const { getToken } = useAuth();
   const [sales, setSales] = useState<SaleRecord[] | null>(null);
   const [expenses, setExpenses] = useState<ExpenseRecord[] | null>(null);
@@ -341,14 +347,14 @@ export default function AdminDashboard({
 
   return (
     <div className="space-y-5">
-      {waitingOrders > 0 && (
+      {attention.length > 0 && (
         <button
           onClick={() => onNavigate("new-orders")}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-left cursor-pointer hover:bg-amber-500/15 transition"
         >
           <Inbox size={16} className="text-amber-300 flex-shrink-0" />
           <span className="flex-1 text-sm font-bold text-amber-200">
-            {waitingOrders} new shop order{waitingOrders === 1 ? "" : "s"} waiting for you to confirm
+            {attention.join(" · ")}
           </span>
           <ChevronRight size={15} className="text-amber-300" />
         </button>

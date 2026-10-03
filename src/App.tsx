@@ -41,6 +41,7 @@ import {
   UserRound,
   ShoppingCart,
   Inbox,
+  Landmark,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
@@ -57,6 +58,7 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }
   { id: "supply-orders", label: "Supply Orders", icon: <Truck size={13} /> },
   { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
   { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
+  { id: "payment-details", label: "Payment Details", icon: <Landmark size={13} /> },
 ];
 
 export default function App() {
@@ -113,7 +115,12 @@ export default function App() {
   }, [getToken, isLoaded, isSignedIn]);
 
   const isAdmin = useIsAdmin(isLoaded && sessionChecked && hasValidSession);
-  const { waiting: waitingOrders, refresh: refreshWaitingOrders } = useWaitingOrders(isAdmin);
+  const {
+    waiting: newOrders,
+    paymentsToCheck,
+    total: waitingOrders,
+    refresh: refreshWaitingOrders,
+  } = useWaitingOrders(isAdmin);
   const notifications = useNotifications(isLoaded && sessionChecked && hasValidSession);
   // Moving around the app also checks for new notifications / waiting orders, so they show up promptly.
   const refreshNotifications = notifications.refresh;
@@ -194,7 +201,8 @@ export default function App() {
             <AdminArea
               section={adminSection}
               onNavigate={navigateAdmin}
-              waitingOrders={waitingOrders}
+              newOrders={newOrders}
+              paymentsToCheck={paymentsToCheck}
               onOrdersChanged={() => void refreshWaitingOrders()}
             />
           </Suspense>
