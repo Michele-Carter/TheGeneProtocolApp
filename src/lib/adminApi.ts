@@ -42,6 +42,7 @@ export interface ExpenseRecord extends Omit<ExpenseInput, "detail"> {
 
 export interface BundleRecord extends BundleInput {
   id: string;
+  images: string[]; // first is the main image
   createdAt: string;
   updatedAt: string;
 }
@@ -56,9 +57,23 @@ export interface InvItem {
   unit: string;
   catalogCode: string | null;
   reorderLevel: number | null;
+  sellPriceNzd: number | null;
+  shopVisible: boolean;
+  shopCategories: string[];
+  shopDescription: string;
+  images: string[]; // first is the main image
   createdAt: string;
   updatedAt: string;
 }
+
+export type ItemPatch = Partial<
+  Pick<
+    InvItem,
+    "name" | "variant" | "unit" | "reorderLevel" | "sellPriceNzd" | "shopVisible" | "shopCategories" | "shopDescription"
+  >
+> & { applyToSizes?: boolean };
+
+export type ImageTarget = "item" | "bundle";
 
 export interface PurchaseOrderRecord {
   id: string;
@@ -146,7 +161,7 @@ export const adminApi = {
   me: (t: GetToken) => adminFetch<{ isAdmin: boolean }>("me", { method: "GET" }, t),
 
   listItems: (t: GetToken) => adminFetch<InvItem[]>("items", { method: "GET" }, t),
-  updateItem: (id: string, patch: Partial<Pick<InvItem, "name" | "variant" | "unit" | "reorderLevel">>, t: GetToken) =>
+  updateItem: (id: string, patch: ItemPatch, t: GetToken) =>
     adminFetch<InvItem>(`items?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(patch) }, t),
 
   listOrders: (t: GetToken) => adminFetch<PurchaseOrderRecord[]>("orders", { method: "GET" }, t),
@@ -213,6 +228,21 @@ export const adminApi = {
     adminFetch<BundleRecord>(`bundles?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
   deleteBundle: (id: string, t: GetToken) =>
     adminFetch<{ success: true }>(`bundles?id=${q(id)}`, { method: "DELETE" }, t),
+
+  addImage: (target: ImageTarget, id: string, dataUrl: string, t: GetToken) =>
+    adminFetch<{ images: string[] }>(
+      `images?target=${target}&id=${q(id)}`,
+      { method: "POST", body: JSON.stringify({ dataUrl }) },
+      t
+    ),
+  reorderImages: (target: ImageTarget, id: string, images: string[], t: GetToken) =>
+    adminFetch<{ images: string[] }>(
+      `images?target=${target}&id=${q(id)}`,
+      { method: "PATCH", body: JSON.stringify({ images }) },
+      t
+    ),
+  removeImage: (target: ImageTarget, id: string, url: string, t: GetToken) =>
+    adminFetch<{ images: string[] }>(`images?target=${target}&id=${q(id)}&url=${q(url)}`, { method: "DELETE" }, t),
 };
 
 export const money = (value: number | null | undefined, currency: "USD" | "NZD", digits = 2) => {

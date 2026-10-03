@@ -87,3 +87,28 @@ ALTER TABLE expenses ADD COLUMN IF NOT EXISTS detail jsonb;
 
 -- Expenses created automatically from "expense" lines on a supply order when it's received.
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS source_order_id text;
+
+-- Shop front: what each item and bundle sells for and how it appears in the customer shop.
+-- images is a list of image URLs (Vercel Blob); the first one is the main image.
+ALTER TABLE inv_items ADD COLUMN IF NOT EXISTS sell_price_nzd numeric(14, 2);
+ALTER TABLE inv_items ADD COLUMN IF NOT EXISTS shop_visible boolean NOT NULL DEFAULT false;
+ALTER TABLE inv_items ADD COLUMN IF NOT EXISTS shop_categories jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE inv_items ADD COLUMN IF NOT EXISTS shop_description text NOT NULL DEFAULT '';
+ALTER TABLE inv_items ADD COLUMN IF NOT EXISTS images jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE bundles ADD COLUMN IF NOT EXISTS shop_visible boolean NOT NULL DEFAULT false;
+ALTER TABLE bundles ADD COLUMN IF NOT EXISTS shop_categories jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE bundles ADD COLUMN IF NOT EXISTS images jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+-- Products can be in several categories: carry over the single shop_category briefly used before, then drop it.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'inv_items' AND column_name = 'shop_category') THEN
+    UPDATE inv_items SET shop_categories = jsonb_build_array(shop_category) WHERE shop_category <> '' AND shop_categories = '[]'::jsonb;
+    ALTER TABLE inv_items DROP COLUMN shop_category;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bundles' AND column_name = 'shop_category') THEN
+    UPDATE bundles SET shop_categories = jsonb_build_array(shop_category) WHERE shop_category <> '' AND shop_categories = '[]'::jsonb;
+    ALTER TABLE bundles DROP COLUMN shop_category;
+  END IF;
+END $$;

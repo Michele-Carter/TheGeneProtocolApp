@@ -1,4 +1,4 @@
-import { index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 export const userStateScopeEnum = pgEnum("user_state_scope", [
   "protocol",
@@ -35,6 +35,12 @@ export const invItems = pgTable("inv_items", {
   unit: text("unit").notNull().default("unit"),
   catalogCode: text("catalog_code"),
   reorderLevel: integer("reorder_level"),
+  // Shop front. images: string[] of image URLs, the first is the main image.
+  sellPriceNzd: numeric("sell_price_nzd", { precision: 14, scale: 2, mode: "number" }),
+  shopVisible: boolean("shop_visible").notNull().default(false),
+  shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
+  shopDescription: text("shop_description").notNull().default(""),
+  images: jsonb("images").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -110,6 +116,9 @@ export const bundles = pgTable("bundles", {
   description: text("description").notNull().default(""),
   components: jsonb("components").notNull(), // BundleComponent[] (shared/bundles.ts)
   priceNzd: numeric("price_nzd", { precision: 14, scale: 2, mode: "number" }),
+  shopVisible: boolean("shop_visible").notNull().default(false),
+  shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
+  images: jsonb("images").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
