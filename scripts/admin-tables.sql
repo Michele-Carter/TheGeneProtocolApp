@@ -100,6 +100,35 @@ ALTER TABLE bundles ADD COLUMN IF NOT EXISTS shop_visible boolean NOT NULL DEFAU
 ALTER TABLE bundles ADD COLUMN IF NOT EXISTS shop_categories jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE bundles ADD COLUMN IF NOT EXISTS images jsonb NOT NULL DEFAULT '[]'::jsonb;
 
+-- Customers. clerk_user_id links the customer to their app login (null until they sign in);
+-- shipping_address is { line1, line2, suburb, city, postcode, country } (shared/customers.ts).
+CREATE TABLE IF NOT EXISTS customers (
+  id text PRIMARY KEY,
+  clerk_user_id text,
+  name text NOT NULL,
+  email text NOT NULL DEFAULT '',
+  shipping_address jsonb NOT NULL DEFAULT '{}'::jsonb,
+  notes text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS customers_clerk_user_idx ON customers (clerk_user_id) WHERE clerk_user_id IS NOT NULL;
+
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_id text;
+CREATE INDEX IF NOT EXISTS sales_customer_idx ON sales (customer_id);
+
+-- Existing orders only had a typed name: give each distinct name a customer record and link its orders.
+-- (Duplicates such as "Owen" / "Owen G" can then be merged in the admin Customers screen.)
+INSERT INTO customers (id, name)
+SELECT gen_random_uuid()::text, n.name
+FROM (SELECT DISTINCT ON (lower(trim(customer_name))) trim(customer_name) AS name
+      FROM sales WHERE customer_id IS NULL AND trim(customer_name) <> '') n
+WHERE NOT EXISTS (SELECT 1 FROM customers c WHERE lower(c.name) = lower(n.name));
+
+UPDATE sales s SET customer_id = c.id
+FROM customers c
+WHERE s.customer_id IS NULL AND lower(c.name) = lower(trim(s.customer_name));
+
 -- Products can be in several categories: carry over the single shop_category briefly used before, then drop it.
 DO $$
 BEGIN

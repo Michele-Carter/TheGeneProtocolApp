@@ -7,6 +7,7 @@ import React, { useState, useRef, useCallback, useEffect, Suspense, lazy } from 
 import { Show, UserButton, useAuth } from "@clerk/react";
 import ProtocolBuilder from "./components/ProtocolBuilder";
 import MyPricing from "./components/MyPricing";
+import MyAccount from "./components/MyAccount";
 import ReconstitutionCalc from "./components/ReconstitutionCalc";
 import TrackingManager from "./components/TrackingManager";
 import DashboardPage from "./components/DashboardPage";
@@ -34,16 +35,19 @@ import {
   Truck,
   Boxes,
   Receipt,
+  Users,
+  UserRound,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
 const AdminArea = lazy(() => import("./components/admin/AdminArea"));
 
-type ActiveTab = "dashboard" | "protocol" | "pricing" | "recon" | "logs" | "peptideDb" | "admin";
+type ActiveTab = "dashboard" | "protocol" | "pricing" | "account" | "recon" | "logs" | "peptideDb" | "admin";
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard size={13} /> },
   { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={13} /> },
+  { id: "customers", label: "Customers", icon: <Users size={13} /> },
   { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={13} /> },
   { id: "supply-orders", label: "Supply Orders", icon: <Truck size={13} /> },
   { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
@@ -154,6 +158,8 @@ export default function App() {
         return <ProtocolBuilder key={protocolResetKey} />;
       case "pricing":
         return <MyPricing />;
+      case "account":
+        return <MyAccount />;
       case "recon":
         return <ReconstitutionCalc />;
       case "logs":
@@ -284,6 +290,18 @@ export default function App() {
                     >
                       <Search size={14} />
                       <span>Pricing</span>
+                    </button>
+
+                    <button
+                      onClick={() => navigateTab("account")}
+                      id="sidebar-btn-account"
+                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "account"
+                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
+                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
+                        }`}
+                    >
+                      <UserRound size={14} />
+                      <span>My Account</span>
                     </button>
                   </div>
                 </div>
@@ -431,6 +449,16 @@ export default function App() {
                   >
                     <Search size={14} />
                     <span>Pricing</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigateTab("account");
+                    }}
+                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "account" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
+                      }`}
+                  >
+                    <UserRound size={14} />
+                    <span>My Account</span>
                   </button>
                 </div>
 

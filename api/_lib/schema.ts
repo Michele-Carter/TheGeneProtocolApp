@@ -93,10 +93,25 @@ export const stockMovements = pgTable(
   (t) => [index("stock_movements_item_idx").on(t.itemId, t.occurredAt)]
 );
 
+// A customer. clerkUserId links them to their app login (null until they first sign in);
+// shippingAddress is a ShippingAddress (shared/customers.ts).
+export const customers = pgTable("customers", {
+  id: text("id").primaryKey(),
+  clerkUserId: text("clerk_user_id"),
+  name: text("name").notNull(),
+  email: text("email").notNull().default(""),
+  shippingAddress: jsonb("shipping_address").notNull().default({}),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Customer orders. Stock is taken out oldest-first when an order is completed;
 // costDetail records the cost of each line at that moment ({ [lineId]: costNzd }).
+// customerName is kept in step with the linked customer's name.
 export const sales = pgTable("sales", {
   id: text("id").primaryKey(),
+  customerId: text("customer_id"),
   customerName: text("customer_name").notNull(),
   orderDate: text("order_date").notNull(), // yyyy-mm-dd
   status: text("status").notNull().default("open"), // "open" | "completed"

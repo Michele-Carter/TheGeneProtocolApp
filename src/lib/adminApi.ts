@@ -2,9 +2,11 @@ import type { CheckStatus, ItemKind, OrderInput } from "../../shared/landedCost"
 import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sales";
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
+import type { ShippingAddress } from "../../shared/customers";
 
 export interface SaleRecord {
   id: string;
+  customerId: string | null;
   customerName: string;
   orderDate: string;
   status: "open" | "completed";
@@ -45,6 +47,37 @@ export interface BundleRecord extends BundleInput {
   images: string[]; // first is the main image
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CustomerInput {
+  name: string;
+  email: string;
+  shippingAddress: ShippingAddress;
+  notes: string;
+}
+
+export interface CustomerStats {
+  orders: number;
+  openOrders: number;
+  spentNzd: number; // completed orders
+  profitNzd: number; // completed orders
+  owedNzd: number;
+  lastOrderDate: string | null;
+}
+
+export interface CustomerRecord extends CustomerInput {
+  id: string;
+  hasLogin: boolean; // linked to an app login
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerSummary extends CustomerRecord {
+  stats: CustomerStats;
+}
+
+export interface CustomerDetail extends CustomerSummary {
+  orders: SaleRecord[];
 }
 
 type GetToken = () => Promise<string | null>;
@@ -228,6 +261,21 @@ export const adminApi = {
     adminFetch<BundleRecord>(`bundles?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
   deleteBundle: (id: string, t: GetToken) =>
     adminFetch<{ success: true }>(`bundles?id=${q(id)}`, { method: "DELETE" }, t),
+
+  listCustomers: (t: GetToken) => adminFetch<CustomerSummary[]>("customers", { method: "GET" }, t),
+  getCustomer: (id: string, t: GetToken) => adminFetch<CustomerDetail>(`customers?id=${q(id)}`, { method: "GET" }, t),
+  createCustomer: (data: CustomerInput, t: GetToken) =>
+    adminFetch<CustomerRecord>("customers", { method: "POST", body: JSON.stringify(data) }, t),
+  updateCustomer: (id: string, data: CustomerInput, t: GetToken) =>
+    adminFetch<CustomerRecord>(`customers?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
+  deleteCustomer: (id: string, t: GetToken) =>
+    adminFetch<{ success: true }>(`customers?id=${q(id)}`, { method: "DELETE" }, t),
+  mergeCustomer: (id: string, intoId: string, t: GetToken) =>
+    adminFetch<CustomerRecord>(
+      `customers?id=${q(id)}&action=merge`,
+      { method: "POST", body: JSON.stringify({ intoId }) },
+      t
+    ),
 
   addImage: (target: ImageTarget, id: string, dataUrl: string, t: GetToken) =>
     adminFetch<{ images: string[] }>(

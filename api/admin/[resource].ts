@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { z } from "zod";
 import { getAdminStatus } from "../_lib/admin.js";
@@ -17,7 +17,9 @@ import { calculateOrder, isExpenseLine, type OrderInput } from "../../shared/lan
 import { EXPENSE_CATEGORIES, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
 import { expenseSummary, expenseTotals } from "../../shared/expenses.js";
 import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_PRODUCT, normalizeCategories } from "../../shared/shop.js";
-import { bundles, expenses, invItems, inventoryLots, purchaseOrders, sales, stockMovements } from "../_lib/schema.js";
+import { toAddress } from "../../shared/customers.js";
+import { linkCustomerByEmail, syncCustomersFromLogins } from "../_lib/customers.js";
+import { bundles, customers, expenses, invItems, inventoryLots, purchaseOrders, sales, stockMovements } from "../_lib/schema.js";
 
 // All owner-only endpoints live in this one function (keeps us under Vercel's function limit):
 //   GET    /api/admin/me
@@ -35,6 +37,9 @@ import { bundles, expenses, invItems, inventoryLots, purchaseOrders, sales, stoc
 //   GET    /api/admin/bundles               POST /api/admin/bundles
 //   PATCH  /api/admin/bundles?id=           DELETE /api/admin/bundles?id=
 //   POST   /api/admin/images?target=item|bundle&id=   PATCH (reorder)   DELETE /api/admin/images?...&url=
+//   GET    /api/admin/customers[?id=]       POST /api/admin/customers
+//   PATCH  /api/admin/customers?id=         DELETE /api/admin/customers?id=
+//   POST   /api/admin/customers?id=&action=merge   { intoId }
 
 const money = z.number().finite();
 const costEntry = z.object({ id: z.string(), label: z.string(), amount: money });
@@ -710,6 +715,7 @@ function saleDto(row: typeof sales.$inferSelect) {
     const data = row.data as SaleInput;
     return {
         id: row.id,
+        customerId: row.customerId,
         customerName: row.customerName,
         orderDate: row.orderDate,
         status: row.status,
@@ -821,9 +827,18 @@ async function handleSales(req: any, res: any, db: Db) {
         let data = parsed.data as SaleInput;
 
         if (req.method === "POST") {
+            const customer = await resolveSaleCustomer(db, data.customerName, null);
+            data = { ...data, customerName: customer.name };
             const [row] = await db
                 .insert(sales)
-                .values({ id: crypto.randomUUID(), customerName: data.customerName, orderDate: data.orderDate, status: "open", data })
+                .values({
+                    id: crypto.randomUUID(),
+                    customerId: customer.id,
+                    customerName: customer.name,
+                    orderDate: data.orderDate,
+                    status: "open",
+                    data,
+                })
                 .returning();
             return sendJson(res, 201, saleDto(row));
         }
@@ -834,12 +849,253 @@ async function handleSales(req: any, res: any, db: Db) {
             // Stock has been taken out for these lines - they stay as they were. Everything else can change.
             data = { ...data, lines: (existing.data as SaleInput).lines };
         }
+        const customer = await resolveSaleCustomer(db, data.customerName, existing.customerId);
+        data = { ...data, customerName: customer.name };
         const [row] = await db
             .update(sales)
-            .set({ customerName: data.customerName, orderDate: data.orderDate, data, updatedAt: new Date() })
+            .set({ customerId: customer.id, customerName: customer.name, orderDate: data.orderDate, data, updatedAt: new Date() })
             .where(eq(sales.id, id!))
             .returning();
         return sendJson(res, 200, saleDto(row));
+    }
+
+    res.setHeader("Allow", "GET, POST, PATCH, DELETE");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
+// The customer a sale belongs to, going by the name typed on it: the sale's current customer if the
+// name still matches, otherwise the customer with that name, otherwise a new customer.
+async function resolveSaleCustomer(db: Db, name: string, currentId: string | null) {
+    const trimmed = name.trim();
+    if (currentId) {
+        const [current] = await db.select().from(customers).where(eq(customers.id, currentId));
+        if (current && current.name.toLowerCase() === trimmed.toLowerCase()) return current;
+    }
+    const [match] = await db
+        .select()
+        .from(customers)
+        .where(sql`lower(${customers.name}) = ${trimmed.toLowerCase()}`)
+        .orderBy(asc(customers.createdAt))
+        .limit(1);
+    if (match) return match;
+    const [created] = await db.insert(customers).values({ id: crypto.randomUUID(), name: trimmed }).returning();
+    return created;
+}
+
+const addressSchema = z.object({
+    line1: z.string().trim().default(""),
+    line2: z.string().trim().default(""),
+    suburb: z.string().trim().default(""),
+    city: z.string().trim().default(""),
+    postcode: z.string().trim().default(""),
+    country: z.string().trim().default("New Zealand"),
+});
+
+const customerSchema = z.object({
+    name: z.string().trim().min(1, "Name is required"),
+    email: z.union([z.string().trim().toLowerCase().email("That email address doesn't look right"), z.literal("")]).default(""),
+    shippingAddress: addressSchema,
+    notes: z.string().default(""),
+});
+
+const mergeSchema = z.object({ intoId: z.string().min(1) });
+
+function customerDto(row: typeof customers.$inferSelect) {
+    return {
+        id: row.id,
+        hasLogin: row.clerkUserId != null,
+        name: row.name,
+        email: row.email,
+        shippingAddress: toAddress(row.shippingAddress),
+        notes: row.notes,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+    };
+}
+
+function customerStats(rows: (typeof sales.$inferSelect)[]) {
+    let spentNzd = 0;
+    let profitNzd = 0;
+    let owedNzd = 0;
+    let lastOrderDate: string | null = null;
+    for (const row of rows) {
+        const data = row.data as SaleInput;
+        const totals = saleTotals(data);
+        owedNzd += Math.max(0, totals.balance);
+        if (row.status === "completed") {
+            spentNzd += totals.total;
+            profitNzd += saleProfit(data, row.cogsNzd).profit ?? 0;
+        }
+        if (!lastOrderDate || row.orderDate > lastOrderDate) lastOrderDate = row.orderDate;
+    }
+    return {
+        orders: rows.length,
+        openOrders: rows.filter((r) => r.status === "open").length,
+        spentNzd,
+        profitNzd,
+        owedNzd,
+        lastOrderDate,
+    };
+}
+
+// Another customer already using this name or email, so duplicates aren't created by accident.
+async function customerClash(db: Db, input: { name: string; email: string }, exceptId: string | null) {
+    const others = await db
+        .select()
+        .from(customers)
+        .where(
+            and(
+                exceptId ? ne(customers.id, exceptId) : undefined,
+                or(
+                    sql`lower(${customers.name}) = ${input.name.toLowerCase()}`,
+                    input.email ? sql`lower(${customers.email}) = ${input.email.toLowerCase()}` : sql`false`
+                )
+            )
+        );
+    const byName = others.find((c) => c.name.toLowerCase() === input.name.toLowerCase());
+    if (byName) return `There's already a customer called ${byName.name}.`;
+    for (const other of others) {
+        // A record the app made automatically for a login, with no orders, is folded into this one on save.
+        if (other.clerkUserId) {
+            const [order] = await db.select({ id: sales.id }).from(sales).where(eq(sales.customerId, other.id)).limit(1);
+            if (!order) continue;
+        }
+        return `${other.name} already uses that email address - use Merge to combine them.`;
+    }
+    return null;
+}
+
+// Links the app login registered with the customer's email, if there is one. The customer is already
+// saved, so a problem reaching the login service doesn't fail the save - it links on a later save or sign-in.
+async function linkLogin(db: Db, row: typeof customers.$inferSelect) {
+    try {
+        return await linkCustomerByEmail(db, row);
+    } catch (error) {
+        console.error("Linking customer to app login failed:", error);
+        return row;
+    }
+}
+
+// Keeps the name shown on a customer's orders in step with the customer record.
+async function renameCustomerSales(tx: Tx | Db, customerId: string, name: string) {
+    await tx
+        .update(sales)
+        .set({ customerName: name, data: sql`jsonb_set(${sales.data}, '{customerName}', to_jsonb(${name}::text))` })
+        .where(eq(sales.customerId, customerId));
+}
+
+async function handleCustomers(req: any, res: any, db: Db) {
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
+    const action = typeof req.query?.action === "string" ? req.query.action : null;
+
+    if (req.method === "GET") {
+        if (id) {
+            const [row] = await db.select().from(customers).where(eq(customers.id, id));
+            if (!row) return sendJson(res, 404, { error: "Customer not found" });
+            const orders = await db
+                .select()
+                .from(sales)
+                .where(eq(sales.customerId, id))
+                .orderBy(desc(sales.orderDate), desc(sales.createdAt));
+            return sendJson(res, 200, { ...customerDto(row), stats: customerStats(orders), orders: orders.map(saleDto) });
+        }
+        try {
+            await syncCustomersFromLogins(db);
+        } catch (error) {
+            // The list still works from what's already saved; new sign-ups appear next time.
+            console.error("Pulling customers from app logins failed:", error);
+        }
+        const [rows, allSales] = await Promise.all([
+            db.select().from(customers).orderBy(asc(customers.name)),
+            db.select().from(sales),
+        ]);
+        return sendJson(
+            res,
+            200,
+            rows.map((row) => ({ ...customerDto(row), stats: customerStats(allSales.filter((s) => s.customerId === row.id)) }))
+        );
+    }
+
+    if (req.method === "DELETE" && id) {
+        const [order] = await db.select({ id: sales.id }).from(sales).where(eq(sales.customerId, id)).limit(1);
+        if (order) {
+            return sendJson(res, 409, { error: "This customer has orders. Merge them into another customer instead of deleting." });
+        }
+        await db.delete(customers).where(eq(customers.id, id));
+        return sendJson(res, 200, { success: true });
+    }
+
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+
+    if (req.method === "POST" && id && action === "merge") {
+        const parsed = mergeSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const intoId = parsed.data.intoId;
+        if (intoId === id) return sendJson(res, 400, { error: "Choose a different customer to merge into." });
+
+        try {
+            const merged = await db.transaction(async (tx) => {
+                const [from] = await tx.select().from(customers).where(eq(customers.id, id)).for("update");
+                const [into] = await tx.select().from(customers).where(eq(customers.id, intoId)).for("update");
+                if (!from || !into) throw new NotFoundError("Customer not found");
+                if (from.clerkUserId && into.clerkUserId) {
+                    throw new InventoryError("Both customers have their own app login, so they can't be merged.");
+                }
+
+                await tx.update(sales).set({ customerId: into.id }).where(eq(sales.customerId, from.id));
+                await renameCustomerSales(tx, into.id, into.name);
+                // Delete first so the login can move across without clashing with itself.
+                await tx.delete(customers).where(eq(customers.id, from.id));
+
+                const intoAddress = toAddress(into.shippingAddress);
+                const [updated] = await tx
+                    .update(customers)
+                    .set({
+                        clerkUserId: into.clerkUserId ?? from.clerkUserId,
+                        email: into.email || from.email,
+                        shippingAddress: intoAddress.line1.trim() ? intoAddress : toAddress(from.shippingAddress),
+                        notes: [into.notes, from.notes].map((n) => n.trim()).filter(Boolean).join("\n\n"),
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(customers.id, into.id))
+                    .returning();
+                return updated;
+            });
+            return sendJson(res, 200, customerDto(merged));
+        } catch (error) {
+            if (error instanceof NotFoundError) return sendJson(res, 404, { error: error.message });
+            if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
+            throw error;
+        }
+    }
+
+    const parsed = customerSchema.safeParse(read.body);
+    if (!parsed.success) return validationError(res, parsed.error);
+    const input = parsed.data;
+
+    if ((req.method === "POST" && !id) || (req.method === "PATCH" && id)) {
+        const clash = await customerClash(db, input, id);
+        if (clash) return sendJson(res, 409, { error: clash });
+    }
+
+    if (req.method === "POST" && !id) {
+        const [row] = await db.insert(customers).values({ id: crypto.randomUUID(), ...input }).returning();
+        return sendJson(res, 201, customerDto(await linkLogin(db, row)));
+    }
+
+    if (req.method === "PATCH" && id) {
+        const row = await db.transaction(async (tx) => {
+            const [updated] = await tx
+                .update(customers)
+                .set({ ...input, updatedAt: new Date() })
+                .where(eq(customers.id, id))
+                .returning();
+            if (updated) await renameCustomerSales(tx, id, updated.name);
+            return updated;
+        });
+        if (!row) return sendJson(res, 404, { error: "Customer not found" });
+        return sendJson(res, 200, customerDto(await linkLogin(db, row)));
     }
 
     res.setHeader("Allow", "GET, POST, PATCH, DELETE");
@@ -1095,6 +1351,8 @@ export default async function handler(req: any, res: any) {
                 return await handleBundles(req, res, db);
             case "images":
                 return await handleImages(req, res, db);
+            case "customers":
+                return await handleCustomers(req, res, db);
             default:
                 return sendJson(res, 404, { error: "Not found" });
         }

@@ -1,16 +1,18 @@
-import React from "react";
+import React, { useState } from "react";
 import { Lock } from "lucide-react";
 import AdminDashboard from "./AdminDashboard";
 import SalesView from "./SalesView";
+import CustomersView from "./CustomersView";
 import OrdersView from "./OrdersView";
 import InventoryView from "./InventoryView";
 import ExpensesView from "./ExpensesView";
 
-export type AdminSection = "overview" | "sales" | "peptide-orders" | "supply-orders" | "inventory" | "expenses";
+export type AdminSection = "overview" | "sales" | "customers" | "peptide-orders" | "supply-orders" | "inventory" | "expenses";
 
 const SECTION_COPY: Record<AdminSection, { title: string; description: string }> = {
   overview: { title: "Admin", description: "Your business at a glance. Only visible to you." },
   sales: { title: "Customer Orders", description: "Every order a customer has placed, its payment and shipping status." },
+  customers: { title: "Customers", description: "Everyone you sell to: contact details, shipping address and order history." },
   "peptide-orders": { title: "Peptide Orders", description: "Every peptide order you've placed, with its landed cost per vial worked out in NZD." },
   "supply-orders": {
     title: "Supply Orders",
@@ -24,6 +26,8 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
 // Navigation lives in the sidebar (see App.tsx); this just renders whichever section is active.
 export default function AdminArea({ section, onNavigate }: { section: AdminSection; onNavigate: (section: AdminSection) => void }) {
   const copy = SECTION_COPY[section];
+  // An order picked from a customer's page, opened once Customer Orders loads.
+  const [openSaleId, setOpenSaleId] = useState<string | null>(null);
 
   return (
     <div className="space-y-6">
@@ -35,7 +39,15 @@ export default function AdminArea({ section, onNavigate }: { section: AdminSecti
       </div>
 
       {section === "overview" && <AdminDashboard onNavigate={onNavigate} />}
-      {section === "sales" && <SalesView />}
+      {section === "sales" && <SalesView openSaleId={openSaleId} onOpened={() => setOpenSaleId(null)} />}
+      {section === "customers" && (
+        <CustomersView
+          onOpenSale={(saleId) => {
+            setOpenSaleId(saleId);
+            onNavigate("sales");
+          }}
+        />
+      )}
       {section === "peptide-orders" && <OrdersView key="peptides" orderType="peptides" />}
       {section === "supply-orders" && <OrdersView key="supplies" orderType="supplies" />}
       {section === "inventory" && <InventoryView />}
