@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bell, CheckCircle2, Truck, XCircle } from "lucide-react";
-import type { CustomerNotification } from "../../shared/shop";
+import { BadgeCheck, Ban, Bell, CheckCircle2, Truck, XCircle } from "lucide-react";
+import type { CustomerNotification, NotificationKind } from "../../shared/shop";
 
-const ICONS = {
+const ICONS: Record<NotificationKind, React.ReactNode> = {
   confirmed: <CheckCircle2 size={14} className="text-emerald-400" />,
   declined: <XCircle size={14} className="text-red-400" />,
   sent: <Truck size={14} className="text-gold-400" />,
+  paid: <BadgeCheck size={14} className="text-emerald-400" />,
+  cancelled: <Ban size={14} className="text-red-400" />,
 };
 
 const when = (iso: string) =>

@@ -152,6 +152,28 @@ CREATE TABLE IF NOT EXISTS shop_orders (
 CREATE INDEX IF NOT EXISTS shop_orders_customer_idx ON shop_orders (customer_id, created_at);
 CREATE INDEX IF NOT EXISTS shop_orders_status_idx ON shop_orders (status);
 
+-- The customer telling the owner they've paid for a confirmed order (the owner then checks and marks it paid).
+ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS payment_reported_at timestamptz;
+ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS payment_reference text NOT NULL DEFAULT '';
+
+-- Who cancelled a cancelled shop order: "customer" (before it was confirmed) or "owner" (deleted its customer order).
+ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS cancelled_by text;
+
+-- Owner settings, e.g. "payment_instructions" (bank details shown to customers on orders waiting for payment).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key text PRIMARY KEY,
+  value jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Payment details replaced the single "payment_instructions" text: keep any text already saved as the extra instructions.
+INSERT INTO app_settings (key, value)
+SELECT 'payment_details',
+       jsonb_build_object('bankName', '', 'accountName', '', 'accountNumber', '', 'instructions', value #>> '{}')
+FROM app_settings WHERE key = 'payment_instructions'
+ON CONFLICT (key) DO NOTHING;
+DELETE FROM app_settings WHERE key = 'payment_instructions';
+
 -- Messages shown to a customer in the app (order confirmed, declined, on its way).
 CREATE TABLE IF NOT EXISTS notifications (
   id text PRIMARY KEY,

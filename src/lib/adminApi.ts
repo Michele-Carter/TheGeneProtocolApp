@@ -3,7 +3,7 @@ import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sal
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
-import type { ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
+import type { PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 
 export interface SaleRecord {
   id: string;
@@ -94,6 +94,11 @@ export interface ShopOrderSummary {
   saleId: string | null; // the customer order it became, once confirmed
   createdAt: string;
   decidedAt: string | null;
+  paymentStatus: "unpaid" | "part-paid" | "paid" | null; // from the customer order, once confirmed
+  paymentReportedAt: string | null; // when the customer said they'd paid
+  paymentReference: string;
+  paymentToCheck: boolean; // customer says paid, not yet recorded as paid
+  cancelledBy: "customer" | "owner" | null;
 }
 
 export interface ShopOrderDetail extends ShopOrderSummary {
@@ -301,7 +306,13 @@ export const adminApi = {
     ),
 
   listShopOrders: (t: GetToken) => adminFetch<ShopOrderSummary[]>("shop-orders", { method: "GET" }, t),
-  waitingShopOrders: (t: GetToken) => adminFetch<{ waiting: number }>("shop-orders?count=1", { method: "GET" }, t),
+  waitingShopOrders: (t: GetToken) =>
+    adminFetch<{ waiting: number; paymentsToCheck: number }>("shop-orders?count=1", { method: "GET" }, t),
+  markShopOrderPaid: (id: string, t: GetToken) =>
+    adminFetch<{ success: true }>(`shop-orders?id=${q(id)}&action=mark-paid`, { method: "POST", body: "{}" }, t),
+  getSettings: (t: GetToken) => adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "GET" }, t),
+  updateSettings: (data: { paymentDetails: PaymentDetails }, t: GetToken) =>
+    adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "PUT", body: JSON.stringify(data) }, t),
   getShopOrder: (id: string, t: GetToken) => adminFetch<ShopOrderDetail>(`shop-orders?id=${q(id)}`, { method: "GET" }, t),
   confirmShopOrder: (
     id: string,

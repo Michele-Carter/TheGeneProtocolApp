@@ -4,11 +4,19 @@ import { requireAuthUserId } from "../_lib/auth.js";
 import { customerForUser } from "../_lib/customers.js";
 import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
-import { customers, notifications, sales, shopOrders } from "../_lib/schema.js";
+import { appSettings, customers, notifications, sales, shopOrders } from "../_lib/schema.js";
 import { loadCatalog, orderDemand } from "../_lib/shopCatalog.js";
 import { isAddressComplete, toAddress } from "../../shared/customers.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
-import type { CustomerNotification, ShopOrder, ShopOrderLine } from "../../shared/shop.js";
+import {
+    PAYMENT_DETAILS_KEY,
+    hasPaymentDetails,
+    toPaymentDetails,
+    type CustomerNotification,
+    type PaymentDetails,
+    type ShopOrder,
+    type ShopOrderLine,
+} from "../../shared/shop.js";
 
 // Endpoints for signed-in customers. Everything here only ever reads or changes the caller's own records.
 //   GET  /api/shop/me         the caller's customer details (linked or created on first visit)
@@ -17,6 +25,7 @@ import type { CustomerNotification, ShopOrder, ShopOrderLine } from "../../share
 //   GET  /api/shop/orders     the caller's orders
 //   POST /api/shop/orders     send an order { lines: [{ key, qty }], notes } - prices and stock are checked here
 //   POST /api/shop/orders?id=&action=cancel   withdraw an order that hasn't been confirmed yet
+//   POST /api/shop/orders?id=&action=paid     tell the owner they've paid { reference }
 //   GET  /api/shop/notifications              latest notifications + unread count
 //   POST /api/shop/notifications?action=read  mark them all read
 
@@ -112,7 +121,14 @@ function progressOf(sale: typeof sales.$inferSelect | undefined): ShopOrder["pro
     };
 }
 
-function orderDto(row: typeof shopOrders.$inferSelect, sale?: typeof sales.$inferSelect): ShopOrder {
+function orderDto(
+    row: typeof shopOrders.$inferSelect,
+    sale?: typeof sales.$inferSelect,
+    paymentDetails?: PaymentDetails | null
+): ShopOrder {
+    const progress = row.status === "confirmed" ? progressOf(sale) : null;
+    // Bank details are only shared once the owner has confirmed the order, and only until it's paid.
+    const awaitingPayment = progress != null && progress.paymentStatus !== "paid" && !progress.completed;
     return {
         id: row.id,
         orderNumber: row.orderNumber,
@@ -124,7 +140,11 @@ function orderDto(row: typeof shopOrders.$inferSelect, sale?: typeof sales.$infe
         adminMessage: row.adminMessage,
         createdAt: row.createdAt.toISOString(),
         decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
-        progress: row.status === "confirmed" ? progressOf(sale) : null,
+        paymentReportedAt: row.paymentReportedAt ? row.paymentReportedAt.toISOString() : null,
+        paymentReference: row.paymentReference,
+        cancelledBy: (row.cancelledBy as ShopOrder["cancelledBy"]) ?? null,
+        paymentDetails: awaitingPayment && paymentDetails && hasPaymentDetails(paymentDetails) ? paymentDetails : null,
+        progress,
     };
 }
 
@@ -141,14 +161,39 @@ async function handleOrders(req: any, res: any, db: Db, userId: string) {
         const saleIds = rows.map((r) => r.saleId).filter((s): s is string => Boolean(s));
         const saleRows = saleIds.length ? await db.select().from(sales).where(inArray(sales.id, saleIds)) : [];
         const salesById = new Map(saleRows.map((s) => [s.id, s]));
-        return sendJson(res, 200, rows.map((row) => orderDto(row, row.saleId ? salesById.get(row.saleId) : undefined)));
+        const paymentDetails = await loadPaymentDetails(db);
+        return sendJson(
+            res,
+            200,
+            rows.map((row) => orderDto(row, row.saleId ? salesById.get(row.saleId) : undefined, paymentDetails))
+        );
+    }
+
+    // The customer tells the owner they've paid a confirmed order (the owner checks the bank and marks it paid).
+    if (req.method === "POST" && id && req.query?.action === "paid") {
+        let body: unknown;
+        try {
+            body = await parseJsonBody(req);
+        } catch {
+            return sendJson(res, 400, { error: "Invalid JSON body" });
+        }
+        const parsed = z.object({ reference: z.string().trim().max(200).default("") }).safeParse(body);
+        if (!parsed.success) return sendJson(res, 400, { error: "Please check the payment reference" });
+        const [row] = await db
+            .update(shopOrders)
+            .set({ paymentReportedAt: new Date(), paymentReference: parsed.data.reference, updatedAt: new Date() })
+            .where(and(eq(shopOrders.id, id), eq(shopOrders.customerId, customer.id), eq(shopOrders.status, "confirmed")))
+            .returning();
+        if (!row) return sendJson(res, 409, { error: "Only confirmed orders can be marked as paid." });
+        const [sale] = row.saleId ? await db.select().from(sales).where(eq(sales.id, row.saleId)) : [];
+        return sendJson(res, 200, orderDto(row, sale, await loadPaymentDetails(db)));
     }
 
     // A customer can withdraw an order until it's been confirmed.
     if (req.method === "POST" && id && req.query?.action === "cancel") {
         const [row] = await db
             .update(shopOrders)
-            .set({ status: "cancelled", decidedAt: new Date(), updatedAt: new Date() })
+            .set({ status: "cancelled", cancelledBy: "customer", decidedAt: new Date(), updatedAt: new Date() })
             .where(and(eq(shopOrders.id, id), eq(shopOrders.customerId, customer.id), eq(shopOrders.status, "submitted")))
             .returning();
         if (!row) return sendJson(res, 409, { error: "This order can't be cancelled - it may already have been confirmed." });
@@ -243,6 +288,11 @@ async function handleOrders(req: any, res: any, db: Db, userId: string) {
 
     res.setHeader("Allow", "GET, POST");
     return sendJson(res, 405, { error: "Method not allowed" });
+}
+
+async function loadPaymentDetails(db: Db): Promise<PaymentDetails> {
+    const [row] = await db.select().from(appSettings).where(eq(appSettings.key, PAYMENT_DETAILS_KEY));
+    return toPaymentDetails(row?.value);
 }
 
 async function handleNotifications(req: any, res: any, db: Db, userId: string) {

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { z } from "zod";
 import { getAdminStatus } from "../_lib/admin.js";
@@ -16,12 +16,28 @@ import {
 import { calculateOrder, isExpenseLine, type OrderInput } from "../../shared/landedCost.js";
 import { EXPENSE_CATEGORIES, emptySale, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
 import { expenseSummary, expenseTotals } from "../../shared/expenses.js";
-import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_PRODUCT, normalizeCategories, type ShopOrderLine } from "../../shared/shop.js";
+import {
+    MAX_IMAGE_BYTES,
+    MAX_IMAGES_PER_PRODUCT,
+    PAYMENT_DETAILS_KEY,
+    formatNzAccountNumber,
+    normalizeCategories,
+    toPaymentDetails,
+    type ShopOrderLine,
+} from "../../shared/shop.js";
 import { toAddress } from "../../shared/customers.js";
 import { linkCustomerByEmail, syncCustomersFromLogins } from "../_lib/customers.js";
 import { availableStock, orderDemand } from "../_lib/shopCatalog.js";
-import { confirmedMessage, declinedMessage, notify, notifyIfShipped } from "../_lib/notifications.js";
 import {
+    cancelShopOrderForDeletedSale,
+    confirmedMessage,
+    declinedMessage,
+    notify,
+    notifyIfPaid,
+    notifyIfShipped,
+} from "../_lib/notifications.js";
+import {
+    appSettings,
     bundles,
     customers,
     expenses,
@@ -55,6 +71,8 @@ import {
 //   GET    /api/admin/shop-orders[?id=|?count=1]
 //   POST   /api/admin/shop-orders?id=&action=confirm   { lines: [{ key, qty }], shippingNzd, message }
 //   POST   /api/admin/shop-orders?id=&action=decline   { message }
+//   POST   /api/admin/shop-orders?id=&action=mark-paid
+//   GET    /api/admin/settings              PUT /api/admin/settings   { paymentDetails }
 
 const money = z.number().finite();
 const costEntry = z.object({ id: z.string(), label: z.string(), amount: money });
@@ -765,7 +783,11 @@ async function handleSales(req: any, res: any, db: Db) {
         if (row.status === "completed") {
             return sendJson(res, 409, { error: "Reopen this order (to put its stock back) before deleting it." });
         }
-        await db.delete(sales).where(eq(sales.id, id));
+        await db.transaction(async (tx) => {
+            await tx.delete(sales).where(eq(sales.id, id));
+            // If it came from the shop, the customer's order is cancelled too and they're told.
+            await cancelShopOrderForDeletedSale(tx, id);
+        });
         return sendJson(res, 200, { success: true });
     }
 
@@ -872,6 +894,7 @@ async function handleSales(req: any, res: any, db: Db) {
             .where(eq(sales.id, id!))
             .returning();
         await notifyIfShipped(db, row.id, existing.data as SaleInput, data);
+        await notifyIfPaid(db, row.id, existing.data as SaleInput, data);
         return sendJson(res, 200, saleDto(row));
     }
 
@@ -1142,7 +1165,17 @@ function lineAvailability(line: ShopOrderLine, free: (itemId: string) => number)
     return components.length ? Math.min(...components.map((c) => Math.floor(free(c.itemId) / Math.max(1, c.qty)))) : 0;
 }
 
-function shopOrderSummary(row: typeof shopOrders.$inferSelect, customer: typeof customers.$inferSelect | undefined) {
+// Paid status of the customer order a confirmed shop order became (null until confirmed).
+function salePaymentStatus(sale: typeof sales.$inferSelect | undefined) {
+    return sale ? saleTotals(sale.data as SaleInput).paymentStatus : null;
+}
+
+function shopOrderSummary(
+    row: typeof shopOrders.$inferSelect,
+    customer: typeof customers.$inferSelect | undefined,
+    sale: typeof sales.$inferSelect | undefined
+) {
+    const paymentStatus = salePaymentStatus(sale);
     return {
         id: row.id,
         orderNumber: row.orderNumber,
@@ -1156,7 +1189,19 @@ function shopOrderSummary(row: typeof shopOrders.$inferSelect, customer: typeof 
         saleId: row.saleId,
         createdAt: row.createdAt,
         decidedAt: row.decidedAt,
+        paymentStatus,
+        cancelledBy: row.cancelledBy,
+        paymentReportedAt: row.paymentReportedAt,
+        paymentReference: row.paymentReference,
+        // The customer says they've paid and it isn't recorded as paid yet - the owner should check the bank.
+        paymentToCheck: row.status === "confirmed" && row.paymentReportedAt != null && paymentStatus !== "paid",
     };
+}
+
+async function salesFor(db: Db, rows: (typeof shopOrders.$inferSelect)[]) {
+    const ids = rows.map((r) => r.saleId).filter((s): s is string => Boolean(s));
+    const saleRows = ids.length ? await db.select().from(sales).where(inArray(sales.id, ids)) : [];
+    return new Map(saleRows.map((s) => [s.id, s]));
 }
 
 // The customer-order lines a confirmed shop order becomes. A bundle is split into its components, with the
@@ -1224,15 +1269,24 @@ async function handleShopOrders(req: any, res: any, db: Db) {
                 .select({ n: sql<number>`count(*)::int` })
                 .from(shopOrders)
                 .where(eq(shopOrders.status, "submitted"));
-            return sendJson(res, 200, { waiting: row?.n ?? 0 });
+            const reported = await db
+                .select()
+                .from(shopOrders)
+                .where(and(eq(shopOrders.status, "confirmed"), isNotNull(shopOrders.paymentReportedAt)));
+            const reportedSales = await salesFor(db, reported);
+            const paymentsToCheck = reported.filter(
+                (r) => salePaymentStatus(r.saleId ? reportedSales.get(r.saleId) : undefined) !== "paid"
+            ).length;
+            return sendJson(res, 200, { waiting: row?.n ?? 0, paymentsToCheck });
         }
         if (id) {
             const [order] = await db.select().from(shopOrders).where(eq(shopOrders.id, id));
             if (!order) return sendJson(res, 404, { error: "Order not found" });
             const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId));
             const free = await stockFreeFor(db, order);
+            const orderSales = await salesFor(db, [order]);
             return sendJson(res, 200, {
-                ...shopOrderSummary(order, customer),
+                ...shopOrderSummary(order, customer, order.saleId ? orderSales.get(order.saleId) : undefined),
                 lines: order.lines.map((line) => ({ ...line, available: lineAvailability(line, free) })),
                 notes: order.notes,
                 adminMessage: order.adminMessage,
@@ -1244,16 +1298,44 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             db.select().from(customers),
         ]);
         const byId = new Map(customerRows.map((c) => [c.id, c]));
-        return sendJson(res, 200, rows.map((row) => shopOrderSummary(row, byId.get(row.customerId))));
+        const salesById = await salesFor(db, rows);
+        return sendJson(
+            res,
+            200,
+            rows.map((row) =>
+                shopOrderSummary(row, byId.get(row.customerId), row.saleId ? salesById.get(row.saleId) : undefined)
+            )
+        );
     }
 
-    if (req.method !== "POST" || !id || (action !== "confirm" && action !== "decline")) {
+    if (req.method !== "POST" || !id || (action !== "confirm" && action !== "decline" && action !== "mark-paid")) {
         res.setHeader("Allow", "GET, POST");
         return sendJson(res, 405, { error: "Method not allowed" });
     }
 
     const read = await readBody(req, res);
     if (!read.ok) return;
+
+    // Records the customer order as fully paid today (after the owner has checked the bank), keeping any payment
+    // method already entered. The customer is notified the same way as when payment is entered on the sale.
+    if (action === "mark-paid") {
+        const [order] = await db.select().from(shopOrders).where(eq(shopOrders.id, id));
+        if (!order?.saleId) return sendJson(res, 409, { error: "Only confirmed orders can be marked as paid." });
+        const [sale] = await db.select().from(sales).where(eq(sales.id, order.saleId));
+        if (!sale) return sendJson(res, 404, { error: "The customer order for this has been deleted." });
+        const before = sale.data as SaleInput;
+        const after: SaleInput = {
+            ...before,
+            payment: {
+                method: before.payment.method || "Bank transfer",
+                amountPaidNzd: Math.round(saleTotals(before).total * 100) / 100,
+                paidDate: before.payment.paidDate ?? nzToday(),
+            },
+        };
+        await db.update(sales).set({ data: after, updatedAt: new Date() }).where(eq(sales.id, sale.id));
+        await notifyIfPaid(db, sale.id, before, after);
+        return sendJson(res, 200, { success: true });
+    }
 
     if (action === "decline") {
         const parsed = declineSchema.safeParse(read.body);
@@ -1355,6 +1437,44 @@ async function handleShopOrders(req: any, res: any, db: Db) {
         if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
         throw error;
     }
+}
+
+const paymentDetailsSchema = z.object({
+    bankName: z.string().trim().max(100).default(""),
+    accountName: z.string().trim().min(1, "Enter the account name").max(100),
+    accountNumber: z
+        .string()
+        .transform((v, ctx) => {
+            const formatted = formatNzAccountNumber(v);
+            if (!formatted) {
+                ctx.addIssue({ code: "custom", message: "NZ account numbers look like 12-3456-7890123-00" });
+                return z.NEVER;
+            }
+            return formatted;
+        }),
+    instructions: z.string().trim().max(2000).default(""),
+});
+
+// GET / PUT /api/admin/settings - the owner's payment details (bank account customers pay into).
+async function handleSettings(req: any, res: any, db: Db) {
+    if (req.method === "GET") {
+        const [row] = await db.select().from(appSettings).where(eq(appSettings.key, PAYMENT_DETAILS_KEY));
+        return sendJson(res, 200, { paymentDetails: toPaymentDetails(row?.value) });
+    }
+    if (req.method === "PUT") {
+        const read = await readBody(req, res);
+        if (!read.ok) return;
+        const parsed = paymentDetailsSchema.safeParse((read.body as any)?.paymentDetails);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const value = parsed.data;
+        await db
+            .insert(appSettings)
+            .values({ key: PAYMENT_DETAILS_KEY, value })
+            .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+        return sendJson(res, 200, { paymentDetails: value });
+    }
+    res.setHeader("Allow", "GET, PUT");
+    return sendJson(res, 405, { error: "Method not allowed" });
 }
 
 async function handleExpenses(req: any, res: any, db: Db) {
@@ -1610,6 +1730,8 @@ export default async function handler(req: any, res: any) {
                 return await handleCustomers(req, res, db);
             case "shop-orders":
                 return await handleShopOrders(req, res, db);
+            case "settings":
+                return await handleSettings(req, res, db);
             default:
                 return sendJson(res, 404, { error: "Not found" });
         }
