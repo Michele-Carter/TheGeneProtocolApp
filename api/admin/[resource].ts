@@ -222,12 +222,16 @@ const adjustEditSchema = adjustSchema.omit({ itemId: true });
 const bundleSchema = z.object({
     name: z.string().trim().min(1, "Name is required"),
     description: z.string().default(""),
-    components: z.array(
-        z.object({
-            itemId: z.string().min(1),
-            qty: z.number().int().min(1),
-        })
-    ).min(1, "Add at least one item"),
+    components: z
+        .array(
+            z.object({
+                itemId: z.string().min(1),
+                qty: z.number().int().min(1),
+                customerChooses: z.boolean().optional(),
+            })
+        )
+        .min(1, "Add at least one item")
+        .refine((cs) => cs.filter((c) => c.customerChooses).length <= 1, "Only one item per bundle can be the customer's choice"),
     priceNzd: money.min(0).nullable(),
     shopVisible: z.boolean().default(false),
     shopCategories: z.array(z.string()).default([]).transform(normalizeCategories),

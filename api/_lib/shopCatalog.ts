@@ -2,6 +2,7 @@ import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { bundles, invItems, inventoryLots, sales, shopOrders } from "./schema.js";
 import type { SaleInput } from "../../shared/sales.js";
+import type { BundleComponent } from "../../shared/bundles.js";
 import {
   compareSizes,
   itemSection,
@@ -109,13 +110,44 @@ export async function loadCatalog(db: Db | Tx) {
   }
 
   for (const bundle of bundleRows) {
-    const components = bundle.components as { itemId: string; qty: number }[];
+    const components = bundle.components as BundleComponent[];
     // As many kits as the scarcest component allows.
-    const units = components.length
-      ? Math.min(...components.map((c) => Math.floor(avail(c.itemId) / Math.max(1, c.qty))))
-      : 0;
-    const key = `bundle:${bundle.id}`;
-    orderable.set(key, { kind: "bundle", refId: bundle.id, name: bundle.name, variant: "", priceNzd: bundle.priceNzd!, components });
+    const kitsAvailable = (parts: { itemId: string; qty: number }[]) =>
+      parts.length ? Math.min(...parts.map((c) => Math.floor(avail(c.itemId) / Math.max(1, c.qty)))) : 0;
+    const itemName = (itemId: string) => {
+      const item = itemsById.get(itemId);
+      return item ? [item.name, item.variant].filter(Boolean).join(" ") : "Item";
+    };
+
+    // One option per variant of the item the customer chooses (e.g. each pen colour), else a single option.
+    const choice = components.find((c) => c.customerChooses);
+    const chosenItem = choice ? itemsById.get(choice.itemId) : undefined;
+    const choices = chosenItem
+      ? items
+          .filter((i) => i.name === chosenItem.name && i.kind === chosenItem.kind)
+          .sort((a, b) => compareSizes(a.variant, b.variant))
+      : [];
+
+    const options =
+      choice && choices.length > 0
+        ? choices.map((option) => ({
+            key: `bundle:${bundle.id}:${option.id}`,
+            label: option.variant || option.name,
+            parts: components.map((c) => ({ itemId: c === choice ? option.id : c.itemId, qty: c.qty })),
+          }))
+        : [{ key: `bundle:${bundle.id}`, label: "", parts: components.map((c) => ({ itemId: c.itemId, qty: c.qty })) }];
+
+    for (const option of options) {
+      orderable.set(option.key, {
+        kind: "bundle",
+        refId: bundle.id,
+        name: bundle.name,
+        variant: option.label,
+        priceNzd: bundle.priceNzd!,
+        components: option.parts,
+      });
+    }
+
     products.push({
       id: `b-${bundle.id}`,
       kind: "bundle",
@@ -124,20 +156,21 @@ export async function loadCatalog(db: Db | Tx) {
       categories: bundle.shopCategories,
       description: bundle.description,
       images: bundle.images,
-      contents: components.map((c) => {
-        const item = itemsById.get(c.itemId);
-        return { name: item ? [item.name, item.variant].filter(Boolean).join(" ") : "Item", qty: c.qty };
-      }),
-      variants: [
-        {
-          key,
-          label: "",
+      contents: components.map((c) => ({
+        name: c === choice && chosenItem ? `${chosenItem.name} (your choice - pick below)` : itemName(c.itemId),
+        qty: c.qty,
+      })),
+      variants: options.map((option) => {
+        const units = kitsAvailable(option.parts);
+        return {
+          key: option.key,
+          label: option.label,
           priceNzd: bundle.priceNzd!,
           stock: stockLevel(units, null),
           maxQty: Math.min(units, MAX_PER_LINE),
-          images: bundle.images,
-        },
-      ],
+          images: [],
+        };
+      }),
     });
   }
 

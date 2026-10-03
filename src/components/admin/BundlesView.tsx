@@ -96,6 +96,20 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
   const removeComponent = (itemId: string) =>
     setEditing((e) => (e ? { ...e, data: { ...e.data, components: e.data.components.filter((c) => c.itemId !== itemId) } } : e));
 
+  // Only one item per bundle can be the customer's choice, so ticking one unticks any other.
+  const setCustomerChooses = (itemId: string, on: boolean) =>
+    setEditing((e) =>
+      e
+        ? {
+            ...e,
+            data: {
+              ...e.data,
+              components: e.data.components.map((c) => ({ ...c, customerChooses: on && c.itemId === itemId })),
+            },
+          }
+        : e
+    );
+
   const updateComponentQty = (itemId: string, qty: number) =>
     setEditing((e) =>
       e ? { ...e, data: { ...e.data, components: e.data.components.map((c) => (c.itemId === itemId ? { ...c, qty } : c)) } } : e
@@ -213,12 +227,29 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
           )}
           {editing.data.components.map((c) => {
             const row = itemsById[c.itemId];
+            // Other colours / sizes of the same item, which the customer could pick between.
+            const variants = row
+              ? inventory.filter((r) => r.item.name === row.item.name && r.item.kind === row.item.kind)
+              : [];
             return (
               <div key={c.itemId} className="grid grid-cols-[minmax(0,1fr)_5rem_2rem] gap-2 items-center">
-                <span className="text-sm text-slate-200 min-w-0 truncate">
+                <span className="text-sm text-slate-200 min-w-0">
                   {row ? (
                     <>
-                      {row.item.name} <span className="text-slate-500">{row.item.variant}</span>
+                      <span className="block truncate">
+                        {row.item.name}{" "}
+                        <span className="text-slate-500">{c.customerChooses ? "(customer's choice)" : row.item.variant}</span>
+                      </span>
+                      {variants.length > 1 && (
+                        <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer mt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(c.customerChooses)}
+                            onChange={(e) => setCustomerChooses(c.itemId, e.target.checked)}
+                          />
+                          Customer chooses: {variants.map((v) => v.item.variant || "standard").join(", ")}
+                        </label>
+                      )}
                     </>
                   ) : (
                     <span className="text-slate-500 italic">Unknown item</span>

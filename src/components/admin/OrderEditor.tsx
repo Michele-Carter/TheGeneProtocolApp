@@ -846,7 +846,23 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                                 label={data.orderDiscountPct ? "Line total after discount" : "Line total"}
                                 value={money(result?.netSupplier, ccy)}
                               />
-                              <Metric label="Share of shipping & fees" value={nzd(result?.sharedNzd)} />
+                              <Metric
+                                label="Share of shipping & fees"
+                                value={nzd(result?.sharedNzd)}
+                                note={
+                                  result?.sharedNzd != null && result.units > 0
+                                    ? [
+                                        // The shipping/tax were charged in the supplier's currency - show that too.
+                                        ccy !== "NZD" && calc.rateNzdPerSupplier
+                                          ? `= ${money(result.sharedNzd / calc.rateNzdPerSupplier, ccy)}`
+                                          : "",
+                                        `${nzd(result.sharedNzd / result.units, 3)} per ${unit} × ${result.units}`,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")
+                                    : undefined
+                                }
+                              />
                               <Metric label={`Landed per ${packWord}`} value={nzd(result?.landedPerPackNzd)} />
                               <Metric label={`Landed per ${unit}`} value={nzd(result?.landedPerUnitNzd, 3)} highlight />
                             </div>
@@ -1093,11 +1109,12 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   );
 }
 
-function Metric({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function Metric({ label, value, highlight, note }: { label: string; value: string; highlight?: boolean; note?: string }) {
   return (
     <div className="bg-slate-900/60 rounded-lg px-2.5 py-1.5">
       <div className="text-slate-500">{label}</div>
       <div className={`tabular-nums font-bold ${highlight ? "text-gold-400" : "text-slate-200"}`}>{value}</div>
+      {note && <div className="text-[10px] text-slate-500 tabular-nums">{note}</div>}
     </div>
   );
 }

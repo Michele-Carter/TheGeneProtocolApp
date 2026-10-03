@@ -5,6 +5,9 @@
 export interface BundleComponent {
   itemId: string;
   qty: number; // per one bundle
+  // The customer picks which variant (e.g. pen colour) of this item they get: any item with the same name.
+  // itemId is then just the default. At most one component per bundle can do this.
+  customerChooses?: boolean;
 }
 
 export interface BundleInput {
