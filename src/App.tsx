@@ -59,6 +59,21 @@ import {
 
 // Owner-only; loaded on demand so customers never download it.
 const AdminArea = lazy(() => import("./components/admin/AdminArea"));
+const BusinessSettingsView = lazy(() => import("./components/admin/BusinessSettingsView"));
+const PaymentDetailsView = lazy(() => import("./components/admin/PaymentDetailsView"));
+
+// A page the owner opens from Manage account (Clerk's account window).
+function AccountWindowPage({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1">
+        <h2 className="text-lg font-black text-white tracking-tight">{title}</h2>
+        <p className="text-sm text-slate-400">{description}</p>
+      </div>
+      <Suspense fallback={<LoadingSpinner label="Loading..." />}>{children}</Suspense>
+    </div>
+  );
+}
 
 type ActiveTab = "dashboard" | "protocol" | "shop" | "account" | "recon" | "logs" | "peptideDb" | "admin";
 
@@ -213,16 +228,26 @@ export default function App() {
   }, []);
 
   // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings.
-  // The owner gets their business settings and payment details instead (they don't order from their own
-  // shop). Clerk only accepts its own menu items here, so each menu is a separate tree.
+  // The owner (who doesn't order from their own shop) just has Manage account and Sign out; their business
+  // settings and payment details are pages inside Manage account, next to Profile and Security.
   const accountButton = isAdmin ? (
     <UserButton>
-      <UserButton.MenuItems>
-        <UserButton.Action label="Business" labelIcon={<Store size={15} />} onClick={() => navigateAdmin("business")} />
-        <UserButton.Action label="Payment details" labelIcon={<Landmark size={15} />} onClick={() => navigateAdmin("payment-details")} />
-        <UserButton.Action label="manageAccount" />
-        <UserButton.Action label="signOut" />
-      </UserButton.MenuItems>
+      <UserButton.UserProfilePage label="Business" url="business" labelIcon={<Store size={15} />}>
+        <AccountWindowPage
+          title="Business"
+          description="Your business name and logo, the link that brings customers to your shop, and your PepPal subscription."
+        >
+          <BusinessSettingsView context={context!} onChanged={() => void refreshBusiness()} />
+        </AccountWindowPage>
+      </UserButton.UserProfilePage>
+      <UserButton.UserProfilePage label="Payment details" url="payment-details" labelIcon={<Landmark size={15} />}>
+        <AccountWindowPage
+          title="Payment details"
+          description="The bank account customers pay into. They only see it once you've confirmed their order."
+        >
+          <PaymentDetailsView />
+        </AccountWindowPage>
+      </UserButton.UserProfilePage>
     </UserButton>
   ) : (
     <UserButton>
