@@ -93,7 +93,7 @@ export async function checkoutUrl(business: Business, returnTo: string): Promise
 
 // The NZ price is for New Zealand businesses, so it needs a card issued in New Zealand.
 export const WRONG_REGION_MESSAGE =
-    "That card is from outside New Zealand, so it can't be used for the New Zealand price. Choose \"Outside New Zealand\" below (US$20 a month) and try again.";
+    "That card is from outside New Zealand, so it can't be used for the New Zealand price. Choose \"International\" below (US$20 a month) and try again.";
 
 // Step 2, once the owner has saved their card (when they come back from Stripe, or when Stripe's webhook
 // says so - whichever is first; both are safe to run). Checks the card, then starts the subscription with

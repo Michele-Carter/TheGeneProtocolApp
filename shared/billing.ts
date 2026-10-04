@@ -68,6 +68,17 @@ export const toSlug = (name: string) =>
 // Where a business is, as chosen at sign-up: only whether it's in New Zealand matters (the price and currency).
 export const REGIONS = [
   { code: "NZ", label: "New Zealand", price: PLANS.nzd.label },
-  { code: "INTL", label: "Outside New Zealand", price: PLANS.usd.label },
+  { code: "INTL", label: "International", price: PLANS.usd.label },
 ] as const;
 export type RegionCode = (typeof REGIONS)[number]["code"];
+
+// A first guess at where a new business is, from the computer's time zone (the owner can change it). Only
+// the matching price is shown unless they do, so businesses overseas don't see the NZ price.
+export function guessRegion(): RegionCode {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return zone === "Pacific/Auckland" || zone === "Pacific/Chatham" || zone === "NZ" ? "NZ" : "INTL";
+  } catch {
+    return "INTL";
+  }
+}

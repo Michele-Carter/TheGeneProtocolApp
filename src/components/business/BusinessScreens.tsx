@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { SignOutButton, useAuth } from "@clerk/react";
 import { AlertTriangle, CheckCircle2, CreditCard, Link2, Store } from "lucide-react";
-import { PLANS, REGIONS, TRIAL_DAYS, planFor, slugProblem, toSlug, type RegionCode } from "../../../shared/billing";
+import { PLANS, REGIONS, TRIAL_DAYS, guessRegion, planFor, slugProblem, toSlug, type RegionCode } from "../../../shared/billing";
 import { businessApi, setWantsToStartBusiness, type BusinessContext } from "../../lib/business";
 import { Spinner } from "../LoadingSpinner";
 
@@ -168,7 +168,7 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
       </Heading>
       <div className="mt-6 space-y-3">
         <ErrorLine message={error} />
-        {billing.state === "needs-checkout" && (
+        {billing.state === "needs-checkout" && billing.plan === "nzd" && (
           <div className="space-y-1.5">
             <span className="text-xs font-bold text-white">Where is your business?</span>
             <div className="grid grid-cols-2 gap-2">
@@ -219,7 +219,9 @@ export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => v
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
-  const [region, setRegion] = useState<RegionCode>("NZ");
+  const [region, setRegion] = useState<RegionCode>(guessRegion);
+  const [choosingRegion, setChoosingRegion] = useState(false);
+  const regionInfo = REGIONS.find((r) => r.code === region)!;
   const [slugCheck, setSlugCheck] = useState<{ slug: string; problem: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -297,21 +299,33 @@ export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => v
 
         <div className="space-y-1.5">
           <span className="text-xs font-bold text-white">Where is your business?</span>
-          <div className="grid grid-cols-2 gap-2">
-            {REGIONS.map((r) => (
-              <button
-                key={r.code}
-                type="button"
-                onClick={() => setRegion(r.code)}
-                className={`rounded-xl border px-3 py-2.5 text-left cursor-pointer transition ${
-                  region === r.code ? "border-gold-500/70 bg-gold-500/10" : "border-zinc-800 hover:border-zinc-600"
-                }`}
-              >
-                <div className="text-sm font-bold text-white">{r.label}</div>
-                <div className="text-xs text-zinc-400">{r.price}</div>
+          {choosingRegion ? (
+            <div className="grid grid-cols-2 gap-2">
+              {REGIONS.map((r) => (
+                <button
+                  key={r.code}
+                  type="button"
+                  onClick={() => setRegion(r.code)}
+                  className={`rounded-xl border px-3 py-2.5 text-left cursor-pointer transition ${
+                    region === r.code ? "border-gold-500/70 bg-gold-500/10" : "border-zinc-800 hover:border-zinc-600"
+                  }`}
+                >
+                  <div className="text-sm font-bold text-white">{r.label}</div>
+                  <div className="text-xs text-zinc-400">{r.price}</div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-gold-500/70 bg-gold-500/10 px-3 py-2.5">
+              <div>
+                <div className="text-sm font-bold text-white">{regionInfo.label}</div>
+                <div className="text-xs text-zinc-400">{regionInfo.price}</div>
+              </div>
+              <button type="button" className="text-xs font-bold text-gold-400 hover:text-gold-300 cursor-pointer" onClick={() => setChoosingRegion(true)}>
+                Change
               </button>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl bg-zinc-950/80 border border-zinc-800 p-3.5 text-xs text-zinc-400 space-y-1">
