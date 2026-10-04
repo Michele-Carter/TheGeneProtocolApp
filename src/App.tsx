@@ -264,7 +264,7 @@ export default function App() {
   const renderTabContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <DashboardPage setActiveTab={navigateTab} />;
+        return <DashboardPage setActiveTab={navigateTab} isAdmin={isAdmin} waitingOrders={waitingOrders} />;
       case "protocol":
         return (
           <LibraryGate>
@@ -302,7 +302,7 @@ export default function App() {
           <DashboardPage setActiveTab={navigateTab} />
         );
       default:
-        return <DashboardPage setActiveTab={navigateTab} />;
+        return <DashboardPage setActiveTab={navigateTab} isAdmin={isAdmin} waitingOrders={waitingOrders} />;
     }
   };
 
