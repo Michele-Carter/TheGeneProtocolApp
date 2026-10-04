@@ -212,15 +212,14 @@ export default function App() {
     });
   }, []);
 
-  // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings -
-  // and, for the owner, their business settings and payment details. (Clerk only accepts its own menu items
-  // here, so the owner's menu is a separate tree rather than items switched on and off.)
+  // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings.
+  // The owner gets their business settings and payment details instead of My orders (they don't order from
+  // their own shop). Clerk only accepts its own menu items here, so each menu is a separate tree.
   const accountButton = isAdmin ? (
     <UserButton>
       <UserButton.MenuItems>
         <UserButton.Action label="Business" labelIcon={<Store size={15} />} onClick={() => navigateAdmin("business")} />
         <UserButton.Action label="Payment details" labelIcon={<Landmark size={15} />} onClick={() => navigateAdmin("payment-details")} />
-        <UserButton.Action label="My orders" labelIcon={<Package size={15} />} onClick={() => openAccount("orders")} />
         <UserButton.Action label="My details" labelIcon={<MapPin size={15} />} onClick={() => openAccount("details")} />
         <UserButton.Action label="manageAccount" />
         <UserButton.Action label="signOut" />
