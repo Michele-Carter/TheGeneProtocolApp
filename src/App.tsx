@@ -18,6 +18,7 @@ import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useIsAdmin } from "./hooks/useIsAdmin";
+import { LibraryGate, PeptideLibraryProvider } from "./hooks/usePeptideLibrary";
 import { useWaitingOrders } from "./hooks/useWaitingOrders";
 import type { AdminSection } from "./components/admin/AdminArea";
 import {
@@ -43,6 +44,8 @@ import {
   ShoppingCart,
   Inbox,
   Landmark,
+  Library,
+  Tags,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
@@ -60,6 +63,8 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }
   { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
   { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
   { id: "payment-details", label: "Payment Details", icon: <Landmark size={13} /> },
+  { id: "peptide-library", label: "Peptide Library", icon: <Library size={13} /> },
+  { id: "price-list", label: "Price List", icon: <Tags size={13} /> },
 ];
 
 export default function App() {
@@ -197,7 +202,11 @@ export default function App() {
       case "dashboard":
         return <DashboardPage setActiveTab={navigateTab} />;
       case "protocol":
-        return <ProtocolBuilder key={protocolResetKey} />;
+        return (
+          <LibraryGate>
+            <ProtocolBuilder key={protocolResetKey} />
+          </LibraryGate>
+        );
       case "shop":
         return <ShopView onOpenAccount={openAccount} />;
       case "account":
@@ -207,7 +216,11 @@ export default function App() {
       case "logs":
         return <TrackingManager />;
       case "peptideDb":
-        return <PeptideDatabase />;
+        return (
+          <LibraryGate>
+            <PeptideDatabase />
+          </LibraryGate>
+        );
       case "admin":
         return isAdmin ? (
           <Suspense fallback={<LoadingSpinner label="Loading admin..." />}>
@@ -545,7 +558,9 @@ export default function App() {
           {/* RIGHT SIDE STREAM CONTENT & MAIN AREA */}
           <div ref={mainScrollerRef} className="app-main-scroller flex-1 min-h-0 flex flex-col overflow-y-auto">
             <main className="flex-1 px-4 md:px-8 lg:px-12 py-8 md:py-10 max-w-7xl w-full mx-auto">
-              <ErrorBoundary key={activeTab}>{renderTabContent()}</ErrorBoundary>
+              <PeptideLibraryProvider>
+                <ErrorBoundary key={activeTab}>{renderTabContent()}</ErrorBoundary>
+              </PeptideLibraryProvider>
             </main>
 
             {/* DISCLAIMER / RESEARCH-ONLY NOTICE */}

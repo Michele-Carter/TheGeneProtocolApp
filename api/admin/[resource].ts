@@ -47,7 +47,10 @@ import {
     sales,
     shopOrders,
     stockMovements,
+    peptideLibrary,
+    supplierCatalog,
 } from "../_lib/schema.js";
+import { LIBRARY_KINDS, libraryKey, type LibraryKind } from "../../shared/library.js";
 
 // All owner-only endpoints live in this one function (keeps us under Vercel's function limit). Each request
 // runs as the caller's own business (api/_lib/business.ts), so it only ever sees that business's records.
@@ -74,6 +77,9 @@ import {
 //   POST   /api/admin/shop-orders?id=&action=decline   { message }
 //   POST   /api/admin/shop-orders?id=&action=mark-paid
 //   GET    /api/admin/settings              PUT /api/admin/settings   { paymentDetails }
+//   PUT    /api/admin/library?kind=[&key=]  { data }  (no key = new record)   DELETE /api/admin/library?kind=&key=
+//   GET    /api/admin/supplier-catalog      POST /api/admin/supplier-catalog
+//   PATCH  /api/admin/supplier-catalog?id=  DELETE /api/admin/supplier-catalog?id=
 
 const money = z.number().finite();
 const costEntry = z.object({ id: z.string(), label: z.string(), amount: money });
@@ -1480,6 +1486,189 @@ async function handleSettings(req: any, res: any, db: Db) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+// ---- Peptide library (the business's own copy; the app reads it from /api/library) ----
+
+const text = z.string().trim();
+const slugText = (what: string) =>
+    text.min(1, `Every ${what} needs an id`).regex(/^[a-z0-9-]+$/, "Use lower-case letters, numbers and dashes in the id");
+
+// Each kind must have the fields the app relies on; anything else in the record is kept as it is.
+const libraryDataSchemas: Record<LibraryKind, z.ZodType> = {
+    entry: z.looseObject({
+        slug: slugText("page"),
+        name: text.min(1, "Every page needs a name"),
+        categories: z.array(z.string()),
+    }),
+    peptide: z.looseObject({
+        id: slugText("peptide"),
+        name: text.min(1, "Every peptide needs a name"),
+        goals: z.array(z.string()),
+        dosingSchedule: z.looseObject({ amount: z.string(), unit: z.enum(["mg", "mcg", "IU", "mL"]), days: z.array(z.string()) }),
+    }),
+    interaction: z.object({
+        peptideA: text.min(1, "Choose the first peptide"),
+        peptideB: text.min(1, "Choose the second peptide"),
+        type: z.enum(["Synergy", "Compatible", "Caution"]),
+        description: z.string(),
+    }),
+    "peptidedb-meta": z.object({
+        molecularType: z.string(),
+        typicalDose: z.string(),
+        frequency: z.string(),
+        cycleDuration: z.string(),
+        storage: z.string(),
+    }),
+    "peptidedosages-meta": z.object({ reconstitution: z.string(), cycle: z.string() }),
+};
+
+async function handleLibrary(req: any, res: any, db: Db) {
+    const kind = LIBRARY_KINDS.find((k) => k === req.query?.kind);
+    const key = typeof req.query?.key === "string" && req.query.key ? req.query.key : null;
+    if (!kind) return sendJson(res, 400, { error: "Unknown kind of library record" });
+
+    if (req.method === "DELETE" && key) {
+        const [row] = await db
+            .delete(peptideLibrary)
+            .where(and(eq(peptideLibrary.kind, kind), eq(peptideLibrary.key, key)))
+            .returning();
+        if (!row) return sendJson(res, 404, { error: "Not found" });
+        // A removed peptide takes its dosing notes with it.
+        if (kind === "peptide") {
+            await db
+                .delete(peptideLibrary)
+                .where(and(inArray(peptideLibrary.kind, ["peptidedb-meta", "peptidedosages-meta"]), eq(peptideLibrary.key, key)));
+        }
+        return sendJson(res, 200, { success: true });
+    }
+
+    if (req.method !== "PUT") {
+        res.setHeader("Allow", "PUT, DELETE");
+        return sendJson(res, 405, { error: "Method not allowed" });
+    }
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+    const parsed = libraryDataSchemas[kind].safeParse((read.body as any)?.data);
+    if (!parsed.success) return validationError(res, parsed.error);
+    const data = parsed.data as Record<string, unknown>;
+
+    // Dosing notes are saved under their peptide's id; everything else under the key in its own data.
+    const isMeta = kind === "peptidedb-meta" || kind === "peptidedosages-meta";
+    const dataKey = isMeta ? key : libraryKey(kind, data);
+    if (!dataKey) return sendJson(res, 400, { error: "Say which peptide these notes are for" });
+    if (key && !isMeta && dataKey !== key) {
+        // Saved protocols and links point at it by its id, so the id stays fixed once created.
+        return sendJson(res, 400, { error: "The id can't be changed. Delete this one and add a new one instead." });
+    }
+
+    // Notes belong to one of this business's peptides; an edit must be of a record this business has.
+    const mustExist = isMeta ? { kind: "peptide" as const, key: dataKey } : key ? { kind, key } : null;
+    if (mustExist) {
+        const [found] = await db
+            .select({ key: peptideLibrary.key })
+            .from(peptideLibrary)
+            .where(and(eq(peptideLibrary.kind, mustExist.kind), eq(peptideLibrary.key, mustExist.key)));
+        if (!found) return sendJson(res, 404, { error: "Not found" });
+    }
+
+    if (!key) {
+        const [existing] = await db
+            .select({ key: peptideLibrary.key })
+            .from(peptideLibrary)
+            .where(and(eq(peptideLibrary.kind, kind), eq(peptideLibrary.key, dataKey)));
+        if (existing) {
+            return sendJson(res, 409, {
+                error: kind === "interaction" ? "Those two peptides already have an interaction." : "There's already one with that id - choose another.",
+            });
+        }
+    }
+
+    const [{ next }] = await db
+        .select({ next: sql<number>`coalesce(max(${peptideLibrary.sort}), -1)::int + 1` })
+        .from(peptideLibrary)
+        .where(eq(peptideLibrary.kind, kind));
+    const [row] = await db
+        .insert(peptideLibrary)
+        .values({ kind, key: dataKey, sort: next, data })
+        .onConflictDoUpdate({
+            target: [peptideLibrary.businessId, peptideLibrary.kind, peptideLibrary.key],
+            set: { data, updatedAt: new Date() },
+        })
+        .returning({ kind: peptideLibrary.kind, key: peptideLibrary.key, data: peptideLibrary.data });
+    return sendJson(res, 200, row);
+}
+
+// ---- Supplier price list (quick picks on supplier orders) ----
+
+const supplierProductSchema = z.object({
+    name: text.min(1, "Every product needs a name"),
+    note: z.string().default(""),
+    options: z
+        .array(
+            z.object({
+                code: text.max(40).optional().transform((c) => c || undefined),
+                vialSize: text.min(1, "Every size needs a description, e.g. 10mg"),
+                priceUsd: money.min(0),
+                inStock: z.boolean().optional(),
+            })
+        )
+        .min(1, "Add at least one size")
+        .refine((options) => {
+            const codes = options.map((o) => o.code).filter(Boolean);
+            return new Set(codes).size === codes.length;
+        }, "Each size needs a different code"),
+});
+
+async function handleSupplierCatalog(req: any, res: any, db: Db) {
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
+
+    if (req.method === "GET") {
+        const rows = await db.select().from(supplierCatalog).orderBy(asc(supplierCatalog.sort), asc(supplierCatalog.name));
+        return sendJson(res, 200, rows);
+    }
+
+    if (req.method === "DELETE" && id) {
+        await db.delete(supplierCatalog).where(eq(supplierCatalog.id, id));
+        return sendJson(res, 200, { success: true });
+    }
+
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+    const parsed = supplierProductSchema.safeParse(read.body);
+    if (!parsed.success) return validationError(res, parsed.error);
+
+    // A code already used by another product would make two products stock the same inventory item.
+    const codes = parsed.data.options.map((o) => o.code).filter((c): c is string => Boolean(c));
+    if (codes.length > 0) {
+        const others = await db.select().from(supplierCatalog).where(id ? ne(supplierCatalog.id, id) : undefined);
+        const taken = others.find((p) => (p.options as { code?: string }[]).some((o) => o.code && codes.includes(o.code)));
+        if (taken) return sendJson(res, 409, { error: `${taken.name} already uses one of those codes.` });
+    }
+
+    if (req.method === "POST" && !id) {
+        const [{ next }] = await db
+            .select({ next: sql<number>`coalesce(max(${supplierCatalog.sort}), -1)::int + 1` })
+            .from(supplierCatalog);
+        const [row] = await db
+            .insert(supplierCatalog)
+            .values({ id: crypto.randomUUID(), ...parsed.data, sort: next })
+            .returning();
+        return sendJson(res, 201, row);
+    }
+
+    if (req.method === "PATCH" && id) {
+        const [row] = await db
+            .update(supplierCatalog)
+            .set({ ...parsed.data, updatedAt: new Date() })
+            .where(eq(supplierCatalog.id, id))
+            .returning();
+        if (!row) return sendJson(res, 404, { error: "Product not found" });
+        return sendJson(res, 200, row);
+    }
+
+    res.setHeader("Allow", "GET, POST, PATCH, DELETE");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
 async function handleExpenses(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
 
@@ -1734,6 +1923,10 @@ export async function handleAdminRequest(req: any, res: any, userId: string) {
                     return await handleShopOrders(req, res, db);
                 case "settings":
                     return await handleSettings(req, res, db);
+                case "library":
+                    return await handleLibrary(req, res, db);
+                case "supplier-catalog":
+                    return await handleSupplierCatalog(req, res, db);
                 default:
                     return sendJson(res, 404, { error: "Not found" });
             }

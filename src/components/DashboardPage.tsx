@@ -10,7 +10,7 @@ import {
   BookOpen,
   ShoppingCart
 } from "lucide-react";
-import { PEPTIDEDB_ENTRIES } from "../data/peptideDb";
+import { usePeptideLibraryState } from "../hooks/usePeptideLibrary";
 
 declare global {
   namespace JSX {
@@ -26,6 +26,8 @@ interface DashboardPageProps {
 }
 
 export default function DashboardPage({ setActiveTab }: DashboardPageProps) {
+  const peptideCount = usePeptideLibraryState().library?.entries.length;
+
   // Define the main navigation tiles
   const dashboardTiles = [
     {
@@ -81,7 +83,7 @@ export default function DashboardPage({ setActiveTab }: DashboardPageProps) {
       title: "Peptide Database",
       description: "Browse molecular data, dosing protocols, interactions, and safety information compiled from peptide-db.com.",
       icon: BookOpen,
-      badge: `${PEPTIDEDB_ENTRIES.length} peptides`,
+      badge: peptideCount == null ? "Peptides" : `${peptideCount} peptides`,
       color: "from-gold-500 to-blue-500",
       accentText: "text-gold-400",
       bgHover: "hover:border-gold-500/30 hover:bg-gold-950/5",

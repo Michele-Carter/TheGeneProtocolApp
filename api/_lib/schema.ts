@@ -264,3 +264,35 @@ export type InvItemRow = typeof invItems.$inferSelect;
 export type PurchaseOrderRow = typeof purchaseOrders.$inferSelect;
 export type InventoryLotRow = typeof inventoryLots.$inferSelect;
 export type StockMovementRow = typeof stockMovements.$inferSelect;
+
+// ---- Peptide library & supplier price list (scripts/multi-business-3.sql) ----
+
+// Everything the Peptide Database, Protocol Builder and My Stack show, one row per record (shared/library.ts).
+export const peptideLibrary = pgTable(
+  "peptide_library",
+  {
+    businessId: businessId(),
+    kind: text("kind").notNull(), // LibraryKind (shared/library.ts)
+    key: text("key").notNull(),
+    sort: integer("sort").notNull().default(0),
+    data: jsonb("data").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.businessId, t.kind, t.key] })]
+);
+
+// The supplier's products a business picks from on supplier orders. options: SupplierOption[] (shared/library.ts).
+export const supplierCatalog = pgTable(
+  "supplier_catalog",
+  {
+    businessId: businessId(),
+    id: text("id").notNull(),
+    name: text("name").notNull(),
+    note: text("note").notNull().default(""),
+    options: jsonb("options").notNull().default([]),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.businessId, t.id] })]
+);

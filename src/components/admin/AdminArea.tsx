@@ -8,6 +8,8 @@ import OrdersView from "./OrdersView";
 import InventoryView from "./InventoryView";
 import ExpensesView from "./ExpensesView";
 import PaymentDetailsView from "./PaymentDetailsView";
+import PeptideLibraryView from "./PeptideLibraryView";
+import PriceListView from "./PriceListView";
 
 export type AdminSection =
   | "overview"
@@ -18,7 +20,9 @@ export type AdminSection =
   | "supply-orders"
   | "inventory"
   | "expenses"
-  | "payment-details";
+  | "payment-details"
+  | "peptide-library"
+  | "price-list";
 
 const SECTION_COPY: Record<AdminSection, { title: string; description: string }> = {
   overview: { title: "Admin", description: "Your business at a glance. Only visible to you." },
@@ -38,6 +42,14 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
   "payment-details": {
     title: "Payment Details",
     description: "The bank account customers pay into. They only see it once you've confirmed their order.",
+  },
+  "peptide-library": {
+    title: "Peptide Library",
+    description: "Your own Peptide Database, Protocol Builder peptides and interactions. Changes are only seen by you and your customers.",
+  },
+  "price-list": {
+    title: "Price List",
+    description: "Your supplier's products and prices, ready to pick when you enter a peptide order.",
   },
 };
 
@@ -86,6 +98,8 @@ export default function AdminArea({
       {section === "inventory" && <InventoryView />}
       {section === "expenses" && <ExpensesView />}
       {section === "payment-details" && <PaymentDetailsView />}
+      {section === "peptide-library" && <PeptideLibraryView />}
+      {section === "price-list" && <PriceListView />}
     </div>
   );
 }

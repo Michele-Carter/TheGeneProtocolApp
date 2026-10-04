@@ -4,6 +4,15 @@ import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
 import type { ItemShopSection, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
+import type { LibraryKind, LibraryRecord, SupplierProduct } from "../../shared/library";
+
+export interface SupplierProductRecord extends SupplierProduct {
+  sort: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SupplierProductInput = Omit<SupplierProduct, "id">;
 
 export interface SaleRecord {
   id: string;
@@ -311,6 +320,24 @@ export const adminApi = {
     adminFetch<{ waiting: number; paymentsToCheck: number }>("shop-orders?count=1", { method: "GET" }, t),
   markShopOrderPaid: (id: string, t: GetToken) =>
     adminFetch<{ success: true }>(`shop-orders?id=${q(id)}&action=mark-paid`, { method: "POST", body: "{}" }, t),
+  listSupplierCatalog: (t: GetToken) => adminFetch<SupplierProductRecord[]>("supplier-catalog", { method: "GET" }, t),
+  createSupplierProduct: (data: SupplierProductInput, t: GetToken) =>
+    adminFetch<SupplierProductRecord>("supplier-catalog", { method: "POST", body: JSON.stringify(data) }, t),
+  updateSupplierProduct: (id: string, data: SupplierProductInput, t: GetToken) =>
+    adminFetch<SupplierProductRecord>(`supplier-catalog?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
+  deleteSupplierProduct: (id: string, t: GetToken) =>
+    adminFetch<{ success: true }>(`supplier-catalog?id=${q(id)}`, { method: "DELETE" }, t),
+
+  // key = null adds a new record (its key comes from its own data, except dosing notes: key = peptide id).
+  saveLibraryRecord: (kind: LibraryKind, key: string | null, data: unknown, t: GetToken) =>
+    adminFetch<LibraryRecord>(
+      `library?kind=${q(kind)}${key ? `&key=${q(key)}` : ""}`,
+      { method: "PUT", body: JSON.stringify({ data }) },
+      t
+    ),
+  deleteLibraryRecord: (kind: LibraryKind, key: string, t: GetToken) =>
+    adminFetch<{ success: true }>(`library?kind=${q(kind)}&key=${q(key)}`, { method: "DELETE" }, t),
+
   getSettings: (t: GetToken) => adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "GET" }, t),
   updateSettings: (data: { paymentDetails: PaymentDetails }, t: GetToken) =>
     adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "PUT", body: JSON.stringify(data) }, t),

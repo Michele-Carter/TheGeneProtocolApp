@@ -8,6 +8,7 @@ dotenv.config({ path: ".env.local", quiet: true });
 import postgres from "postgres";
 import { handleAdminRequest } from "../api/admin/[resource]";
 import { handleShopRequest } from "../api/shop/[resource]";
+import { handleLibraryRequest } from "../api/library";
 import { runAsBusiness } from "../api/_lib/business";
 import { customers, invItems } from "../api/_lib/schema";
 
@@ -54,9 +55,12 @@ const admin = (userId: string, method: string, query: Record<string, string>, bo
 const shop = (userId: string, method: string, query: Record<string, string>, body?: unknown, headers?: Record<string, string>) =>
   call(handleShopRequest, userId, method, query, body, headers);
 
+const library = (userId: string, headers?: Record<string, string>) =>
+  call(handleLibraryRequest, userId, "GET", {}, undefined, headers);
+
 async function cleanUp() {
   for (const table of [
-    "notifications", "shop_orders", "sales", "stock_movements", "inventory_lots", "purchase_orders",
+    "peptide_library", "supplier_catalog", "notifications", "shop_orders", "sales", "stock_movements", "inventory_lots", "purchase_orders",
     "bundles", "expenses", "app_settings", "inv_items", "customers", "protocols", "user_state_documents",
     "business_members",
   ]) {
@@ -203,6 +207,35 @@ try {
   check("The test product isn't in your products", Array.isArray(tgpItems.body) && !tgpItems.body.some((i: any) => i.name === "Test Peptide"), tgpItems.status);
   const unknown = await shop(CUSTOMER_B, "GET", { resource: "products" }, undefined, { "x-business": "no-such-shop" });
   check("A made-up shop link finds nothing", unknown.status === 404, unknown);
+
+  console.log("\n-- Peptide library and price list");
+  const tgpLibraryCount = (await sql`select count(*)::int n from peptide_library where business_id = 'tgp'`)[0].n;
+  const tgpLib = await library(OWNER_TGP);
+  check(`You see all ${tgpLibraryCount} of your library records`, Array.isArray(tgpLib.body) && tgpLib.body.length === tgpLibraryCount, tgpLib.body?.length);
+  const libB = await library(CUSTOMER_B);
+  check("Test business's library starts with none of your records", Array.isArray(libB.body) && libB.body.length === 0, libB.body?.length);
+  const page = await admin(OWNER_B, "PUT", { resource: "library", kind: "entry" }, { data: { slug: "test-page", name: "Test Page", categories: [] } });
+  check("Test owner adds a Peptide Database page", page.status === 200, page);
+  const libB2 = await library(CUSTOMER_B);
+  check("Test customer sees it", libB2.body?.length === 1 && libB2.body[0].key === "test-page", libB2.body);
+  const tgpLib2 = await library(OWNER_TGP);
+  check("It isn't in your library", Array.isArray(tgpLib2.body) && !tgpLib2.body.some((r: any) => r.key === "test-page"), tgpLib2.status);
+  const [yourEntry] = await sql`select key, data->>'name' as name from peptide_library where business_id = 'tgp' and kind = 'entry' limit 1`;
+  const overwrite = await admin(OWNER_B, "PUT", { resource: "library", kind: "entry", key: yourEntry.key }, { data: { slug: yourEntry.key, name: "HACKED", categories: [] } });
+  const [stillYours] = await sql`select data->>'name' as name from peptide_library where business_id = 'tgp' and kind = 'entry' and key = ${yourEntry.key}`;
+  check("Test owner can't overwrite one of your pages", stillYours.name === yourEntry.name && overwrite.status === 404, { status: overwrite.status, name: stillYours.name });
+  const delYours = await admin(OWNER_B, "DELETE", { resource: "library", kind: "entry", key: yourEntry.key });
+  const [stillThere] = await sql`select key from peptide_library where business_id = 'tgp' and kind = 'entry' and key = ${yourEntry.key}`;
+  check("Test owner can't delete one of your pages", Boolean(stillThere) && delYours.status === 404, delYours.status);
+  const custEdit = await admin(CUSTOMER_B, "PUT", { resource: "library", kind: "entry" }, { data: { slug: "x", name: "X", categories: [] } });
+  check("A customer can't edit the library", custEdit.status === 403, custEdit.status);
+  const priceB = await admin(OWNER_B, "GET", { resource: "supplier-catalog" });
+  check("Test owner's price list starts empty (yours stays private)", Array.isArray(priceB.body) && priceB.body.length === 0, priceB.body?.length);
+  const addPrice = await admin(OWNER_B, "POST", { resource: "supplier-catalog" }, { name: "Test Product", options: [{ code: "TP1", vialSize: "5mg", priceUsd: 20 }] });
+  check("Test owner adds to their price list", addPrice.status === 201, addPrice);
+  const tgpPrices = await admin(OWNER_TGP, "GET", { resource: "supplier-catalog" });
+  const tgpPriceCount = (await sql`select count(*)::int n from supplier_catalog where business_id = 'tgp'`)[0].n;
+  check(`You see your ${tgpPriceCount} price list products and not theirs`, tgpPrices.body?.length === tgpPriceCount && !tgpPrices.body.some((p: any) => p.name === "Test Product"), tgpPrices.body?.length);
 
   console.log("\n-- The database's own guard");
   const leaked = await runAsBusiness(TEST_ID, async (db) => (await db.select().from(customers)).filter((c) => c.businessId !== TEST_ID));
