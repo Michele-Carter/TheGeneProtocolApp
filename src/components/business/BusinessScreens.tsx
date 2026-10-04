@@ -92,13 +92,26 @@ export function ShopUnavailableScreen({ context }: { context: BusinessContext })
 }
 
 // The owner's subscription isn't running: start the trial, restart, or fix the payment.
-export function BillingScreen({ context }: { context: BusinessContext }) {
+export function BillingScreen({ context, onChanged }: { context: BusinessContext; onChanged: () => void }) {
   const { getToken } = useAuth();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(context.notice ?? null);
   const billing = context.billing!;
   const plan = PLANS[billing.plan];
   const status = billing.subscriptionStatus;
+
+  const switchRegion = async (region: RegionCode) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await businessApi.setRegion(region, getToken);
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const go = async (where: "checkout" | "portal") => {
     setBusy(true);
@@ -115,7 +128,11 @@ export function BillingScreen({ context }: { context: BusinessContext }) {
   let title: string;
   let text: React.ReactNode;
   let action: { label: string; where: "checkout" | "portal" } | null;
-  if (billing.state === "needs-checkout") {
+  if (billing.state === "needs-checkout" && billing.hadSubscription) {
+    title = "Restart your subscription";
+    text = <p>It's {plan.label}. Your shop, customers and stock are all still here.</p>;
+    action = { label: "Restart subscription", where: "checkout" };
+  } else if (billing.state === "needs-checkout") {
     title = "Start your free trial";
     text = (
       <>
@@ -151,6 +168,31 @@ export function BillingScreen({ context }: { context: BusinessContext }) {
       </Heading>
       <div className="mt-6 space-y-3">
         <ErrorLine message={error} />
+        {billing.state === "needs-checkout" && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-bold text-white">Where is your business?</span>
+            <div className="grid grid-cols-2 gap-2">
+              {REGIONS.map((r) => {
+                const selected = planFor(r.code) === billing.plan;
+                return (
+                  <button
+                    key={r.code}
+                    type="button"
+                    disabled={busy || selected}
+                    onClick={() => void switchRegion(r.code)}
+                    className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                      selected ? "border-gold-500/70 bg-gold-500/10" : "border-zinc-800 hover:border-zinc-600 cursor-pointer"
+                    }`}
+                  >
+                    <div className="text-sm font-bold text-white">{r.label}</div>
+                    <div className="text-xs text-zinc-400">{r.price}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-zinc-500">The New Zealand price needs a card issued in New Zealand.</p>
+          </div>
+        )}
         {action && (
           <button className={bigButton} disabled={busy} onClick={() => void go(action.where)}>
             {busy ? <Spinner size={14} /> : <CreditCard size={14} />} {action.label}
@@ -239,7 +281,7 @@ export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => v
           <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl focus-within:border-gold-500/70">
             <span className="pl-3 text-sm text-zinc-500 whitespace-nowrap">{window.location.host}/shop/</span>
             <input
-              className="flex-1 min-w-0 bg-transparent px-1 py-2.5 text-sm text-zinc-100 focus:outline-none"
+              className="flex-1 min-w-0 !bg-transparent !border-0 !shadow-none px-1 py-2.5 text-sm text-zinc-100 focus:outline-none"
               value={effectiveSlug}
               onChange={(e) => {
                 setSlugEdited(true);
@@ -277,6 +319,7 @@ export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => v
             {TRIAL_DAYS} days free, then {PLANS[planFor(region)].label}
           </p>
           <p>Next you'll enter a card on Stripe's secure page. Cancel before the trial ends and you won't be charged.</p>
+          {region === "NZ" && <p>The New Zealand price needs a card issued in New Zealand.</p>}
         </div>
 
         <ErrorLine message={error} />

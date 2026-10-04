@@ -5,9 +5,11 @@ import { getDb } from "./db.js";
 import { businesses } from "./schema.js";
 import { PLANS, TRIAL_DAYS, accessState, planFor, type BillingInfo, type PlanId } from "../../shared/billing.js";
 
-// Business subscriptions through Stripe. Businesses pay on Stripe's own pages (Checkout to start, the billing
-// portal to change card or cancel), so card details never reach the app. Stripe tells us about changes
-// through api/stripe-webhook.ts; syncFromStripe copies the subscription's state onto the business.
+// Business subscriptions through Stripe. Owners enter their card on Stripe's own pages (Checkout to start, the
+// billing portal to change card or cancel), so card details never reach the app. Starting is two steps:
+// Checkout only saves the card, then completeCheckout checks it (NZ pricing needs an NZ card) and starts the
+// subscription. Stripe tells us about later changes through api/stripe-webhook.ts; syncFromStripe copies the
+// subscription's state onto the business.
 
 type Business = typeof businesses.$inferSelect;
 
@@ -30,6 +32,7 @@ export function billingInfo(b: Business): BillingInfo {
         trialEndsAt: b.trialEndsAt?.toISOString() ?? null,
         currentPeriodEnd: b.currentPeriodEnd?.toISOString() ?? null,
         cancelAtPeriodEnd: b.cancelAtPeriodEnd,
+        hadSubscription: b.stripeSubscriptionId != null,
     };
 }
 
@@ -68,25 +71,79 @@ async function customerFor(business: Business): Promise<string> {
     return current.stripeCustomerId!;
 }
 
-// A Stripe Checkout page where the owner enters their card and starts the subscription. The first
-// subscription a business takes out starts with the free trial.
+// Step 1: a Stripe Checkout page that saves the owner's card and billing address. Nothing is charged and no
+// subscription exists until completeCheckout has checked the card.
 export async function checkoutUrl(business: Business, returnTo: string): Promise<string> {
     const customer = await customerFor(business);
     const session = await stripe().checkout.sessions.create({
-        mode: "subscription",
+        mode: "setup",
         customer,
+        currency: PLANS[planFor(business.country)].currency,
+        allowed_payment_method_types: ["card"],
+        billing_address_collection: "required",
         client_reference_id: business.id,
-        line_items: [{ price: await priceId(planFor(business.country)), quantity: 1 }],
-        payment_method_collection: "always",
-        subscription_data: {
-            ...(business.stripeSubscriptionId ? {} : { trial_period_days: TRIAL_DAYS }),
-            metadata: { business_id: business.id },
-        },
-        success_url: `${returnTo}/?billing=done`,
+        metadata: { business_id: business.id },
+        setup_intent_data: { metadata: { business_id: business.id } },
+        success_url: `${returnTo}/?billing=done&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${returnTo}/?billing=cancelled`,
     });
     if (!session.url) throw new Error("Stripe didn't return a checkout page");
     return session.url;
+}
+
+// The NZ price is for New Zealand businesses, so it needs a card issued in New Zealand.
+export const WRONG_REGION_MESSAGE =
+    "That card is from outside New Zealand, so it can't be used for the New Zealand price. Choose \"Outside New Zealand\" below (US$20 a month) and try again.";
+
+// Step 2, once the owner has saved their card (when they come back from Stripe, or when Stripe's webhook
+// says so - whichever is first; both are safe to run). Checks the card, then starts the subscription with
+// the free trial if it's the business's first. Returns why it didn't start, if it didn't.
+export async function completeCheckout(sessionId: string, ownerBusinessId?: string): Promise<{ problem: string | null }> {
+    const session = await stripe().checkout.sessions.retrieve(sessionId, { expand: ["setup_intent.payment_method"] });
+    if (session.mode !== "setup" || session.status !== "complete") return { problem: null };
+    const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+    const [business] = customerId ? await getDb().select().from(businesses).where(eq(businesses.stripeCustomerId, customerId)) : [];
+    if (!business || (ownerBusinessId && business.id !== ownerBusinessId)) return { problem: null };
+
+    const intent = session.setup_intent;
+    const card = intent && typeof intent !== "string" && typeof intent.payment_method !== "string" ? intent.payment_method : null;
+    if (!card) return { problem: "Stripe didn't save a card - please try again." };
+    // The same key from both callers gives one subscription.
+    return startWithCard(business, card, `start-subscription-${session.id}`);
+}
+
+// Checks a saved card is allowed for the business's price, and if so starts the subscription with it.
+export async function startWithCard(business: Business, card: Stripe.PaymentMethod, idempotencyKey: string): Promise<{ problem: string | null }> {
+    const customerId = business.stripeCustomerId!;
+    if (business.country === "NZ" && card.card?.country && card.card.country !== "NZ") {
+        await stripe().paymentMethods.detach(card.id).catch(() => undefined); // already removed by the other caller
+        return { problem: WRONG_REGION_MESSAGE };
+    }
+
+    if (!(accessState(business) === "ok" && business.subscriptionStatus)) {
+        await stripe().subscriptions.create(
+            {
+                customer: customerId,
+                items: [{ price: await priceId(planFor(business.country)) }],
+                default_payment_method: card.id,
+                off_session: true,
+                ...(business.stripeSubscriptionId ? {} : { trial_period_days: TRIAL_DAYS }),
+                metadata: { business_id: business.id },
+            },
+            { idempotencyKey }
+        );
+    }
+    await syncFromStripe(customerId);
+    return { problem: null };
+}
+
+// Switching between the NZ and overseas price, before a subscription is running. The business gets a fresh
+// Stripe customer, as a Stripe customer can only ever pay in one currency.
+export async function changeRegion(business: Business, region: string): Promise<void> {
+    await getDb()
+        .update(businesses)
+        .set({ country: region, ...(region !== business.country ? { stripeCustomerId: null } : {}), updatedAt: new Date() })
+        .where(eq(businesses.id, business.id));
 }
 
 // Stripe's billing page, where the owner can change their card, see invoices or cancel.

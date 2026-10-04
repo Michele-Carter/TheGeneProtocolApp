@@ -298,7 +298,7 @@ export default function App() {
         return <BusinessErrorScreen message={businessState.message} onRetry={() => void refreshBusiness()} />;
       case "ready":
         return businessState.context.isAdmin ? (
-          <BillingScreen context={businessState.context} />
+          <BillingScreen context={businessState.context} onChanged={() => void refreshBusiness()} />
         ) : (
           <ShopUnavailableScreen context={businessState.context} />
         );

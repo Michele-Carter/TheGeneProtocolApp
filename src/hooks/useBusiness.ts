@@ -19,16 +19,28 @@ export function useBusiness(enabled: boolean) {
   const refresh = useCallback(async () => {
     if (!enabled || !userId) return;
     try {
-      // Back from Stripe's checkout or billing page: pick up the change straight away, rather than waiting
-      // for Stripe to tell the server.
+      // Back from Stripe's checkout or billing page: start the subscription / pick up the change straight away,
+      // rather than waiting for Stripe to tell the server.
       const params = new URLSearchParams(window.location.search);
+      let notice: string | null = null;
       if (params.has("billing")) {
+        const sessionId = params.get("session_id");
         params.delete("billing");
+        params.delete("session_id");
         const rest = params.toString();
         window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
-        await businessApi.sync(getToken).catch(() => undefined);
+        notice = await businessApi
+          .sync(sessionId, getToken)
+          .then((r) => r.problem)
+          .catch(() => null);
       }
-      setState({ status: "ready", context: await adminApi.me(getToken) });
+      // A sign-in token can be refused just as it expires: try once more before giving up.
+      const context = await adminApi.me(getToken).catch(async (error) => {
+        if (!(error instanceof ApiError && error.status === 401)) throw error;
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        return adminApi.me(getToken);
+      });
+      setState({ status: "ready", context: { ...context, notice } });
     } catch (error) {
       if (error instanceof ApiError && error.code === "shop-not-found") {
         forgetShopSlug();
@@ -36,7 +48,9 @@ export function useBusiness(enabled: boolean) {
       } else if (error instanceof ApiError && error.code === "no-business") {
         setState({ status: "no-business" });
       } else {
-        setState({ status: "error", message: (error as Error).message });
+        // A passing failure (e.g. a sign-in token expiring mid-check) while the app is open keeps it open -
+        // the next check, on the next page change, tries again. Only a failed first load shows the error.
+        setState((prev) => (prev.status === "ready" ? prev : { status: "error", message: (error as Error).message }));
       }
     }
   }, [enabled, userId, getToken]);

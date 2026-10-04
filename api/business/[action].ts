@@ -4,7 +4,7 @@ import { createClerkClient } from "@clerk/backend";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
 import { ownedBusiness } from "../_lib/business.js";
-import { appUrl, billingInfo, billingPortalUrl, checkoutUrl, syncFromStripe } from "../_lib/billing.js";
+import { appUrl, billingInfo, billingPortalUrl, changeRegion, checkoutUrl, completeCheckout, syncFromStripe } from "../_lib/billing.js";
 import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { businesses, businessMembers } from "../_lib/schema.js";
@@ -15,9 +15,11 @@ import { MAX_IMAGE_BYTES } from "../../shared/shop.js";
 //   GET    /api/business/shop?slug=     a shop link's name and logo, for its sign-in page (no sign-in needed)
 //   GET    /api/business/slug?slug=     is this shop link free?  { available, problem }
 //   POST   /api/business/create         { name, slug, region }   sign up a new business (the caller becomes its owner)
-//   POST   /api/business/checkout       Stripe page to start the subscription (with the free trial)  { url }
+//   POST   /api/business/checkout       Stripe page to save a card and start the subscription         { url }
 //   POST   /api/business/portal         Stripe billing page: change card, invoices, cancel           { url }
-//   POST   /api/business/sync           re-read the subscription from Stripe (after returning from it)
+//   POST   /api/business/sync           { sessionId? } after returning from Stripe: start the subscription with the
+//                                        card just saved (if it's allowed), then re-read it   { billing, problem }
+//   PATCH  /api/business/region         { region }  NZ or overseas price, while no subscription is running
 //   PATCH  /api/business/details        { name }
 //   POST   /api/business/logo           { dataUrl }      DELETE /api/business/logo
 // Everything except shop, slug and create is for the business's owner, and works even when the subscription has
@@ -139,8 +141,21 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
     }
 
     if (action === "sync" && req.method === "POST") {
+        const body = (await parseJsonBody(req)) as { sessionId?: unknown };
+        const sessionId = typeof body?.sessionId === "string" && body.sessionId.startsWith("cs_") ? body.sessionId : null;
+        const { problem } = sessionId ? await completeCheckout(sessionId, business.id) : { problem: null };
         const synced = business.stripeCustomerId ? await syncFromStripe(business.stripeCustomerId) : null;
-        return sendJson(res, 200, { billing: billingInfo(synced ?? business) });
+        return sendJson(res, 200, { billing: billingInfo(synced ?? business), problem });
+    }
+
+    if (action === "region" && req.method === "PATCH") {
+        const parsed = z.object({ region: z.enum(["NZ", "INTL"]) }).safeParse(await parseJsonBody(req));
+        if (!parsed.success) return sendJson(res, 400, { error: "Choose New Zealand or outside New Zealand" });
+        if (accessState(business) === "ok" && business.subscriptionStatus) {
+            return sendJson(res, 409, { error: "Your subscription is running - cancel it first to change where you pay from." });
+        }
+        await changeRegion(business, parsed.data.region);
+        return sendJson(res, 200, { region: parsed.data.region });
     }
 
     if (action === "details" && req.method === "PATCH") {

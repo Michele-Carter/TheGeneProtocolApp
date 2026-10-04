@@ -43,6 +43,7 @@ export interface BillingInfo {
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  hadSubscription: boolean; // the free trial is only for a business's first subscription
 }
 
 // ---- Shop links: /shop/<slug> ----

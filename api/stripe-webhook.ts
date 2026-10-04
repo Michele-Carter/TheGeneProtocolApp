@@ -1,4 +1,4 @@
-import { stripe, syncFromStripe } from "./_lib/billing.js";
+import { completeCheckout, stripe, syncFromStripe } from "./_lib/billing.js";
 import { sendJson } from "./_lib/http.js";
 
 // POST /api/stripe-webhook - Stripe tells us a business's subscription changed (trial started, payment failed,
@@ -41,6 +41,17 @@ export default async function handler(req: any, res: any) {
     } catch (error) {
         console.error("Stripe webhook signature check failed:", error);
         return sendJson(res, 400, { error: "Invalid signature" });
+    }
+
+    // An owner saved their card: check it and start their subscription (if they haven't come back to the app yet).
+    if (event.type === "checkout.session.completed" && (event.data.object as { mode?: string }).mode === "setup") {
+        try {
+            await completeCheckout((event.data.object as { id: string }).id);
+        } catch (error) {
+            console.error("Starting a subscription from Checkout failed:", error);
+            return sendJson(res, 500, { error: "Start failed" });
+        }
+        return sendJson(res, 200, { received: true });
     }
 
     if (SUBSCRIPTION_EVENTS.has(event.type)) {

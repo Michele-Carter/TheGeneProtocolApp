@@ -91,7 +91,11 @@ export const businessApi = {
     businessFetch<{ slug: string }>("create", { method: "POST", body: JSON.stringify(data) }, t),
   checkout: (t: GetToken) => businessFetch<{ url: string }>("checkout", { method: "POST", body: "{}" }, t),
   portal: (t: GetToken) => businessFetch<{ url: string }>("portal", { method: "POST", body: "{}" }, t),
-  sync: (t: GetToken) => businessFetch<{ billing: BillingInfo }>("sync", { method: "POST", body: "{}" }, t),
+  // After Stripe's page: starts the subscription with the card just saved, or says why it can't.
+  sync: (sessionId: string | null, t: GetToken) =>
+    businessFetch<{ billing: BillingInfo; problem: string | null }>("sync", { method: "POST", body: JSON.stringify({ sessionId }) }, t),
+  setRegion: (region: RegionCode, t: GetToken) =>
+    businessFetch<{ region: RegionCode }>("region", { method: "PATCH", body: JSON.stringify({ region }) }, t),
   rename: (name: string, t: GetToken) => businessFetch<{ name: string }>("details", { method: "PATCH", body: JSON.stringify({ name }) }, t),
   uploadLogo: (dataUrl: string, t: GetToken) =>
     businessFetch<{ logoUrl: string | null }>("logo", { method: "POST", body: JSON.stringify({ dataUrl }) }, t),
@@ -104,4 +108,5 @@ export interface BusinessContext {
   business: BusinessInfo;
   access: AccessState;
   billing: BillingInfo | null; // owners only
+  notice?: string | null; // why the subscription didn't start, after coming back from Stripe
 }
