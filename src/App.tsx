@@ -71,10 +71,9 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }
   { id: "supply-orders", label: "Supply Orders", icon: <Truck size={13} /> },
   { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
   { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
-  { id: "payment-details", label: "Payment Details", icon: <Landmark size={13} /> },
-  { id: "business", label: "Business", icon: <Store size={13} /> },
   { id: "price-list", label: "Price List", icon: <Tags size={13} /> },
 ];
+// Business and Payment Details are opened from the profile picture menu instead (see accountButton).
 
 export default function App() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -213,8 +212,21 @@ export default function App() {
     });
   }, []);
 
-  // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings.
-  const accountButton = (
+  // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings -
+  // and, for the owner, their business settings and payment details. (Clerk only accepts its own menu items
+  // here, so the owner's menu is a separate tree rather than items switched on and off.)
+  const accountButton = isAdmin ? (
+    <UserButton>
+      <UserButton.MenuItems>
+        <UserButton.Action label="Business" labelIcon={<Store size={15} />} onClick={() => navigateAdmin("business")} />
+        <UserButton.Action label="Payment details" labelIcon={<Landmark size={15} />} onClick={() => navigateAdmin("payment-details")} />
+        <UserButton.Action label="My orders" labelIcon={<Package size={15} />} onClick={() => openAccount("orders")} />
+        <UserButton.Action label="My details" labelIcon={<MapPin size={15} />} onClick={() => openAccount("details")} />
+        <UserButton.Action label="manageAccount" />
+        <UserButton.Action label="signOut" />
+      </UserButton.MenuItems>
+    </UserButton>
+  ) : (
     <UserButton>
       <UserButton.MenuItems>
         <UserButton.Action label="My orders" labelIcon={<Package size={15} />} onClick={() => openAccount("orders")} />
