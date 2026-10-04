@@ -65,7 +65,7 @@ const PaymentDetailsView = lazy(() => import("./components/admin/PaymentDetailsV
 // A page the owner opens from Manage account (Clerk's account window).
 function AccountWindowPage({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-5">
+    <div className="account-window-page space-y-5">
       <div className="space-y-1">
         <h2 className="text-lg font-black text-white tracking-tight">{title}</h2>
         <p className="text-sm text-slate-400">{description}</p>
