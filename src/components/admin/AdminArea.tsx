@@ -28,7 +28,7 @@ export type AdminSection =
 const SECTION_COPY: Record<AdminSection, { title: string; description: string }> = {
   overview: { title: "Admin", description: "Your business at a glance. Only visible to you." },
   "new-orders": {
-    title: "New Orders",
+    title: "New Customer Orders",
     description: "Orders customers have sent from the shop. Check stock, set shipping, then confirm or decline.",
   },
   sales: { title: "Customer Orders", description: "Every order a customer has placed, its payment and shipping status." },

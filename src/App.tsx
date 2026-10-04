@@ -79,7 +79,7 @@ type ActiveTab = "dashboard" | "protocol" | "shop" | "account" | "recon" | "logs
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard size={13} /> },
-  { id: "new-orders", label: "New Orders", icon: <Inbox size={13} /> },
+  { id: "new-orders", label: "New Customer Orders", icon: <Inbox size={13} /> },
   { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={13} /> },
   { id: "customers", label: "Customers", icon: <Users size={13} /> },
   { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={13} /> },
