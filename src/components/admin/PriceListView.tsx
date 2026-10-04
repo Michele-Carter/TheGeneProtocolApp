@@ -36,7 +36,7 @@ export default function PriceListView() {
     );
   }, [products, search]);
 
-  if (!products) return error ? <ErrorNote message={error} /> : <LoadingSpinner label="Loading price list..." />;
+  if (!products) return error ? <ErrorNote message={error} /> : <LoadingSpinner label="Loading vendor price list..." />;
 
   if (editing) {
     return (
@@ -66,7 +66,7 @@ export default function PriceListView() {
       {products.length === 0 ? (
         <Card>
           <p className="text-sm text-slate-400">
-            Your price list is empty. Add your supplier's products with their codes and prices, and they'll be ready to pick
+            Your vendor price list is empty. Add your supplier's products with their codes and prices, and they'll be ready to pick
             when you enter a peptide order.
           </p>
         </Card>
@@ -130,7 +130,7 @@ function ProductEditor({
   };
 
   const remove = async () => {
-    if (!record || !window.confirm(`Remove ${record.name} from your price list? Stock you already have isn't affected.`)) return;
+    if (!record || !window.confirm(`Remove ${record.name} from your vendor price list? Stock you already have isn't affected.`)) return;
     setBusy("delete");
     setError(null);
     try {
@@ -145,7 +145,7 @@ function ProductEditor({
   return (
     <div className="max-w-3xl space-y-4">
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-bold text-gold-400 hover:text-gold-300 cursor-pointer">
-        <ArrowLeft size={13} /> Price list
+        <ArrowLeft size={13} /> Vendor price list
       </button>
       <Card title={record ? "Edit product" : "Add product"}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

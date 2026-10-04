@@ -49,7 +49,7 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
     description: "Your business name and logo, the link that brings customers to your shop, and your PepPal subscription.",
   },
   "price-list": {
-    title: "Price List",
+    title: "Vendor Price List",
     description: "Your supplier's products and prices, ready to pick when you enter a peptide order.",
   },
 };

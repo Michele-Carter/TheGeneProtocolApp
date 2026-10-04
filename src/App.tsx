@@ -86,7 +86,7 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }
   { id: "supply-orders", label: "Supply Orders", icon: <Truck size={13} /> },
   { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
   { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
-  { id: "price-list", label: "Price List", icon: <Tags size={13} /> },
+  { id: "price-list", label: "Vendor Price List", icon: <Tags size={13} /> },
 ];
 // Business and Payment Details are opened from the profile picture menu instead (see accountButton).
 

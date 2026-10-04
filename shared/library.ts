@@ -1,6 +1,6 @@
 // Each business's own peptide library (Peptide Database pages, Protocol Builder peptides, interactions and
 // dosing notes) and supplier price list. New businesses start with a copy of The Gene Protocol's library and
-// an empty price list. The library isn't edited in the app; the price list is (Admin -> Price List).
+// an empty price list. The library isn't edited in the app; the price list is (Admin -> Vendor Price List).
 
 // What a peptide_library row holds (api/_lib/schema.ts). Data shapes are in src/types.ts.
 export const LIBRARY_KINDS = [

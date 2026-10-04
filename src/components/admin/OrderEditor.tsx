@@ -28,7 +28,7 @@ import {
 import StyledDatePicker from "../StyledDatePicker";
 import { Spinner } from "../LoadingSpinner";
 
-// Each size on the business's supplier price list (Admin -> Price List) that has a code.
+// Each size on the business's supplier price list (Admin -> Vendor Price List) that has a code.
 const catalogOptionsOf = (products: SupplierProductRecord[]) => products.flatMap((product) =>
   product.options
     .filter((option) => option.code)
@@ -694,7 +694,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                         Choose a peptide…
                       </option>
                       {catalogOptions.length > 0 && (
-                        <optgroup label="Your price list">
+                        <optgroup label="Your vendor price list">
                           {catalogOptions.map((o) => (
                             <option key={o.itemId} value={o.itemId}>
                               {o.name} {o.variant} ({o.code})
@@ -713,7 +713,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                         </optgroup>
                       )}
                       <optgroup label="Not listed?">
-                        <option value={NEW_PEPTIDE}>+ New peptide not on the price list</option>
+                        <option value={NEW_PEPTIDE}>+ New peptide not on the vendor price list</option>
                       </optgroup>
                     </select>
                     {draft.itemId !== "" && !catalogIds.has(draft.itemId) && !knownIds.has(draft.itemId) && (

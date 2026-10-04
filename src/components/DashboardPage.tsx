@@ -99,7 +99,7 @@ export default function DashboardPage({ setActiveTab, isAdmin = false, waitingOr
           {
             id: "admin" as const,
             title: "Admin",
-            description: "Run your business: new customer orders, customers, stock, supplier orders, expenses and your price list. Only you can see this.",
+            description: "Run your business: new customer orders, customers, stock, supplier orders, expenses and your vendor price list. Only you can see this.",
             icon: Lock,
             badge: waitingOrders > 0 ? `${waitingOrders} waiting` : "Owner only",
             color: "from-gold-500 to-amber-500",
