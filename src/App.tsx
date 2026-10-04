@@ -354,7 +354,7 @@ export default function App() {
           <div className="absolute bottom-0 right-0 w-[25rem] h-[25rem] bg-gold-500/5 rounded-full blur-[120px] pointer-events-none translate-x-1/2 translate-y-1/2" />
 
           {/* DESKTOP LEFT SIDEBAR */}
-          <aside className="hidden md:flex flex-col w-64 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 h-dvh p-5 gap-4 flex-shrink-0 z-30">
+          <aside className="hidden md:flex flex-col w-72 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 h-dvh px-4 py-5 gap-4 flex-shrink-0 z-30">
             <div className="app-side-scroller flex-1 min-h-0 overflow-y-auto -mr-3 pr-3 space-y-8">
               {/* Brand Logo & Name */}
               <div className="flex items-center px-1">
