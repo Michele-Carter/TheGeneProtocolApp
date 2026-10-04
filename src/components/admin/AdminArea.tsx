@@ -8,7 +8,6 @@ import OrdersView from "./OrdersView";
 import InventoryView from "./InventoryView";
 import ExpensesView from "./ExpensesView";
 import PaymentDetailsView from "./PaymentDetailsView";
-import PeptideLibraryView from "./PeptideLibraryView";
 import PriceListView from "./PriceListView";
 import BusinessSettingsView from "./BusinessSettingsView";
 import type { BusinessContext } from "../../lib/business";
@@ -24,7 +23,6 @@ export type AdminSection =
   | "expenses"
   | "payment-details"
   | "business"
-  | "peptide-library"
   | "price-list";
 
 const SECTION_COPY: Record<AdminSection, { title: string; description: string }> = {
@@ -49,10 +47,6 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
   business: {
     title: "Business",
     description: "Your business name and logo, the link that brings customers to your shop, and your PepPal subscription.",
-  },
-  "peptide-library": {
-    title: "Peptide Library",
-    description: "Your own Peptide Database, Protocol Builder peptides and interactions. Changes are only seen by you and your customers.",
   },
   "price-list": {
     title: "Price List",
@@ -110,7 +104,6 @@ export default function AdminArea({
       {section === "expenses" && <ExpensesView />}
       {section === "payment-details" && <PaymentDetailsView />}
       {section === "business" && <BusinessSettingsView context={business} onChanged={onBusinessChanged} />}
-      {section === "peptide-library" && <PeptideLibraryView />}
       {section === "price-list" && <PriceListView />}
     </div>
   );

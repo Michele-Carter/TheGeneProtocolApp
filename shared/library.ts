@@ -1,6 +1,6 @@
 // Each business's own peptide library (Peptide Database pages, Protocol Builder peptides, interactions and
 // dosing notes) and supplier price list. New businesses start with a copy of The Gene Protocol's library and
-// an empty price list.
+// an empty price list. The library isn't edited in the app; the price list is (Admin -> Price List).
 
 // What a peptide_library row holds (api/_lib/schema.ts). Data shapes are in src/types.ts.
 export const LIBRARY_KINDS = [
@@ -16,14 +16,6 @@ export interface LibraryRecord<T = unknown> {
   kind: LibraryKind;
   key: string;
   data: T;
-}
-
-// The key a record is saved under, taken from its own data.
-export function libraryKey(kind: LibraryKind, data: any): string {
-  if (kind === "entry") return String(data?.slug ?? "").trim();
-  if (kind === "peptide") return String(data?.id ?? "").trim();
-  if (kind === "interaction") return `${String(data?.peptideA ?? "").trim()}|${String(data?.peptideB ?? "").trim()}`;
-  return "";
 }
 
 // A product on the supplier's price list, e.g. Retatrutide in 10mg and 20mg.

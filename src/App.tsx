@@ -53,7 +53,6 @@ import {
   ShoppingCart,
   Inbox,
   Landmark,
-  Library,
   Tags,
   Store,
 } from "lucide-react";
@@ -74,7 +73,6 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }
   { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
   { id: "payment-details", label: "Payment Details", icon: <Landmark size={13} /> },
   { id: "business", label: "Business", icon: <Store size={13} /> },
-  { id: "peptide-library", label: "Peptide Library", icon: <Library size={13} /> },
   { id: "price-list", label: "Price List", icon: <Tags size={13} /> },
 ];
 
