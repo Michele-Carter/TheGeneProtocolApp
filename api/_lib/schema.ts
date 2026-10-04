@@ -1,5 +1,34 @@
-import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import type { ShopOrderLine } from "../../shared/shop.js";
+
+// ---- Businesses (scripts/multi-business.sql) ----
+
+// A business using the app. Everything it owns carries its id in business_id; nothing is shared between businesses.
+export const businesses = pgTable("businesses", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(), // shop link: /shop/<slug>
+  name: text("name").notNull(),
+  logoUrl: text("logo_url"),
+  status: text("status").notNull().default("active"), // "active" | "paused" (subscription stopped)
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// People who run a business. Customers live in customers, not here.
+export const businessMembers = pgTable(
+  "business_members",
+  {
+    businessId: text("business_id").notNull().references(() => businesses.id),
+    clerkUserId: text("clerk_user_id").notNull(),
+    role: text("role").notNull().default("owner"), // "owner"
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.businessId, t.clerkUserId] }), index("business_members_user_idx").on(t.clerkUserId)]
+);
+
+// The business a row belongs to. The 'tgp' default only covers the single-business code still live;
+// it goes once every query sets business_id itself.
+const businessId = () => text("business_id").notNull().default("tgp").references(() => businesses.id);
 
 export const userStateScopeEnum = pgEnum("user_state_scope", [
   "protocol",
@@ -9,6 +38,7 @@ export const userStateScopeEnum = pgEnum("user_state_scope", [
 
 export const userStateDocuments = pgTable("user_state_documents", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   clerkUserId: text("clerk_user_id").notNull(),
   scope: userStateScopeEnum("scope").notNull(),
   data: jsonb("data").notNull(),
@@ -18,6 +48,7 @@ export const userStateDocuments = pgTable("user_state_documents", {
 
 export const protocols = pgTable("protocols", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   clerkUserId: text("clerk_user_id").notNull(),
   name: text("name").notNull(),
   data: jsonb("data").notNull(),
@@ -30,6 +61,7 @@ export const protocols = pgTable("protocols", {
 // Anything that can be stocked: catalogue peptides (id "cat:<code>") and supplies.
 export const invItems = pgTable("inv_items", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   kind: text("kind").notNull(), // "peptide" | "supply"
   name: text("name").notNull(),
   variant: text("variant").notNull().default(""),
@@ -49,6 +81,7 @@ export const invItems = pgTable("inv_items", {
 
 export const purchaseOrders = pgTable("purchase_orders", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   supplier: text("supplier").notNull(),
   orderDate: text("order_date").notNull(), // yyyy-mm-dd
   status: text("status").notNull().default("ordered"), // "ordered" | "received"
@@ -63,6 +96,7 @@ export const inventoryLots = pgTable(
   "inventory_lots",
   {
     id: text("id").primaryKey(),
+    businessId: businessId(),
     itemId: text("item_id").notNull(),
     orderId: text("order_id"),
     orderLineId: text("order_line_id"),
@@ -82,6 +116,7 @@ export const stockMovements = pgTable(
   "stock_movements",
   {
     id: text("id").primaryKey(),
+    businessId: businessId(),
     itemId: text("item_id").notNull(),
     lotId: text("lot_id"),
     type: text("type").notNull(), // "receive" | "sale" | "adjust"
@@ -99,6 +134,7 @@ export const stockMovements = pgTable(
 // shippingAddress is a ShippingAddress (shared/customers.ts).
 export const customers = pgTable("customers", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   clerkUserId: text("clerk_user_id"),
   name: text("name").notNull(),
   email: text("email").notNull().default(""),
@@ -113,6 +149,7 @@ export const customers = pgTable("customers", {
 // customerName is kept in step with the linked customer's name.
 export const sales = pgTable("sales", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   customerId: text("customer_id"),
   customerName: text("customer_name").notNull(),
   orderDate: text("order_date").notNull(), // yyyy-mm-dd
@@ -131,6 +168,7 @@ export const shopOrders = pgTable(
   "shop_orders",
   {
     id: text("id").primaryKey(),
+    businessId: businessId(),
     orderNumber: integer("order_number").notNull(),
     customerId: text("customer_id").notNull(),
     status: text("status").notNull().default("submitted"), // ShopOrderStatus (shared/shop.ts)
@@ -155,6 +193,7 @@ export const shopOrders = pgTable(
 // Owner settings by key, e.g. "payment_instructions" -> string.
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
+  businessId: businessId(),
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -164,6 +203,7 @@ export const notifications = pgTable(
   "notifications",
   {
     id: text("id").primaryKey(),
+    businessId: businessId(),
     customerId: text("customer_id").notNull(),
     shopOrderId: text("shop_order_id"),
     kind: text("kind").notNull(), // NotificationKind (shared/shop.ts)
@@ -179,6 +219,7 @@ export const notifications = pgTable(
 // of its own — selling one expands it into a SaleLine per component (shared/bundles.ts).
 export const bundles = pgTable("bundles", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   components: jsonb("components").notNull(), // BundleComponent[] (shared/bundles.ts)
@@ -193,6 +234,7 @@ export const bundles = pgTable("bundles", {
 // Business costs that aren't stock (equipment, packaging, postage, software...).
 export const expenses = pgTable("expenses", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   expenseDate: text("expense_date").notNull(), // yyyy-mm-dd
   supplier: text("supplier").notNull().default(""),
   description: text("description").notNull(),
