@@ -933,11 +933,24 @@ html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
   color: #e5e7eb !important;
 }
 
-.cl-userButtonPopoverActionButton {
+.cl-userButtonPopoverActionButton,
+.cl-userButtonPopoverCustomItemButton {
   color: #e5e7eb !important;
+  opacity: 1 !important;
 }
 
-.cl-userButtonPopoverActionButton:hover {
+/* Our own menu items (Business, Payment details, My orders, My details) match Clerk's built-in ones. */
+.cl-userButtonPopoverCustomItemButton {
+  background-color: transparent !important;
+}
+.cl-userButtonPopoverCustomItemButton *,
+.cl-userButtonPopoverCustomItemButtonIconBox {
+  color: #e5e7eb !important;
+  opacity: 1 !important;
+}
+
+.cl-userButtonPopoverActionButton:hover,
+.cl-userButtonPopoverCustomItemButton:hover {
   background-color: #27272a !important;
 }
 
