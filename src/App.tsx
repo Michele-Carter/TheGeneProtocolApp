@@ -17,7 +17,16 @@ import AuthPage from "./components/AuthPage";
 import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
-import { useIsAdmin } from "./hooks/useIsAdmin";
+import { useBusiness } from "./hooks/useBusiness";
+import { setWantsToStartBusiness, wantsToStartBusiness } from "./lib/business";
+import {
+  BillingScreen,
+  BusinessErrorScreen,
+  NoBusinessScreen,
+  ScreenFrame,
+  ShopUnavailableScreen,
+  StartBusinessScreen,
+} from "./components/business/BusinessScreens";
 import { LibraryGate, PeptideLibraryProvider } from "./hooks/usePeptideLibrary";
 import { useWaitingOrders } from "./hooks/useWaitingOrders";
 import type { AdminSection } from "./components/admin/AdminArea";
@@ -46,6 +55,7 @@ import {
   Landmark,
   Library,
   Tags,
+  Store,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
@@ -63,6 +73,7 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }
   { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
   { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
   { id: "payment-details", label: "Payment Details", icon: <Landmark size={13} /> },
+  { id: "business", label: "Business", icon: <Store size={13} /> },
   { id: "peptide-library", label: "Peptide Library", icon: <Library size={13} /> },
   { id: "price-list", label: "Price List", icon: <Tags size={13} /> },
 ];
@@ -120,20 +131,40 @@ export default function App() {
     };
   }, [getToken, isLoaded, isSignedIn]);
 
-  const isAdmin = useIsAdmin(isLoaded && sessionChecked && hasValidSession);
+  const signedIn = isLoaded && sessionChecked && hasValidSession;
+  // Which business the app is being used as; the app only opens once it's usable (see gateScreen).
+  const { state: businessState, refresh: refreshBusiness } = useBusiness(signedIn);
+  const [startingBusiness, setStartingBusiness] = useState(wantsToStartBusiness);
+  const context = businessState.status === "ready" ? businessState.context : null;
+  useEffect(() => {
+    // Already runs a business: nothing to set up.
+    if (startingBusiness && context?.isAdmin) {
+      setWantsToStartBusiness(false);
+      setStartingBusiness(false);
+    }
+  }, [startingBusiness, context]);
+  const appReady = context != null && context.access === "ok" && !startingBusiness;
+  const isAdmin = appReady && context.isAdmin;
+  const businessName = context?.business.name ?? "PepPal";
+  useEffect(() => {
+    document.title = businessName;
+  }, [businessName]);
+
   const {
     waiting: newOrders,
     paymentsToCheck,
     total: waitingOrders,
     refresh: refreshWaitingOrders,
   } = useWaitingOrders(isAdmin);
-  const notifications = useNotifications(isLoaded && sessionChecked && hasValidSession);
+  const notifications = useNotifications(appReady);
   // Moving around the app also checks for new notifications / waiting orders, so they show up promptly.
   const refreshNotifications = notifications.refresh;
+  // ...and that the subscription is still running.
   useEffect(() => {
     void refreshNotifications();
     void refreshWaitingOrders();
-  }, [activeTab, adminSection, refreshNotifications, refreshWaitingOrders]);
+    void refreshBusiness();
+  }, [activeTab, adminSection, refreshNotifications, refreshWaitingOrders, refreshBusiness]);
   const [accountTab, setAccountTab] = useState<AccountTab>("orders");
 
   useEffect(() => {
@@ -230,6 +261,8 @@ export default function App() {
               newOrders={newOrders}
               paymentsToCheck={paymentsToCheck}
               onOrdersChanged={() => void refreshWaitingOrders()}
+              business={context!}
+              onBusinessChanged={() => void refreshBusiness()}
             />
           </Suspense>
         ) : (
@@ -240,9 +273,48 @@ export default function App() {
     }
   };
 
+  // Shown instead of the app until it can be used: setting up a business, starting or restarting its
+  // subscription, or (for customers) opening their shop's link.
+  const gateScreen = () => {
+    if (startingBusiness && businessState.status !== "loading" && !context?.isAdmin) {
+      return (
+        <StartBusinessScreen
+          onCancel={() => {
+            setWantsToStartBusiness(false);
+            setStartingBusiness(false);
+          }}
+          onCreated={() => {
+            setStartingBusiness(false);
+            void refreshBusiness();
+          }}
+        />
+      );
+    }
+    switch (businessState.status) {
+      case "no-business":
+      case "shop-not-found":
+        return <NoBusinessScreen shopNotFound={businessState.status === "shop-not-found"} onStart={() => setStartingBusiness(true)} />;
+      case "error":
+        return <BusinessErrorScreen message={businessState.message} onRetry={() => void refreshBusiness()} />;
+      case "ready":
+        return businessState.context.isAdmin ? (
+          <BillingScreen context={businessState.context} />
+        ) : (
+          <ShopUnavailableScreen context={businessState.context} />
+        );
+      default:
+        return (
+          <ScreenFrame footer={false}>
+            <LoadingSpinner label="Loading..." />
+          </ScreenFrame>
+        );
+    }
+  };
+
   return (
     <>
-      {isLoaded && sessionChecked && hasValidSession && (
+      {signedIn && !appReady && gateScreen()}
+      {signedIn && appReady && (
         <div className="h-dvh bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans select-none antialiased relative overflow-hidden">
           {/* GLOWING AMBIENT CORNER BACKDROPS (No Tech-Larping, pure elegant design) */}
           <div className="absolute top-0 left-0 w-[25rem] h-[25rem] bg-gold-500/5 rounded-full blur-[120px] pointer-events-none -translate-x-1/2 -translate-y-1/2" />
@@ -256,17 +328,16 @@ export default function App() {
                 <div className="flex items-center gap-1">
                   <div className="h-9 w-6 flex items-center justify-center">
                     <img
-                      src="/favicon.png"
-                      alt="PepPal icon"
-                      className="h-6 w-6 object-contain"
+                      src={context?.business.logoUrl ?? "/favicon.png"}
+                      alt=""
+                      className="h-6 w-6 object-contain rounded"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).style.display = "none";
                       }}
                     />
                   </div>
                   <div className="flex items-center gap-1.5 -ml-0.5">
-                    <span className="text-lg font-black text-white tracking-tight leading-none font-mono">PepPal</span>
-                    <span className="text-[12px] font-mono tracking-wider text-slate-500 px-0.5 py-0.5">v1.2</span>
+                    <span className="text-lg font-black text-white tracking-tight leading-tight">{businessName}</span>
                   </div>
                 </div>
               </div>
@@ -413,15 +484,15 @@ export default function App() {
               <div className="flex items-center gap-1.5">
                 <div className="h-8 w-5 flex items-center justify-center">
                   <img
-                    src="/favicon.png"
-                    alt="PepPal icon"
-                    className="h-5 w-5 object-contain"
+                    src={context?.business.logoUrl ?? "/favicon.png"}
+                    alt=""
+                    className="h-5 w-5 object-contain rounded"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).style.display = "none";
                     }}
                   />
                 </div>
-                <span className="text-base font-black text-white tracking-tight font-mono">PepPal Hub</span>
+                <span className="text-base font-black text-white tracking-tight truncate">{businessName}</span>
               </div>
 
               <div className="flex items-center gap-3">

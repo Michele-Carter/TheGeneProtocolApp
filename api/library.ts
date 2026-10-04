@@ -28,6 +28,7 @@ export async function handleLibraryRequest(req: any, res: any, userId: string) {
         const etag = `"${access.business.id}-${stamp.n}-${stamp.latest}"`;
         res.setHeader("ETag", etag);
         res.setHeader("Cache-Control", "private, no-cache");
+        res.setHeader("Vary", "Authorization, X-Business");
         if (req.headers?.["if-none-match"] === etag) return sendJson(res, 304, null);
 
         const rows = await db

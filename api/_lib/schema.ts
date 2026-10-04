@@ -10,7 +10,17 @@ export const businesses = pgTable("businesses", {
   slug: text("slug").notNull().unique(), // shop link: /shop/<slug>
   name: text("name").notNull(),
   logoUrl: text("logo_url"),
-  status: text("status").notNull().default("active"), // "active" | "paused" (subscription stopped)
+  status: text("status").notNull().default("active"), // "active" | "suspended" (by the platform owner)
+  country: text("country").notNull().default("NZ"), // "NZ" pays in NZD, "INTL" (anywhere else) in USD
+  ownerEmail: text("owner_email").notNull().default(""),
+  // Subscription (scripts/multi-business-4.sql), kept in step with Stripe by api/_lib/billing.ts.
+  billingExempt: boolean("billing_exempt").notNull().default(false),
+  stripeCustomerId: text("stripe_customer_id").unique(),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: text("subscription_status"), // Stripe's: trialing, active, past_due, canceled...
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

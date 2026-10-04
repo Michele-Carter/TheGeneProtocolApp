@@ -1,5 +1,6 @@
 import type { LibraryRecord } from "../../shared/library";
 import type { PeptideLibrary } from "../types";
+import { businessHeaders } from "./business";
 
 // Loads the peptide library of the business the user is using the app as (api/library.ts).
 
@@ -9,7 +10,7 @@ export async function fetchLibraryRecords(getToken: GetToken): Promise<LibraryRe
   const token = await getToken();
   if (!token) throw new Error("You're signed out - please sign in again.");
   // The browser revalidates its cached copy, so an unchanged library isn't downloaded again.
-  const response = await fetch("/api/library", { headers: { Authorization: `Bearer ${token}` }, cache: "no-cache" });
+  const response = await fetch("/api/library", { headers: { Authorization: `Bearer ${token}`, ...businessHeaders() }, cache: "no-cache" });
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
   if (!response.ok) throw new Error(body?.error ?? `Request failed (${response.status})`);

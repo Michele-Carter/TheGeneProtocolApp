@@ -51,6 +51,8 @@ import {
     supplierCatalog,
 } from "../_lib/schema.js";
 import { LIBRARY_KINDS, libraryKey, type LibraryKind } from "../../shared/library.js";
+import { accessState, type BusinessInfo } from "../../shared/billing.js";
+import { billingInfo } from "../_lib/billing.js";
 
 // All owner-only endpoints live in this one function (keeps us under Vercel's function limit). Each request
 // runs as the caller's own business (api/_lib/business.ts), so it only ever sees that business's records.
@@ -1884,18 +1886,26 @@ export default async function handler(req: any, res: any) {
     return handleAdminRequest(req, res, userId);
 }
 
-function businessDto({ business }: BusinessAccess) {
+function businessDto({ business }: BusinessAccess): BusinessInfo {
     return { name: business.name, slug: business.slug, logoUrl: business.logoUrl };
 }
 
 export async function handleAdminRequest(req: any, res: any, userId: string) {
     const resource = req.query?.resource;
 
-    // The only admin endpoint customers may call: tells the app whether to show the Admin tab.
+    // The only admin endpoint customers may call: which business the app is being used as, whether to show the
+    // Admin tab, and (for its owner) the subscription - answered even when the subscription isn't running, so
+    // the app can show what to do about it.
     if (resource === "me") {
-        return serveAsBusiness(req, res, userId, { ownersOnly: false }, async ({ access, res }) =>
-            sendJson(res, 200, { isAdmin: access.role === "owner", business: businessDto(access) })
-        );
+        return serveAsBusiness(req, res, userId, { ownersOnly: false, evenWithoutAccess: true }, async ({ access, res }) => {
+            const isAdmin = access.role === "owner";
+            return sendJson(res, 200, {
+                isAdmin,
+                business: businessDto(access),
+                access: accessState(access.business),
+                billing: isAdmin ? billingInfo(access.business) : null,
+            });
+        });
     }
 
     return serveAsBusiness(req, res, userId, { ownersOnly: true }, async ({ db, access, res }) => {

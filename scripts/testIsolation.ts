@@ -9,6 +9,7 @@ import postgres from "postgres";
 import { handleAdminRequest } from "../api/admin/[resource]";
 import { handleShopRequest } from "../api/shop/[resource]";
 import { handleLibraryRequest } from "../api/library";
+import { handleBusinessRequest } from "../api/business/[action]";
 import { runAsBusiness } from "../api/_lib/business";
 import { customers, invItems } from "../api/_lib/schema";
 
@@ -16,6 +17,9 @@ const TEST_ID = "isolation-test";
 const TEST_SLUG = "isolation-test-shop";
 const OWNER_B = "user_isolation_test_owner";
 const CUSTOMER_B = "user_isolation_test_customer";
+const OWNER_C = "user_isolation_test_signup"; // signs up a business during the test
+const SIGNUP_SLUG = "isolation-signup-test";
+const STRANGER = "user_isolation_test_stranger"; // signed in, but no business and no shop link
 const OWNER_TGP = (process.env.ADMIN_USER_IDS ?? "").split(",")[0]?.trim();
 if (!OWNER_TGP) throw new Error("ADMIN_USER_IDS is empty in .env.local");
 
@@ -57,16 +61,23 @@ const shop = (userId: string, method: string, query: Record<string, string>, bod
 
 const library = (userId: string, headers?: Record<string, string>) =>
   call(handleLibraryRequest, userId, "GET", {}, undefined, headers);
+const business = (userId: string, method: string, action: string, body?: unknown, extra: Record<string, string> = {}) =>
+  call(handleBusinessRequest, userId, method, { action, ...extra }, body);
 
 async function cleanUp() {
+  const signedUp = await sql`select id from businesses where slug = ${SIGNUP_SLUG}`;
+  for (const id of [TEST_ID, ...signedUp.map((b) => b.id)]) await cleanBusiness(id);
+}
+
+async function cleanBusiness(id: string) {
   for (const table of [
     "peptide_library", "supplier_catalog", "notifications", "shop_orders", "sales", "stock_movements", "inventory_lots", "purchase_orders",
     "bundles", "expenses", "app_settings", "inv_items", "customers", "protocols", "user_state_documents",
     "business_members",
   ]) {
-    await sql.unsafe(`delete from ${table} where business_id = $1`, [TEST_ID]);
+    await sql.unsafe(`delete from ${table} where business_id = $1`, [id]);
   }
-  await sql`delete from businesses where id = ${TEST_ID}`;
+  await sql`delete from businesses where id = ${id}`;
 }
 
 async function tgpCounts() {
@@ -90,7 +101,7 @@ try {
   const before = await tgpCounts();
 
   // A second business with an owner and a customer (with a full address, so they can order).
-  await sql`insert into businesses (id, slug, name) values (${TEST_ID}, ${TEST_SLUG}, 'Isolation Test Co')`;
+  await sql`insert into businesses (id, slug, name, billing_exempt) values (${TEST_ID}, ${TEST_SLUG}, 'Isolation Test Co', true)`;
   await sql`insert into business_members (business_id, clerk_user_id, role) values (${TEST_ID}, ${OWNER_B}, 'owner')`;
   await sql`
     insert into customers (id, business_id, clerk_user_id, name, email, shipping_address)
@@ -236,6 +247,56 @@ try {
   const tgpPrices = await admin(OWNER_TGP, "GET", { resource: "supplier-catalog" });
   const tgpPriceCount = (await sql`select count(*)::int n from supplier_catalog where business_id = 'tgp'`)[0].n;
   check(`You see your ${tgpPriceCount} price list products and not theirs`, tgpPrices.body?.length === tgpPriceCount && !tgpPrices.body.some((p: any) => p.name === "Test Product"), tgpPrices.body?.length);
+
+  console.log("\n-- Shop links");
+  const stranger = await admin(STRANGER, "GET", { resource: "me" });
+  check("Someone with no shop link isn't put in any business", stranger.status === 404 && stranger.body?.code === "no-business", stranger);
+  const strangerShop = await shop(STRANGER, "GET", { resource: "products" });
+  check("...and can't see any shop", strangerShop.status === 404, strangerShop.status);
+  const ownerLink = await admin(OWNER_B, "GET", { resource: "items" }, undefined);
+  const ownerOther = await call(handleAdminRequest, OWNER_B, "GET", { resource: "me" }, undefined, { "x-business": "the-gene-protocol" });
+  check("An owner opening someone else's shop link still only gets their own business", ownerOther.body?.business?.slug === TEST_SLUG && ownerLink.status === 200, ownerOther.body);
+  const publicName = await business(STRANGER, "GET", "shop", undefined, { slug: TEST_SLUG });
+  check("A shop link shows only its name and logo, nothing else", publicName.status === 200 && Object.keys(publicName.body).sort().join() === "logoUrl,name,slug", publicName.body);
+
+  console.log("\n-- Signing up a business");
+  const tgpLibCount = (await sql`select count(*)::int n from peptide_library where business_id = 'tgp'`)[0].n;
+  const taken = await business(OWNER_C, "GET", "slug", undefined, { slug: "the-gene-protocol" });
+  check("A shop link that's taken is refused", taken.body?.available === false, taken.body);
+  const reserved = await business(OWNER_C, "GET", "slug", undefined, { slug: "admin" });
+  check("A reserved shop link is refused", reserved.body?.available === false, reserved.body);
+  const created = await business(OWNER_C, "POST", "create", { name: "Signup Test Co", slug: SIGNUP_SLUG, region: "INTL" });
+  check("A new owner signs up a business", created.status === 201, created);
+  const [newBiz] = await sql`select * from businesses where slug = ${SIGNUP_SLUG}`;
+  const copied = newBiz ? (await sql`select count(*)::int n from peptide_library where business_id = ${newBiz.id}`)[0].n : 0;
+  check(`It starts with a copy of your ${tgpLibCount} library records`, copied === tgpLibCount, copied);
+  const newPrices = newBiz ? (await sql`select count(*)::int n from supplier_catalog where business_id = ${newBiz.id}`)[0].n : -1;
+  check("...but not your price list", newPrices === 0, newPrices);
+  check("It pays in US dollars (outside NZ)", newBiz?.country === "INTL", newBiz?.country);
+  const second = await business(OWNER_C, "POST", "create", { name: "Second Co", slug: "isolation-signup-two", region: "NZ" });
+  check("An owner can't sign up a second business", second.status === 409, second.status);
+  const meC = await admin(OWNER_C, "GET", { resource: "me" });
+  check("Before the free trial starts, the app asks them to start it", meC.body?.access === "needs-checkout" && meC.body?.isAdmin === true, meC.body);
+  const itemsC = await admin(OWNER_C, "GET", { resource: "items" });
+  check("...and their admin pages wait until then", itemsC.status === 402 && itemsC.body?.code === "subscription-required", itemsC);
+
+  console.log("\n-- Subscriptions");
+  await sql`update businesses set billing_exempt = false, subscription_status = 'trialing' where id = ${TEST_ID}`;
+  const trialing = await admin(OWNER_B, "GET", { resource: "items" });
+  check("A business on its free trial works", trialing.status === 200, trialing.status);
+  await sql`update businesses set subscription_status = 'past_due' where id = ${TEST_ID}`;
+  const pastDue = await admin(OWNER_B, "GET", { resource: "items" });
+  check("...and keeps working while Stripe retries a failed payment", pastDue.status === 200, pastDue.status);
+  await sql`update businesses set subscription_status = 'canceled' where id = ${TEST_ID}`;
+  const pausedOwner = await admin(OWNER_B, "GET", { resource: "items" });
+  check("When the subscription ends, the owner's pages pause", pausedOwner.status === 402 && pausedOwner.body?.code === "subscription-required", pausedOwner);
+  const pausedMe = await admin(OWNER_B, "GET", { resource: "me" });
+  check("...but the app can still tell them how to restart it", pausedMe.status === 200 && pausedMe.body?.access === "paused" && pausedMe.body?.billing?.subscriptionStatus === "canceled", pausedMe.body);
+  const pausedCustomer = await shop(CUSTOMER_B, "GET", { resource: "products" });
+  check("...and their customers see the shop is unavailable", pausedCustomer.status === 402 && pausedCustomer.body?.code === "shop-unavailable", pausedCustomer);
+  const yoursStill = await admin(OWNER_TGP, "GET", { resource: "items" });
+  check("Your business isn't affected", yoursStill.status === 200, yoursStill.status);
+  await sql`update businesses set billing_exempt = true, subscription_status = null where id = ${TEST_ID}`;
 
   console.log("\n-- The database's own guard");
   const leaked = await runAsBusiness(TEST_ID, async (db) => (await db.select().from(customers)).filter((c) => c.businessId !== TEST_ID));

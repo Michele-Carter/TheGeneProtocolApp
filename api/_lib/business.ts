@@ -4,6 +4,7 @@ import { customerForUser } from "./customers.js";
 import { getDb } from "./db.js";
 import { sendJson } from "./http.js";
 import { businesses, businessMembers, customers } from "./schema.js";
+import { accessState } from "../../shared/billing.js";
 
 // Every business's data is kept apart by the database (scripts/multi-business-2.sql). Each API request:
 //   1. works out which business it's for and whether the caller owns it or is a customer (resolveBusiness),
@@ -20,30 +21,34 @@ export interface BusinessAccess {
     role: "owner" | "customer";
 }
 
-// Where someone who isn't an owner and hasn't joined any business yet goes.
-// TEMPORARY: stage 4 replaces this with joining through a business's own shop link.
-const FALLBACK_BUSINESS_ID = "tgp";
-
 // The business the app asked for (its shop link slug), if any.
 function requestedSlug(req: any): string | null {
     const value = req.headers?.["x-business"];
     return typeof value === "string" && value.trim() ? value.trim().toLowerCase() : null;
 }
 
-// Which business a signed-in user's request is for. Runs before any business is selected, so it reads
-// across businesses - it only ever returns the one business the caller belongs to (or asked to join).
-export async function resolveBusiness(req: any, userId: string): Promise<BusinessAccess | null> {
-    const db = getDb();
-    const slug = requestedSlug(req);
-
-    const owned = await db
+// The business a login runs, if any.
+export async function ownedBusiness(userId: string): Promise<Business | null> {
+    const [own] = await getDb()
         .select({ business: businesses })
         .from(businessMembers)
         .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
         .where(eq(businessMembers.clerkUserId, userId))
-        .orderBy(asc(businessMembers.createdAt));
-    const own = slug ? owned.find((r) => r.business.slug === slug) : owned[0];
-    if (own) return { business: own.business, role: "owner" };
+        .orderBy(asc(businessMembers.createdAt))
+        .limit(1);
+    return own?.business ?? null;
+}
+
+// Which business a signed-in user's request is for. Runs before any business is selected, so it reads
+// across businesses - it only ever returns the one business the caller runs, or is (or asks to become) a
+// customer of. An owner always uses their own business. Anyone else joins a business through its shop link
+// (the app sends its slug); after that the app finds it from their customer record.
+export async function resolveBusiness(req: any, userId: string): Promise<BusinessAccess | null> {
+    const db = getDb();
+    const slug = requestedSlug(req);
+
+    const own = await ownedBusiness(userId);
+    if (own) return { business: own, role: "owner" };
 
     if (slug) {
         const [business] = await db.select().from(businesses).where(eq(businesses.slug, slug));
@@ -57,10 +62,7 @@ export async function resolveBusiness(req: any, userId: string): Promise<Busines
         .where(eq(customers.clerkUserId, userId))
         .orderBy(asc(customers.createdAt))
         .limit(1);
-    if (joined) return { business: joined.business, role: "customer" };
-
-    const [fallback] = await db.select().from(businesses).where(eq(businesses.id, FALLBACK_BUSINESS_ID));
-    return fallback ? { business: fallback, role: "customer" } : null;
+    return joined ? { business: joined.business, role: "customer" } : null;
 }
 
 // Runs fn in one transaction that can only see and change this business's rows.
@@ -103,18 +105,30 @@ export interface BusinessRequest {
     res: HeldResponse;
 }
 
-// Serves a signed-in user's request as their business. ownersOnly turns away customers. A customer becomes
-// a customer of the business on their first request. Anything that fails with a 5xx is rolled back.
+// Serves a signed-in user's request as their business. ownersOnly turns away customers. A business whose
+// subscription isn't running only gets requests marked evenWithoutAccess (so the app can show what to do).
+// A customer becomes a customer of the business on their first request. Anything that fails with a 5xx is
+// rolled back.
 export async function serveAsBusiness(
     req: any,
     res: any,
     userId: string,
-    options: { ownersOnly: boolean },
+    options: { ownersOnly: boolean; evenWithoutAccess?: boolean },
     fn: (request: BusinessRequest) => Promise<unknown>
 ) {
     const access = await resolveBusiness(req, userId);
-    if (!access) return sendJson(res, 404, { error: "Shop not found" });
+    if (!access) {
+        return requestedSlug(req)
+            ? sendJson(res, 404, { error: "We couldn't find that shop. Please check the link.", code: "shop-not-found" })
+            : sendJson(res, 404, { error: "Open your shop's link to get started.", code: "no-business" });
+    }
     if (options.ownersOnly && access.role !== "owner") return sendJson(res, 403, { error: "Forbidden" });
+    const state = accessState(access.business);
+    if (state !== "ok" && !options.evenWithoutAccess) {
+        return access.role === "owner"
+            ? sendJson(res, 402, { error: "Your PepPal subscription isn't active.", code: "subscription-required" })
+            : sendJson(res, 402, { error: `${access.business.name} is unavailable right now.`, code: "shop-unavailable" });
+    }
 
     const held = new HeldResponse();
     try {

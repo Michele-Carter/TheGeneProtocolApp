@@ -5,6 +5,7 @@ import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
 import type { ItemShopSection, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 import type { LibraryKind, LibraryRecord, SupplierProduct } from "../../shared/library";
+import { ApiError, businessHeaders, type BusinessContext } from "./business";
 
 export interface SupplierProductRecord extends SupplierProduct {
   sort: number;
@@ -214,6 +215,7 @@ async function adminFetch<T>(path: string, init: RequestInit, getToken: GetToken
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
+      ...businessHeaders(),
       ...(init.headers ?? {}),
     },
   });
@@ -221,7 +223,7 @@ async function adminFetch<T>(path: string, init: RequestInit, getToken: GetToken
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    throw new Error(body?.error ?? `Request failed (${response.status})`);
+    throw new ApiError(body?.error ?? `Request failed (${response.status})`, response.status, body?.code ?? null);
   }
   return body as T;
 }
@@ -229,7 +231,7 @@ async function adminFetch<T>(path: string, init: RequestInit, getToken: GetToken
 const q = encodeURIComponent;
 
 export const adminApi = {
-  me: (t: GetToken) => adminFetch<{ isAdmin: boolean }>("me", { method: "GET" }, t),
+  me: (t: GetToken) => adminFetch<BusinessContext>("me", { method: "GET" }, t),
 
   listItems: (t: GetToken) => adminFetch<InvItem[]>("items", { method: "GET" }, t),
   updateItem: (id: string, patch: ItemPatch, t: GetToken) =>

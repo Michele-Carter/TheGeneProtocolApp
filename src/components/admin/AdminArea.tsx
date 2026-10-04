@@ -10,6 +10,8 @@ import ExpensesView from "./ExpensesView";
 import PaymentDetailsView from "./PaymentDetailsView";
 import PeptideLibraryView from "./PeptideLibraryView";
 import PriceListView from "./PriceListView";
+import BusinessSettingsView from "./BusinessSettingsView";
+import type { BusinessContext } from "../../lib/business";
 
 export type AdminSection =
   | "overview"
@@ -21,6 +23,7 @@ export type AdminSection =
   | "inventory"
   | "expenses"
   | "payment-details"
+  | "business"
   | "peptide-library"
   | "price-list";
 
@@ -43,6 +46,10 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
     title: "Payment Details",
     description: "The bank account customers pay into. They only see it once you've confirmed their order.",
   },
+  business: {
+    title: "Business",
+    description: "Your business name and logo, the link that brings customers to your shop, and your PepPal subscription.",
+  },
   "peptide-library": {
     title: "Peptide Library",
     description: "Your own Peptide Database, Protocol Builder peptides and interactions. Changes are only seen by you and your customers.",
@@ -61,12 +68,16 @@ export default function AdminArea({
   newOrders,
   paymentsToCheck,
   onOrdersChanged,
+  business,
+  onBusinessChanged,
 }: {
   section: AdminSection;
   onNavigate: (section: AdminSection) => void;
   newOrders: number; // shop orders waiting to be confirmed
   paymentsToCheck: number; // confirmed orders the customer says they've paid
   onOrdersChanged: () => void;
+  business: BusinessContext;
+  onBusinessChanged: () => void;
 }) {
   const copy = SECTION_COPY[section];
   // An order picked from a customer's page (or a confirmed shop order), opened once Customer Orders loads.
@@ -98,6 +109,7 @@ export default function AdminArea({
       {section === "inventory" && <InventoryView />}
       {section === "expenses" && <ExpensesView />}
       {section === "payment-details" && <PaymentDetailsView />}
+      {section === "business" && <BusinessSettingsView context={business} onChanged={onBusinessChanged} />}
       {section === "peptide-library" && <PeptideLibraryView />}
       {section === "price-list" && <PriceListView />}
     </div>
