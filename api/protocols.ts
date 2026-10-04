@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuthUserId } from "./_lib/auth.js";
-import { getDb } from "./_lib/db.js";
+import { serveAsBusiness, type Db } from "./_lib/business.js";
 import { parseJsonBody, sendJson } from "./_lib/http.js";
 import { protocols } from "./_lib/schema.js";
 
@@ -26,13 +26,11 @@ export default async function handler(req: any, res: any) {
         return sendJson(res, 401, { error: "Unauthenticated" });
     }
 
-    let db;
-    try {
-        db = getDb();
-    } catch (error) {
-        return sendJson(res, 500, { error: (error as Error).message });
-    }
+    return serveAsBusiness(req, res, userId, { ownersOnly: false }, ({ db, res }) => handleProtocols(req, res, db, userId));
+}
 
+// The caller's protocols in the business they're using the app as.
+async function handleProtocols(req: any, res: any, db: Db, userId: string) {
     if (req.method === "GET") {
         const rows = await db
             .select()

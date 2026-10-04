@@ -1,11 +1,11 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
+import { serveAsBusiness, type Db } from "../_lib/business.js";
 import { customerForUser } from "../_lib/customers.js";
-import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { appSettings, customers, notifications, sales, shopOrders } from "../_lib/schema.js";
-import { loadCatalog, orderDemand } from "../_lib/shopCatalog.js";
+import { loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import { isAddressComplete, toAddress } from "../../shared/customers.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
 import {
@@ -18,7 +18,8 @@ import {
     type ShopOrderLine,
 } from "../../shared/shop.js";
 
-// Endpoints for signed-in customers. Everything here only ever reads or changes the caller's own records.
+// Endpoints for signed-in customers, run as the business they belong to (api/_lib/business.ts).
+// Everything here only ever reads or changes the caller's own records.
 //   GET  /api/shop/me         the caller's customer details (linked or created on first visit)
 //   PUT  /api/shop/me         update their name, email and shipping address
 //   GET  /api/shop/products   everything in the shop, with prices and a stock label
@@ -29,7 +30,6 @@ import {
 //   GET  /api/shop/notifications              latest notifications + unread count
 //   POST /api/shop/notifications?action=read  mark them all read
 
-type Db = ReturnType<typeof getDb>;
 type CustomerRow = typeof customers.$inferSelect;
 
 const detailsSchema = z.object({
@@ -224,7 +224,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string) {
         try {
             const row = await db.transaction(async (tx) => {
                 // One order at a time, so two customers can't both be promised the last vial.
-                await tx.execute(sql`select pg_advisory_xact_lock(724101)`);
+                await lockStock(tx);
                 const { orderable, available } = await loadCatalog(tx);
 
                 const lines: ShopOrderLine[] = [];
@@ -268,7 +268,8 @@ async function handleOrders(req: any, res: any, db: Db, userId: string) {
                     .insert(shopOrders)
                     .values({
                         id: crypto.randomUUID(),
-                        orderNumber: sql`nextval('shop_order_number_seq')`,
+                        // Each business numbers its own orders from #1001 (safe under lockStock).
+                        orderNumber: sql`(select coalesce(max(${shopOrders.orderNumber}), 1000) + 1 from ${shopOrders})`,
                         customerId: customer.id,
                         status: "submitted",
                         lines,
@@ -338,30 +339,28 @@ export default async function handler(req: any, res: any) {
     if (!userId) {
         return sendJson(res, 401, { error: "Unauthenticated" });
     }
+    return handleShopRequest(req, res, userId);
+}
 
-    let db: Db;
-    try {
-        db = getDb();
-    } catch (error) {
-        return sendJson(res, 500, { error: (error as Error).message });
-    }
-
+export async function handleShopRequest(req: any, res: any, userId: string) {
     const resource = req.query?.resource;
-    try {
-        switch (resource) {
-            case "me":
-                return await handleMe(req, res, db, userId);
-            case "products":
-                return await handleProducts(req, res, db);
-            case "orders":
-                return await handleOrders(req, res, db, userId);
-            case "notifications":
-                return await handleNotifications(req, res, db, userId);
-            default:
-                return sendJson(res, 404, { error: "Not found" });
+    return serveAsBusiness(req, res, userId, { ownersOnly: false }, async ({ db, res }) => {
+        try {
+            switch (resource) {
+                case "me":
+                    return await handleMe(req, res, db, userId);
+                case "products":
+                    return await handleProducts(req, res, db);
+                case "orders":
+                    return await handleOrders(req, res, db, userId);
+                case "notifications":
+                    return await handleNotifications(req, res, db, userId);
+                default:
+                    return sendJson(res, 404, { error: "Not found" });
+            }
+        } catch (error) {
+            console.error(`Shop ${resource} request failed:`, error);
+            return sendJson(res, 500, { error: "Something went wrong - please try again." });
         }
-    } catch (error) {
-        console.error(`Shop ${resource} request failed:`, error);
-        return sendJson(res, 500, { error: "Something went wrong - please try again." });
-    }
+    });
 }

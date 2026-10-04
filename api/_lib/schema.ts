@@ -1,4 +1,5 @@
-import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { ShopOrderLine } from "../../shared/shop.js";
 
 // ---- Businesses (scripts/multi-business.sql) ----
@@ -26,9 +27,13 @@ export const businessMembers = pgTable(
   (t) => [primaryKey({ columns: [t.businessId, t.clerkUserId] }), index("business_members_user_idx").on(t.clerkUserId)]
 );
 
-// The business a row belongs to. The 'tgp' default only covers the single-business code still live;
-// it goes once every query sets business_id itself.
-const businessId = () => text("business_id").notNull().default("tgp").references(() => businesses.id);
+// The business a row belongs to. Set by the database from the request's business (api/_lib/business.ts),
+// which also stops a request seeing or changing any other business's rows (scripts/multi-business-2.sql).
+const businessId = () =>
+  text("business_id")
+    .notNull()
+    .default(sql`current_setting('app.business_id', true)`)
+    .references(() => businesses.id);
 
 export const userStateScopeEnum = pgEnum("user_state_scope", [
   "protocol",
@@ -37,14 +42,14 @@ export const userStateScopeEnum = pgEnum("user_state_scope", [
 ]);
 
 export const userStateDocuments = pgTable("user_state_documents", {
-  id: text("id").primaryKey(),
+  id: text("id").notNull(),
   businessId: businessId(),
   clerkUserId: text("clerk_user_id").notNull(),
   scope: userStateScopeEnum("scope").notNull(),
   data: jsonb("data").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [primaryKey({ columns: [t.businessId, t.id] })]);
 
 export const protocols = pgTable("protocols", {
   id: text("id").primaryKey(),
@@ -56,11 +61,11 @@ export const protocols = pgTable("protocols", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-// ---- Admin: supply orders & inventory (owner-only, see api/_lib/admin.ts) ----
+// ---- Admin: supply orders & inventory (owner-only, see api/admin/[resource].ts) ----
 
 // Anything that can be stocked: catalogue peptides (id "cat:<code>") and supplies.
 export const invItems = pgTable("inv_items", {
-  id: text("id").primaryKey(),
+  id: text("id").notNull(),
   businessId: businessId(),
   kind: text("kind").notNull(), // "peptide" | "supply"
   name: text("name").notNull(),
@@ -77,7 +82,7 @@ export const invItems = pgTable("inv_items", {
   images: jsonb("images").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [primaryKey({ columns: [t.businessId, t.id] })]);
 
 export const purchaseOrders = pgTable("purchase_orders", {
   id: text("id").primaryKey(),
@@ -187,16 +192,19 @@ export const shopOrders = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("shop_orders_customer_idx").on(t.customerId, t.createdAt)]
+  (t) => [
+    index("shop_orders_customer_idx").on(t.customerId, t.createdAt),
+    uniqueIndex("shop_orders_business_number_idx").on(t.businessId, t.orderNumber),
+  ]
 );
 
 // Owner settings by key, e.g. "payment_instructions" -> string.
 export const appSettings = pgTable("app_settings", {
-  key: text("key").primaryKey(),
+  key: text("key").notNull(),
   businessId: businessId(),
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [primaryKey({ columns: [t.businessId, t.key] })]);
 
 // A message for a customer about one of their shop orders, shown under the bell in the app.
 export const notifications = pgTable(
