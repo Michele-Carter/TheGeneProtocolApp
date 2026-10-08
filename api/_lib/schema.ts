@@ -1,5 +1,49 @@
-import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { ShopOrderLine } from "../../shared/shop.js";
+
+// ---- Businesses (scripts/multi-business.sql) ----
+
+// A business using the app. Everything it owns carries its id in business_id; nothing is shared between businesses.
+export const businesses = pgTable("businesses", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(), // shop link: /shop/<slug>
+  name: text("name").notNull(),
+  logoUrl: text("logo_url"),
+  status: text("status").notNull().default("active"), // "active" | "suspended" (by the platform owner)
+  country: text("country").notNull().default("NZ"), // "NZ" pays in NZD, "INTL" (anywhere else) in USD
+  ownerEmail: text("owner_email").notNull().default(""),
+  // Subscription (scripts/multi-business-4.sql), kept in step with Stripe by api/_lib/billing.ts.
+  billingExempt: boolean("billing_exempt").notNull().default(false),
+  stripeCustomerId: text("stripe_customer_id").unique(),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: text("subscription_status"), // Stripe's: trialing, active, past_due, canceled...
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// People who run a business. Customers live in customers, not here.
+export const businessMembers = pgTable(
+  "business_members",
+  {
+    businessId: text("business_id").notNull().references(() => businesses.id),
+    clerkUserId: text("clerk_user_id").notNull(),
+    role: text("role").notNull().default("owner"), // "owner"
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.businessId, t.clerkUserId] }), index("business_members_user_idx").on(t.clerkUserId)]
+);
+
+// The business a row belongs to. Set by the database from the request's business (api/_lib/business.ts),
+// which also stops a request seeing or changing any other business's rows (scripts/multi-business-2.sql).
+const businessId = () =>
+  text("business_id")
+    .notNull()
+    .default(sql`current_setting('app.business_id', true)`)
+    .references(() => businesses.id);
 
 export const userStateScopeEnum = pgEnum("user_state_scope", [
   "protocol",
@@ -8,16 +52,18 @@ export const userStateScopeEnum = pgEnum("user_state_scope", [
 ]);
 
 export const userStateDocuments = pgTable("user_state_documents", {
-  id: text("id").primaryKey(),
+  id: text("id").notNull(),
+  businessId: businessId(),
   clerkUserId: text("clerk_user_id").notNull(),
   scope: userStateScopeEnum("scope").notNull(),
   data: jsonb("data").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [primaryKey({ columns: [t.businessId, t.id] })]);
 
 export const protocols = pgTable("protocols", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   clerkUserId: text("clerk_user_id").notNull(),
   name: text("name").notNull(),
   data: jsonb("data").notNull(),
@@ -25,11 +71,12 @@ export const protocols = pgTable("protocols", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-// ---- Admin: supply orders & inventory (owner-only, see api/_lib/admin.ts) ----
+// ---- Admin: supply orders & inventory (owner-only, see api/admin/[resource].ts) ----
 
 // Anything that can be stocked: catalogue peptides (id "cat:<code>") and supplies.
 export const invItems = pgTable("inv_items", {
-  id: text("id").primaryKey(),
+  id: text("id").notNull(),
+  businessId: businessId(),
   kind: text("kind").notNull(), // "peptide" | "supply"
   name: text("name").notNull(),
   variant: text("variant").notNull().default(""),
@@ -45,10 +92,11 @@ export const invItems = pgTable("inv_items", {
   images: jsonb("images").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [primaryKey({ columns: [t.businessId, t.id] })]);
 
 export const purchaseOrders = pgTable("purchase_orders", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   supplier: text("supplier").notNull(),
   orderDate: text("order_date").notNull(), // yyyy-mm-dd
   status: text("status").notNull().default("ordered"), // "ordered" | "received"
@@ -63,6 +111,7 @@ export const inventoryLots = pgTable(
   "inventory_lots",
   {
     id: text("id").primaryKey(),
+    businessId: businessId(),
     itemId: text("item_id").notNull(),
     orderId: text("order_id"),
     orderLineId: text("order_line_id"),
@@ -82,6 +131,7 @@ export const stockMovements = pgTable(
   "stock_movements",
   {
     id: text("id").primaryKey(),
+    businessId: businessId(),
     itemId: text("item_id").notNull(),
     lotId: text("lot_id"),
     type: text("type").notNull(), // "receive" | "sale" | "adjust"
@@ -99,6 +149,7 @@ export const stockMovements = pgTable(
 // shippingAddress is a ShippingAddress (shared/customers.ts).
 export const customers = pgTable("customers", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   clerkUserId: text("clerk_user_id"),
   name: text("name").notNull(),
   email: text("email").notNull().default(""),
@@ -113,6 +164,7 @@ export const customers = pgTable("customers", {
 // customerName is kept in step with the linked customer's name.
 export const sales = pgTable("sales", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   customerId: text("customer_id"),
   customerName: text("customer_name").notNull(),
   orderDate: text("order_date").notNull(), // yyyy-mm-dd
@@ -131,6 +183,7 @@ export const shopOrders = pgTable(
   "shop_orders",
   {
     id: text("id").primaryKey(),
+    businessId: businessId(),
     orderNumber: integer("order_number").notNull(),
     customerId: text("customer_id").notNull(),
     status: text("status").notNull().default("submitted"), // ShopOrderStatus (shared/shop.ts)
@@ -149,21 +202,26 @@ export const shopOrders = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("shop_orders_customer_idx").on(t.customerId, t.createdAt)]
+  (t) => [
+    index("shop_orders_customer_idx").on(t.customerId, t.createdAt),
+    uniqueIndex("shop_orders_business_number_idx").on(t.businessId, t.orderNumber),
+  ]
 );
 
 // Owner settings by key, e.g. "payment_instructions" -> string.
 export const appSettings = pgTable("app_settings", {
-  key: text("key").primaryKey(),
+  key: text("key").notNull(),
+  businessId: businessId(),
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [primaryKey({ columns: [t.businessId, t.key] })]);
 
 // A message for a customer about one of their shop orders, shown under the bell in the app.
 export const notifications = pgTable(
   "notifications",
   {
     id: text("id").primaryKey(),
+    businessId: businessId(),
     customerId: text("customer_id").notNull(),
     shopOrderId: text("shop_order_id"),
     kind: text("kind").notNull(), // NotificationKind (shared/shop.ts)
@@ -179,6 +237,7 @@ export const notifications = pgTable(
 // of its own — selling one expands it into a SaleLine per component (shared/bundles.ts).
 export const bundles = pgTable("bundles", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   components: jsonb("components").notNull(), // BundleComponent[] (shared/bundles.ts)
@@ -193,6 +252,7 @@ export const bundles = pgTable("bundles", {
 // Business costs that aren't stock (equipment, packaging, postage, software...).
 export const expenses = pgTable("expenses", {
   id: text("id").primaryKey(),
+  businessId: businessId(),
   expenseDate: text("expense_date").notNull(), // yyyy-mm-dd
   supplier: text("supplier").notNull().default(""),
   description: text("description").notNull(),
@@ -214,3 +274,35 @@ export type InvItemRow = typeof invItems.$inferSelect;
 export type PurchaseOrderRow = typeof purchaseOrders.$inferSelect;
 export type InventoryLotRow = typeof inventoryLots.$inferSelect;
 export type StockMovementRow = typeof stockMovements.$inferSelect;
+
+// ---- Peptide library & supplier price list (scripts/multi-business-3.sql) ----
+
+// Everything the Peptide Database, Protocol Builder and My Stack show, one row per record (shared/library.ts).
+export const peptideLibrary = pgTable(
+  "peptide_library",
+  {
+    businessId: businessId(),
+    kind: text("kind").notNull(), // LibraryKind (shared/library.ts)
+    key: text("key").notNull(),
+    sort: integer("sort").notNull().default(0),
+    data: jsonb("data").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.businessId, t.kind, t.key] })]
+);
+
+// The supplier's products a business picks from on supplier orders. options: SupplierOption[] (shared/library.ts).
+export const supplierCatalog = pgTable(
+  "supplier_catalog",
+  {
+    businessId: businessId(),
+    id: text("id").notNull(),
+    name: text("name").notNull(),
+    note: text("note").notNull().default(""),
+    options: jsonb("options").notNull().default([]),
+    sort: integer("sort").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.businessId, t.id] })]
+);

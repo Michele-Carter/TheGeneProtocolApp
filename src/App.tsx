@@ -17,7 +17,17 @@ import AuthPage from "./components/AuthPage";
 import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
-import { useIsAdmin } from "./hooks/useIsAdmin";
+import { useBusiness } from "./hooks/useBusiness";
+import { setWantsToStartBusiness, wantsToStartBusiness } from "./lib/business";
+import {
+  BillingScreen,
+  BusinessErrorScreen,
+  NoBusinessScreen,
+  ScreenFrame,
+  ShopUnavailableScreen,
+  StartBusinessScreen,
+} from "./components/business/BusinessScreens";
+import { LibraryGate, PeptideLibraryProvider } from "./hooks/usePeptideLibrary";
 import { useWaitingOrders } from "./hooks/useWaitingOrders";
 import type { AdminSection } from "./components/admin/AdminArea";
 import {
@@ -43,24 +53,42 @@ import {
   ShoppingCart,
   Inbox,
   Landmark,
+  Tags,
+  Store,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
 const AdminArea = lazy(() => import("./components/admin/AdminArea"));
+const BusinessSettingsView = lazy(() => import("./components/admin/BusinessSettingsView"));
+const PaymentDetailsView = lazy(() => import("./components/admin/PaymentDetailsView"));
+
+// A page the owner opens from Manage account (Clerk's account window).
+function AccountWindowPage({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <div className="account-window-page space-y-5">
+      <div className="space-y-1">
+        <h2 className="text-lg font-black text-white tracking-tight">{title}</h2>
+        <p className="text-sm text-slate-400">{description}</p>
+      </div>
+      <Suspense fallback={<LoadingSpinner label="Loading..." />}>{children}</Suspense>
+    </div>
+  );
+}
 
 type ActiveTab = "dashboard" | "protocol" | "shop" | "account" | "recon" | "logs" | "peptideDb" | "admin";
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard size={13} /> },
-  { id: "new-orders", label: "New Orders", icon: <Inbox size={13} /> },
+  { id: "new-orders", label: "New Customer Orders", icon: <Inbox size={13} /> },
   { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={13} /> },
   { id: "customers", label: "Customers", icon: <Users size={13} /> },
   { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={13} /> },
   { id: "supply-orders", label: "Supply Orders", icon: <Truck size={13} /> },
   { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
   { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
-  { id: "payment-details", label: "Payment Details", icon: <Landmark size={13} /> },
+  { id: "price-list", label: "Vendor Price List", icon: <Tags size={13} /> },
 ];
+// Business and Payment Details are opened from the profile picture menu instead (see accountButton).
 
 export default function App() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -115,20 +143,40 @@ export default function App() {
     };
   }, [getToken, isLoaded, isSignedIn]);
 
-  const isAdmin = useIsAdmin(isLoaded && sessionChecked && hasValidSession);
+  const signedIn = isLoaded && sessionChecked && hasValidSession;
+  // Which business the app is being used as; the app only opens once it's usable (see gateScreen).
+  const { state: businessState, refresh: refreshBusiness } = useBusiness(signedIn);
+  const [startingBusiness, setStartingBusiness] = useState(wantsToStartBusiness);
+  const context = businessState.status === "ready" ? businessState.context : null;
+  useEffect(() => {
+    // Already runs a business: nothing to set up.
+    if (startingBusiness && context?.isAdmin) {
+      setWantsToStartBusiness(false);
+      setStartingBusiness(false);
+    }
+  }, [startingBusiness, context]);
+  const appReady = context != null && context.access === "ok" && !startingBusiness;
+  const isAdmin = appReady && context.isAdmin;
+  const businessName = context?.business.name ?? "PepPal";
+  useEffect(() => {
+    document.title = businessName;
+  }, [businessName]);
+
   const {
     waiting: newOrders,
     paymentsToCheck,
     total: waitingOrders,
     refresh: refreshWaitingOrders,
   } = useWaitingOrders(isAdmin);
-  const notifications = useNotifications(isLoaded && sessionChecked && hasValidSession);
+  const notifications = useNotifications(appReady);
   // Moving around the app also checks for new notifications / waiting orders, so they show up promptly.
   const refreshNotifications = notifications.refresh;
+  // ...and that the subscription is still running.
   useEffect(() => {
     void refreshNotifications();
     void refreshWaitingOrders();
-  }, [activeTab, adminSection, refreshNotifications, refreshWaitingOrders]);
+    void refreshBusiness();
+  }, [activeTab, adminSection, refreshNotifications, refreshWaitingOrders, refreshBusiness]);
   const [accountTab, setAccountTab] = useState<AccountTab>("orders");
 
   useEffect(() => {
@@ -180,7 +228,28 @@ export default function App() {
   }, []);
 
   // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings.
-  const accountButton = (
+  // The owner (who doesn't order from their own shop) just has Manage account and Sign out; their business
+  // settings and payment details are pages inside Manage account, next to Profile and Security.
+  const accountButton = isAdmin ? (
+    <UserButton>
+      <UserButton.UserProfilePage label="Business" url="business" labelIcon={<Store size={15} />}>
+        <AccountWindowPage
+          title="Business"
+          description="Your business name and logo, the link that brings customers to your shop, and your PepPal subscription."
+        >
+          <BusinessSettingsView context={context!} onChanged={() => void refreshBusiness()} />
+        </AccountWindowPage>
+      </UserButton.UserProfilePage>
+      <UserButton.UserProfilePage label="Payment details" url="payment-details" labelIcon={<Landmark size={15} />}>
+        <AccountWindowPage
+          title="Payment details"
+          description="The bank account customers pay into. They only see it once you've confirmed their order."
+        >
+          <PaymentDetailsView />
+        </AccountWindowPage>
+      </UserButton.UserProfilePage>
+    </UserButton>
+  ) : (
     <UserButton>
       <UserButton.MenuItems>
         <UserButton.Action label="My orders" labelIcon={<Package size={15} />} onClick={() => openAccount("orders")} />
@@ -195,9 +264,13 @@ export default function App() {
   const renderTabContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <DashboardPage setActiveTab={navigateTab} />;
+        return <DashboardPage setActiveTab={navigateTab} isAdmin={isAdmin} waitingOrders={waitingOrders} />;
       case "protocol":
-        return <ProtocolBuilder key={protocolResetKey} />;
+        return (
+          <LibraryGate>
+            <ProtocolBuilder key={protocolResetKey} />
+          </LibraryGate>
+        );
       case "shop":
         return <ShopView onOpenAccount={openAccount} />;
       case "account":
@@ -207,7 +280,11 @@ export default function App() {
       case "logs":
         return <TrackingManager />;
       case "peptideDb":
-        return <PeptideDatabase />;
+        return (
+          <LibraryGate>
+            <PeptideDatabase />
+          </LibraryGate>
+        );
       case "admin":
         return isAdmin ? (
           <Suspense fallback={<LoadingSpinner label="Loading admin..." />}>
@@ -217,43 +294,83 @@ export default function App() {
               newOrders={newOrders}
               paymentsToCheck={paymentsToCheck}
               onOrdersChanged={() => void refreshWaitingOrders()}
+              business={context!}
+              onBusinessChanged={() => void refreshBusiness()}
             />
           </Suspense>
         ) : (
           <DashboardPage setActiveTab={navigateTab} />
         );
       default:
-        return <DashboardPage setActiveTab={navigateTab} />;
+        return <DashboardPage setActiveTab={navigateTab} isAdmin={isAdmin} waitingOrders={waitingOrders} />;
+    }
+  };
+
+  // Shown instead of the app until it can be used: setting up a business, starting or restarting its
+  // subscription, or (for customers) opening their shop's link.
+  const gateScreen = () => {
+    if (startingBusiness && businessState.status !== "loading" && !context?.isAdmin) {
+      return (
+        <StartBusinessScreen
+          onCancel={() => {
+            setWantsToStartBusiness(false);
+            setStartingBusiness(false);
+          }}
+          onCreated={() => {
+            setStartingBusiness(false);
+            void refreshBusiness();
+          }}
+        />
+      );
+    }
+    switch (businessState.status) {
+      case "no-business":
+      case "shop-not-found":
+        return <NoBusinessScreen shopNotFound={businessState.status === "shop-not-found"} onStart={() => setStartingBusiness(true)} />;
+      case "error":
+        return <BusinessErrorScreen message={businessState.message} onRetry={() => void refreshBusiness()} />;
+      case "ready":
+        return businessState.context.isAdmin ? (
+          <BillingScreen context={businessState.context} onChanged={() => void refreshBusiness()} />
+        ) : (
+          <ShopUnavailableScreen context={businessState.context} />
+        );
+      default:
+        return (
+          <ScreenFrame footer={false}>
+            <LoadingSpinner label="Loading..." />
+          </ScreenFrame>
+        );
     }
   };
 
   return (
     <>
-      {isLoaded && sessionChecked && hasValidSession && (
+      {signedIn && !appReady && gateScreen()}
+      {signedIn && appReady && (
         <div className="h-dvh bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans select-none antialiased relative overflow-hidden">
           {/* GLOWING AMBIENT CORNER BACKDROPS (No Tech-Larping, pure elegant design) */}
           <div className="absolute top-0 left-0 w-[25rem] h-[25rem] bg-gold-500/5 rounded-full blur-[120px] pointer-events-none -translate-x-1/2 -translate-y-1/2" />
           <div className="absolute bottom-0 right-0 w-[25rem] h-[25rem] bg-gold-500/5 rounded-full blur-[120px] pointer-events-none translate-x-1/2 translate-y-1/2" />
 
           {/* DESKTOP LEFT SIDEBAR */}
-          <aside className="hidden md:flex flex-col w-64 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 h-dvh p-5 gap-4 flex-shrink-0 z-30">
+          <aside className="hidden md:flex flex-col w-72 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 h-dvh px-4 py-5 gap-4 flex-shrink-0 z-30">
             <div className="app-side-scroller flex-1 min-h-0 overflow-y-auto -mr-3 pr-3 space-y-8">
               {/* Brand Logo & Name */}
               <div className="flex items-center px-1">
                 <div className="flex items-center gap-1">
                   <div className="h-9 w-6 flex items-center justify-center">
                     <img
-                      src="/favicon.png"
-                      alt="PepPal icon"
-                      className="h-6 w-6 object-contain"
+                      src={context?.business.logoUrl ?? "/favicon.png"}
+                      alt=""
+                      className="h-6 w-6 object-contain rounded"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).style.display = "none";
                       }}
                     />
                   </div>
                   <div className="flex items-center gap-1.5 -ml-0.5">
-                    <span className="text-lg font-black text-white tracking-tight leading-none font-mono">PepPal</span>
-                    <span className="text-[12px] font-mono tracking-wider text-slate-500 px-0.5 py-0.5">v1.2</span>
+                    <span className="text-lg font-black text-white tracking-tight leading-tight">{businessName}</span>
                   </div>
                 </div>
               </div>
@@ -400,15 +517,15 @@ export default function App() {
               <div className="flex items-center gap-1.5">
                 <div className="h-8 w-5 flex items-center justify-center">
                   <img
-                    src="/favicon.png"
-                    alt="PepPal icon"
-                    className="h-5 w-5 object-contain"
+                    src={context?.business.logoUrl ?? "/favicon.png"}
+                    alt=""
+                    className="h-5 w-5 object-contain rounded"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).style.display = "none";
                     }}
                   />
                 </div>
-                <span className="text-base font-black text-white tracking-tight font-mono">PepPal Hub</span>
+                <span className="text-base font-black text-white tracking-tight truncate">{businessName}</span>
               </div>
 
               <div className="flex items-center gap-3">
@@ -545,7 +662,9 @@ export default function App() {
           {/* RIGHT SIDE STREAM CONTENT & MAIN AREA */}
           <div ref={mainScrollerRef} className="app-main-scroller flex-1 min-h-0 flex flex-col overflow-y-auto">
             <main className="flex-1 px-4 md:px-8 lg:px-12 py-8 md:py-10 max-w-7xl w-full mx-auto">
-              <ErrorBoundary key={activeTab}>{renderTabContent()}</ErrorBoundary>
+              <PeptideLibraryProvider>
+                <ErrorBoundary key={activeTab}>{renderTabContent()}</ErrorBoundary>
+              </PeptideLibraryProvider>
             </main>
 
             {/* DISCLAIMER / RESEARCH-ONLY NOTICE */}

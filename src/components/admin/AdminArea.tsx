@@ -8,6 +8,9 @@ import OrdersView from "./OrdersView";
 import InventoryView from "./InventoryView";
 import ExpensesView from "./ExpensesView";
 import PaymentDetailsView from "./PaymentDetailsView";
+import PriceListView from "./PriceListView";
+import BusinessSettingsView from "./BusinessSettingsView";
+import type { BusinessContext } from "../../lib/business";
 
 export type AdminSection =
   | "overview"
@@ -18,12 +21,14 @@ export type AdminSection =
   | "supply-orders"
   | "inventory"
   | "expenses"
-  | "payment-details";
+  | "payment-details"
+  | "business"
+  | "price-list";
 
 const SECTION_COPY: Record<AdminSection, { title: string; description: string }> = {
   overview: { title: "Admin", description: "Your business at a glance. Only visible to you." },
   "new-orders": {
-    title: "New Orders",
+    title: "New Customer Orders",
     description: "Orders customers have sent from the shop. Check stock, set shipping, then confirm or decline.",
   },
   sales: { title: "Customer Orders", description: "Every order a customer has placed, its payment and shipping status." },
@@ -39,6 +44,14 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
     title: "Payment Details",
     description: "The bank account customers pay into. They only see it once you've confirmed their order.",
   },
+  business: {
+    title: "Business",
+    description: "Your business name and logo, the link that brings customers to your shop, and your PepPal subscription.",
+  },
+  "price-list": {
+    title: "Vendor Price List",
+    description: "Your supplier's products and prices, ready to pick when you enter a peptide order.",
+  },
 };
 
 // Owner-only business area. Loaded lazily so regular users never download it.
@@ -49,12 +62,16 @@ export default function AdminArea({
   newOrders,
   paymentsToCheck,
   onOrdersChanged,
+  business,
+  onBusinessChanged,
 }: {
   section: AdminSection;
   onNavigate: (section: AdminSection) => void;
   newOrders: number; // shop orders waiting to be confirmed
   paymentsToCheck: number; // confirmed orders the customer says they've paid
   onOrdersChanged: () => void;
+  business: BusinessContext;
+  onBusinessChanged: () => void;
 }) {
   const copy = SECTION_COPY[section];
   // An order picked from a customer's page (or a confirmed shop order), opened once Customer Orders loads.
@@ -86,6 +103,8 @@ export default function AdminArea({
       {section === "inventory" && <InventoryView />}
       {section === "expenses" && <ExpensesView />}
       {section === "payment-details" && <PaymentDetailsView />}
+      {section === "business" && <BusinessSettingsView context={business} onChanged={onBusinessChanged} />}
+      {section === "price-list" && <PriceListView />}
     </div>
   );
 }

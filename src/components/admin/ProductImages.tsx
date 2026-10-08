@@ -8,11 +8,11 @@ import { Spinner } from "../LoadingSpinner";
 
 const MAX_EDGE = 1400;
 
-// Shrinks a photo to at most MAX_EDGE px on its longest side and re-encodes it, so uploads stay small
+// Shrinks a photo to at most maxEdge px on its longest side and re-encodes it, so uploads stay small
 // and the shop loads quickly. WebP keeps transparent backgrounds; browsers that can't write WebP get JPEG.
-async function prepareImage(file: File): Promise<string> {
+export async function prepareImage(file: File, maxEdge = MAX_EDGE): Promise<string> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
