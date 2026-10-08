@@ -17,7 +17,7 @@ import {
   FlaskConical,
   BookOpen
 } from "lucide-react";
-import { usePeptideLibrary } from "../../hooks/usePeptideLibrary";
+import { PEPTIDEDB_ENTRIES } from "../../data/peptideDb";
 import { PeptideDbEffectiveness, PeptideDbInteractionStatus } from "../../types";
 
 const EFFECTIVENESS_STYLE: Record<PeptideDbEffectiveness, string> = {
@@ -56,8 +56,7 @@ export default function PeptideDbDetail({
   onBack: () => void;
   onNavigateToSlug: (slug: string) => void;
 }) {
-  const { entries } = usePeptideLibrary();
-  const entry = useMemo(() => entries.find((e) => e.slug === slug), [entries, slug]);
+  const entry = useMemo(() => PEPTIDEDB_ENTRIES.find((e) => e.slug === slug), [slug]);
   const [activeMethodIdx, setActiveMethodIdx] = useState(0);
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
 
@@ -386,7 +385,7 @@ export default function PeptideDbDetail({
             {entry.interactions.map((interaction) => (
               <div key={interaction.peptideName} className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/40 space-y-1">
                 <div className="flex items-center justify-between gap-2">
-                  {interaction.peptideSlug && entries.some((e) => e.slug === interaction.peptideSlug) ? (
+                  {interaction.peptideSlug ? (
                     <button
                       type="button"
                       onClick={() => onNavigateToSlug(interaction.peptideSlug!)}

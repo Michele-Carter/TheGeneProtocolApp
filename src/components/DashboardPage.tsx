@@ -8,10 +8,9 @@ import {
   ClipboardList,
   ArrowRight,
   BookOpen,
-  ShoppingCart,
-  Lock
+  ShoppingCart
 } from "lucide-react";
-import { usePeptideLibraryState } from "../hooks/usePeptideLibrary";
+import { PEPTIDEDB_ENTRIES } from "../data/peptideDb";
 
 declare global {
   namespace JSX {
@@ -23,14 +22,10 @@ declare global {
 }
 
 interface DashboardPageProps {
-  setActiveTab: (tab: "dashboard" | "protocol" | "shop" | "recon" | "logs" | "peptideDb" | "admin") => void;
-  isAdmin?: boolean; // the business's owner - gets the Admin tile
-  waitingOrders?: number; // shop orders and payments waiting for the owner
+  setActiveTab: (tab: "dashboard" | "protocol" | "shop" | "recon" | "logs" | "peptideDb") => void;
 }
 
-export default function DashboardPage({ setActiveTab, isAdmin = false, waitingOrders = 0 }: DashboardPageProps) {
-  const peptideCount = usePeptideLibraryState().library?.entries.length;
-
+export default function DashboardPage({ setActiveTab }: DashboardPageProps) {
   // Define the main navigation tiles
   const dashboardTiles = [
     {
@@ -86,30 +81,13 @@ export default function DashboardPage({ setActiveTab, isAdmin = false, waitingOr
       title: "Peptide Database",
       description: "Browse molecular data, dosing protocols, interactions, and safety information compiled from peptide-db.com.",
       icon: BookOpen,
-      badge: peptideCount == null ? "Peptides" : `${peptideCount} peptides`,
+      badge: `${PEPTIDEDB_ENTRIES.length} peptides`,
       color: "from-gold-500 to-blue-500",
       accentText: "text-gold-400",
       bgHover: "hover:border-gold-500/30 hover:bg-gold-950/5",
       borderColor: "border-gold-500/40",
       borderStates: "focus-within:border-gold-500 hover:border-gold-500/70",
     },
-    // Only the business's owner sees this one.
-    ...(isAdmin
-      ? [
-          {
-            id: "admin" as const,
-            title: "Admin",
-            description: "Run your business: new customer orders, customers, stock, supplier orders, expenses and your vendor price list. Only you can see this.",
-            icon: Lock,
-            badge: waitingOrders > 0 ? `${waitingOrders} waiting` : "Owner only",
-            color: "from-gold-500 to-amber-500",
-            accentText: "text-gold-400",
-            bgHover: "hover:border-gold-500/30 hover:bg-gold-950/5",
-            borderColor: "border-gold-500/40",
-            borderStates: "focus-within:border-gold-500 hover:border-gold-500/70",
-          },
-        ]
-      : []),
   ];
 
   return (

@@ -1,5 +1,4 @@
 import { PersistedProtocolBuilderPayload, ProtocolRecord } from "../types";
-import { businessHeaders } from "./business";
 
 type GetToken = () => Promise<string | null>;
 
@@ -14,7 +13,6 @@ async function authedFetch(input: string, init: RequestInit, getToken: GetToken)
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
-      ...businessHeaders(),
       ...(init.headers ?? {}),
     },
   });

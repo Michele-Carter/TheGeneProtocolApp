@@ -786,23 +786,6 @@ html.dark main [class*="border-neutral-"]:not(.protocol-goal-button) {
   border-color: var(--theme-dark-border) !important;
 }
 
-/* The owner's pages inside Clerk's account window (Business, Payment details) are drawn outside main, so
-   they get the same neutral surfaces here - otherwise their slate colours show blue against Clerk's grey. */
-html.dark .account-window-page :is(.rounded-md,
-  .rounded-lg,
-  .rounded-xl,
-  [class*="rounded-md"],
-  [class*="rounded-lg"],
-  [class*="rounded-xl"]):not(.rounded-full):not([class*="rounded-full"]):not(.theme-keep-bg),
-html.dark .account-window-page [class*="bg-slate-"]:not([class*="rounded-full"]) {
-  background-color: var(--theme-dark-surface) !important;
-  border-color: var(--theme-dark-border) !important;
-}
-
-html.dark .account-window-page [class*="border-slate-"] {
-  border-color: var(--theme-dark-border) !important;
-}
-
 /* Remove gradient cast */
 html.dark [class*="bg-gradient"],
 html.dark [class*="from-slate-"],
@@ -950,24 +933,11 @@ html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
   color: #e5e7eb !important;
 }
 
-.cl-userButtonPopoverActionButton,
-.cl-userButtonPopoverCustomItemButton {
+.cl-userButtonPopoverActionButton {
   color: #e5e7eb !important;
-  opacity: 1 !important;
 }
 
-/* Our own menu items (Business, Payment details, My orders, My details) match Clerk's built-in ones. */
-.cl-userButtonPopoverCustomItemButton {
-  background-color: transparent !important;
-}
-.cl-userButtonPopoverCustomItemButton *,
-.cl-userButtonPopoverCustomItemButtonIconBox {
-  color: #e5e7eb !important;
-  opacity: 1 !important;
-}
-
-.cl-userButtonPopoverActionButton:hover,
-.cl-userButtonPopoverCustomItemButton:hover {
+.cl-userButtonPopoverActionButton:hover {
   background-color: #27272a !important;
 }
 

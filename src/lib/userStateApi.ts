@@ -1,5 +1,3 @@
-import { businessHeaders } from "./business";
-
 type GetToken = () => Promise<string | null>;
 
 export type UserStateScope = "protocol" | "tracking" | "reconstitution";
@@ -15,7 +13,6 @@ async function authedFetch(input: string, init: RequestInit, getToken: GetToken)
         headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
-            ...businessHeaders(),
             ...(init.headers ?? {}),
         },
     });

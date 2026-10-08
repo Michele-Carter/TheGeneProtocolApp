@@ -1,6 +1,5 @@
 import type { CustomerDetails, ShippingAddress } from "../../shared/customers";
 import type { CartLine, CustomerNotification, ShopOrder, ShopProduct } from "../../shared/shop";
-import { businessHeaders } from "./business";
 
 // Calls made by signed-in customers (api/shop). The server only ever returns the caller's own data.
 
@@ -19,7 +18,6 @@ async function shopFetch<T>(path: string, init: RequestInit, getToken: GetToken)
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
-      ...businessHeaders(),
       ...(init.headers ?? {}),
     },
   });

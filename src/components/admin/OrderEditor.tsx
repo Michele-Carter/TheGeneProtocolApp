@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, PackageCheck, Pencil, Plus, Save, Trash2, Undo2, X } from "lucide-react";
 import {
@@ -10,7 +10,8 @@ import {
 } from "../../../shared/landedCost";
 import { isExpenseLine } from "../../../shared/landedCost";
 import { EXPENSE_CATEGORIES } from "../../../shared/sales";
-import { adminApi, money, nzd, todayIso, type InvItem, type PurchaseOrderRecord, type SupplierProductRecord } from "../../lib/adminApi";
+import { MY_PRODUCTS } from "../../data/myProducts";
+import { adminApi, money, nzd, todayIso, type InvItem, type PurchaseOrderRecord } from "../../lib/adminApi";
 import {
   Card,
   CostEntryList,
@@ -28,8 +29,7 @@ import {
 import StyledDatePicker from "../StyledDatePicker";
 import { Spinner } from "../LoadingSpinner";
 
-// Each size on the business's supplier price list (Admin -> Vendor Price List) that has a code.
-const catalogOptionsOf = (products: SupplierProductRecord[]) => products.flatMap((product) =>
+const CATALOG_OPTIONS = MY_PRODUCTS.flatMap((product) =>
   product.options
     .filter((option) => option.code)
     .map((option) => ({
@@ -42,6 +42,10 @@ const catalogOptionsOf = (products: SupplierProductRecord[]) => products.flatMap
 
 const NEW_PEPTIDE = "__new_peptide";
 const SUPPLY_UNITS = ["unit", "pen", "cartridge", "needle", "syringe", "wipe", "swab", "tube", "vial", "bottle", "box"];
+
+function isCatalogId(itemId: string) {
+  return itemId.startsWith("cat:");
+}
 
 const normalise = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
 
@@ -73,20 +77,10 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   const calc = useMemo(() => calculateOrder(data), [data]);
   const ccy = data.currency;
 
-  const [priceList, setPriceList] = useState<SupplierProductRecord[]>([]);
-  useEffect(() => {
-    adminApi
-      .listSupplierCatalog(getToken)
-      .then(setPriceList)
-      .catch((e) => console.error("Loading the price list failed:", e));
-  }, [getToken]);
-  const catalogOptions = useMemo(() => catalogOptionsOf(priceList), [priceList]);
-  const catalogIds = useMemo(() => new Set(catalogOptions.map((o) => o.itemId)), [catalogOptions]);
-
   const orderType = orderTypeOf(data);
   const knownPeptides = useMemo(
-    () => items.filter((item) => item.kind === "peptide" && !catalogIds.has(item.id)),
-    [items, catalogIds]
+    () => items.filter((item) => item.kind === "peptide" && !isCatalogId(item.id)),
+    [items]
   );
   const supplyItems = useMemo(() => items.filter((item) => item.kind === "supply"), [items]);
   const supplyNames = useMemo(() => Array.from(new Set(supplyItems.map((i) => i.name))).sort(), [supplyItems]);
@@ -165,7 +159,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
     if (value === NEW_PEPTIDE) {
       return { ...line, itemId: newId(), kind: "peptide", name: "", variant: "", unit: "vial", catalogCode: null };
     }
-    const catalog = catalogOptions.find((o) => o.itemId === value);
+    const catalog = CATALOG_OPTIONS.find((o) => o.itemId === value);
     if (catalog) {
       return {
         ...line,
@@ -684,7 +678,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                     <select
                       className={inputClass}
                       value={
-                        draft.itemId !== "" && !catalogIds.has(draft.itemId) && !knownIds.has(draft.itemId)
+                        draft.itemId !== "" && !isCatalogId(draft.itemId) && !knownIds.has(draft.itemId)
                           ? NEW_PEPTIDE
                           : draft.itemId
                       }
@@ -693,15 +687,13 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                       <option value="" disabled>
                         Choose a peptide…
                       </option>
-                      {catalogOptions.length > 0 && (
-                        <optgroup label="Your vendor price list">
-                          {catalogOptions.map((o) => (
-                            <option key={o.itemId} value={o.itemId}>
-                              {o.name} {o.variant} ({o.code})
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
+                      <optgroup label="Your price list">
+                        {CATALOG_OPTIONS.map((o) => (
+                          <option key={o.itemId} value={o.itemId}>
+                            {o.name} {o.variant} ({o.code})
+                          </option>
+                        ))}
+                      </optgroup>
                       {knownPeptides.length > 0 && (
                         <optgroup label="Other peptides you've ordered">
                           {knownPeptides.map((item) => (
@@ -713,10 +705,10 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                         </optgroup>
                       )}
                       <optgroup label="Not listed?">
-                        <option value={NEW_PEPTIDE}>+ New peptide not on the vendor price list</option>
+                        <option value={NEW_PEPTIDE}>+ New peptide not on the price list</option>
                       </optgroup>
                     </select>
-                    {draft.itemId !== "" && !catalogIds.has(draft.itemId) && !knownIds.has(draft.itemId) && (
+                    {draft.itemId !== "" && !isCatalogId(draft.itemId) && !knownIds.has(draft.itemId) && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <input
                           className={inputClass}

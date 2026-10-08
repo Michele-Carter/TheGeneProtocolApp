@@ -4,16 +4,6 @@ import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
 import type { ItemShopSection, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
-import type { SupplierProduct } from "../../shared/library";
-import { ApiError, businessHeaders, type BusinessContext } from "./business";
-
-export interface SupplierProductRecord extends SupplierProduct {
-  sort: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type SupplierProductInput = Omit<SupplierProduct, "id">;
 
 export interface SaleRecord {
   id: string;
@@ -215,7 +205,6 @@ async function adminFetch<T>(path: string, init: RequestInit, getToken: GetToken
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
-      ...businessHeaders(),
       ...(init.headers ?? {}),
     },
   });
@@ -223,7 +212,7 @@ async function adminFetch<T>(path: string, init: RequestInit, getToken: GetToken
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    throw new ApiError(body?.error ?? `Request failed (${response.status})`, response.status, body?.code ?? null);
+    throw new Error(body?.error ?? `Request failed (${response.status})`);
   }
   return body as T;
 }
@@ -231,7 +220,7 @@ async function adminFetch<T>(path: string, init: RequestInit, getToken: GetToken
 const q = encodeURIComponent;
 
 export const adminApi = {
-  me: (t: GetToken) => adminFetch<BusinessContext>("me", { method: "GET" }, t),
+  me: (t: GetToken) => adminFetch<{ isAdmin: boolean }>("me", { method: "GET" }, t),
 
   listItems: (t: GetToken) => adminFetch<InvItem[]>("items", { method: "GET" }, t),
   updateItem: (id: string, patch: ItemPatch, t: GetToken) =>
@@ -322,14 +311,6 @@ export const adminApi = {
     adminFetch<{ waiting: number; paymentsToCheck: number }>("shop-orders?count=1", { method: "GET" }, t),
   markShopOrderPaid: (id: string, t: GetToken) =>
     adminFetch<{ success: true }>(`shop-orders?id=${q(id)}&action=mark-paid`, { method: "POST", body: "{}" }, t),
-  listSupplierCatalog: (t: GetToken) => adminFetch<SupplierProductRecord[]>("supplier-catalog", { method: "GET" }, t),
-  createSupplierProduct: (data: SupplierProductInput, t: GetToken) =>
-    adminFetch<SupplierProductRecord>("supplier-catalog", { method: "POST", body: JSON.stringify(data) }, t),
-  updateSupplierProduct: (id: string, data: SupplierProductInput, t: GetToken) =>
-    adminFetch<SupplierProductRecord>(`supplier-catalog?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
-  deleteSupplierProduct: (id: string, t: GetToken) =>
-    adminFetch<{ success: true }>(`supplier-catalog?id=${q(id)}`, { method: "DELETE" }, t),
-
   getSettings: (t: GetToken) => adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "GET" }, t),
   updateSettings: (data: { paymentDetails: PaymentDetails }, t: GetToken) =>
     adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "PUT", body: JSON.stringify(data) }, t),

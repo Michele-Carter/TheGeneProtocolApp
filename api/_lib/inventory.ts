@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
-import type { Db } from "./business.js";
+import { getDb } from "./db.js";
 import { invItems, inventoryLots, stockMovements } from "./schema.js";
 import type { ItemKind } from "../../shared/landedCost.js";
 
-type Tx = Db;
+type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export class InventoryError extends Error {}
 

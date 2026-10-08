@@ -1,8 +1,8 @@
 import { and, asc, desc, eq, gt, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { z } from "zod";
-import { requireAuthUserId } from "../_lib/auth.js";
-import { serveAsBusiness, type BusinessAccess, type Db } from "../_lib/business.js";
+import { getAdminStatus } from "../_lib/admin.js";
+import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import {
     addAdjustmentLot,
@@ -26,8 +26,8 @@ import {
     type ShopOrderLine,
 } from "../../shared/shop.js";
 import { toAddress } from "../../shared/customers.js";
-import { linkCustomerByEmail } from "../_lib/customers.js";
-import { availableStock, lockStock, orderDemand } from "../_lib/shopCatalog.js";
+import { linkCustomerByEmail, syncCustomersFromLogins } from "../_lib/customers.js";
+import { availableStock, orderDemand } from "../_lib/shopCatalog.js";
 import {
     cancelShopOrderForDeletedSale,
     confirmedMessage,
@@ -47,13 +47,9 @@ import {
     sales,
     shopOrders,
     stockMovements,
-    supplierCatalog,
 } from "../_lib/schema.js";
-import { accessState, type BusinessInfo } from "../../shared/billing.js";
-import { billingInfo } from "../_lib/billing.js";
 
-// All owner-only endpoints live in this one function (keeps us under Vercel's function limit). Each request
-// runs as the caller's own business (api/_lib/business.ts), so it only ever sees that business's records.
+// All owner-only endpoints live in this one function (keeps us under Vercel's function limit):
 //   GET    /api/admin/me
 //   GET    /api/admin/items                 POST /api/admin/items          PATCH /api/admin/items?id=
 //   GET    /api/admin/orders[?id=]          POST /api/admin/orders
@@ -77,8 +73,6 @@ import { billingInfo } from "../_lib/billing.js";
 //   POST   /api/admin/shop-orders?id=&action=decline   { message }
 //   POST   /api/admin/shop-orders?id=&action=mark-paid
 //   GET    /api/admin/settings              PUT /api/admin/settings   { paymentDetails }
-//   GET    /api/admin/supplier-catalog      POST /api/admin/supplier-catalog
-//   PATCH  /api/admin/supplier-catalog?id=  DELETE /api/admin/supplier-catalog?id=
 
 const money = z.number().finite();
 const costEntry = z.object({ id: z.string(), label: z.string(), amount: money });
@@ -300,7 +294,8 @@ function validationError(res: any, error: z.ZodError) {
     });
 }
 
-type Tx = Db;
+type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 async function handleItems(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
@@ -1052,6 +1047,12 @@ async function handleCustomers(req: any, res: any, db: Db) {
                 .orderBy(desc(sales.orderDate), desc(sales.createdAt));
             return sendJson(res, 200, { ...customerDto(row), stats: customerStats(orders), orders: orders.map(saleDto) });
         }
+        try {
+            await syncCustomersFromLogins(db);
+        } catch (error) {
+            // The list still works from what's already saved; new sign-ups appear next time.
+            console.error("Pulling customers from app logins failed:", error);
+        }
         const [rows, allSales] = await Promise.all([
             db.select().from(customers).orderBy(asc(customers.name)),
             db.select().from(sales),
@@ -1373,7 +1374,7 @@ async function handleShopOrders(req: any, res: any, db: Db) {
     try {
         const result = await db.transaction(async (tx) => {
             // Same lock as customers sending orders, so stock can't be promised twice.
-            await lockStock(tx);
+            await tx.execute(sql`select pg_advisory_xact_lock(724101)`);
             const [order] = await tx.select().from(shopOrders).where(eq(shopOrders.id, id)).for("update");
             if (!order) throw new NotFoundError("Order not found");
             if (order.status !== "submitted") throw new InventoryError("This order has already been dealt with.");
@@ -1478,84 +1479,10 @@ async function handleSettings(req: any, res: any, db: Db) {
         await db
             .insert(appSettings)
             .values({ key: PAYMENT_DETAILS_KEY, value })
-            .onConflictDoUpdate({ target: [appSettings.businessId, appSettings.key], set: { value, updatedAt: new Date() } });
+            .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
         return sendJson(res, 200, { paymentDetails: value });
     }
     res.setHeader("Allow", "GET, PUT");
-    return sendJson(res, 405, { error: "Method not allowed" });
-}
-
-// ---- Supplier price list (quick picks on supplier orders) ----
-
-const text = z.string().trim();
-
-const supplierProductSchema = z.object({
-    name: text.min(1, "Every product needs a name"),
-    note: z.string().default(""),
-    options: z
-        .array(
-            z.object({
-                code: text.max(40).optional().transform((c) => c || undefined),
-                vialSize: text.min(1, "Every size needs a description, e.g. 10mg"),
-                priceUsd: money.min(0),
-                inStock: z.boolean().optional(),
-            })
-        )
-        .min(1, "Add at least one size")
-        .refine((options) => {
-            const codes = options.map((o) => o.code).filter(Boolean);
-            return new Set(codes).size === codes.length;
-        }, "Each size needs a different code"),
-});
-
-async function handleSupplierCatalog(req: any, res: any, db: Db) {
-    const id = typeof req.query?.id === "string" ? req.query.id : null;
-
-    if (req.method === "GET") {
-        const rows = await db.select().from(supplierCatalog).orderBy(asc(supplierCatalog.sort), asc(supplierCatalog.name));
-        return sendJson(res, 200, rows);
-    }
-
-    if (req.method === "DELETE" && id) {
-        await db.delete(supplierCatalog).where(eq(supplierCatalog.id, id));
-        return sendJson(res, 200, { success: true });
-    }
-
-    const read = await readBody(req, res);
-    if (!read.ok) return;
-    const parsed = supplierProductSchema.safeParse(read.body);
-    if (!parsed.success) return validationError(res, parsed.error);
-
-    // A code already used by another product would make two products stock the same inventory item.
-    const codes = parsed.data.options.map((o) => o.code).filter((c): c is string => Boolean(c));
-    if (codes.length > 0) {
-        const others = await db.select().from(supplierCatalog).where(id ? ne(supplierCatalog.id, id) : undefined);
-        const taken = others.find((p) => (p.options as { code?: string }[]).some((o) => o.code && codes.includes(o.code)));
-        if (taken) return sendJson(res, 409, { error: `${taken.name} already uses one of those codes.` });
-    }
-
-    if (req.method === "POST" && !id) {
-        const [{ next }] = await db
-            .select({ next: sql<number>`coalesce(max(${supplierCatalog.sort}), -1)::int + 1` })
-            .from(supplierCatalog);
-        const [row] = await db
-            .insert(supplierCatalog)
-            .values({ id: crypto.randomUUID(), ...parsed.data, sort: next })
-            .returning();
-        return sendJson(res, 201, row);
-    }
-
-    if (req.method === "PATCH" && id) {
-        const [row] = await db
-            .update(supplierCatalog)
-            .set({ ...parsed.data, updatedAt: new Date() })
-            .where(eq(supplierCatalog.id, id))
-            .returning();
-        if (!row) return sendJson(res, 404, { error: "Product not found" });
-        return sendJson(res, 200, row);
-    }
-
-    res.setHeader("Allow", "GET, POST, PATCH, DELETE");
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
@@ -1696,7 +1623,7 @@ async function saveImages(db: Db, target: ImageTarget, id: string, change: { app
 //   POST   /api/admin/images?target=item|bundle&id=          { dataUrl }  adds an image
 //   PATCH  /api/admin/images?target=item|bundle&id=          { images }   reorders (first = main image)
 //   DELETE /api/admin/images?target=item|bundle&id=&url=                  removes one
-async function handleImages(req: any, res: any, db: Db, businessId: string) {
+async function handleImages(req: any, res: any, db: Db) {
     const target = req.query?.target;
     const id = typeof req.query?.id === "string" ? req.query.id : null;
     if ((target !== "item" && target !== "bundle") || !id) {
@@ -1749,7 +1676,7 @@ async function handleImages(req: any, res: any, db: Db, businessId: string) {
         const folder = id.replace(/[^\w-]/g, "_");
         let blob;
         try {
-            blob = await put(`shop/${businessId}/${target}/${folder}/${crypto.randomUUID()}.${ext}`, bytes, {
+            blob = await put(`shop/${target}/${folder}/${crypto.randomUUID()}.${ext}`, bytes, {
                 access: "public",
                 contentType: `image/${match[1]}`,
                 token: process.env.BLOB_READ_WRITE_TOKEN,
@@ -1767,68 +1694,58 @@ async function handleImages(req: any, res: any, db: Db, businessId: string) {
 }
 
 export default async function handler(req: any, res: any) {
-    const userId = await requireAuthUserId(req);
+    const { userId, isAdmin } = await getAdminStatus(req);
     if (!userId) {
         return sendJson(res, 401, { error: "Unauthenticated" });
     }
-    return handleAdminRequest(req, res, userId);
-}
 
-function businessDto({ business }: BusinessAccess): BusinessInfo {
-    return { name: business.name, slug: business.slug, logoUrl: business.logoUrl };
-}
-
-export async function handleAdminRequest(req: any, res: any, userId: string) {
     const resource = req.query?.resource;
 
-    // The only admin endpoint customers may call: which business the app is being used as, whether to show the
-    // Admin tab, and (for its owner) the subscription - answered even when the subscription isn't running, so
-    // the app can show what to do about it.
+    // The only admin endpoint regular users may call: tells the app whether to show the Admin tab.
     if (resource === "me") {
-        return serveAsBusiness(req, res, userId, { ownersOnly: false, evenWithoutAccess: true }, async ({ access, res }) => {
-            const isAdmin = access.role === "owner";
-            return sendJson(res, 200, {
-                isAdmin,
-                business: businessDto(access),
-                access: accessState(access.business),
-                billing: isAdmin ? billingInfo(access.business) : null,
-            });
-        });
+        return sendJson(res, 200, { isAdmin });
     }
 
-    return serveAsBusiness(req, res, userId, { ownersOnly: true }, async ({ db, access, res }) => {
-        try {
-            switch (resource) {
-                case "items":
-                    return await handleItems(req, res, db);
-                case "orders":
-                    return await handleOrders(req, res, db);
-                case "inventory":
-                    return await handleInventory(req, res, db);
-                case "adjust":
-                    return await handleAdjust(req, res, db);
-                case "sales":
-                    return await handleSales(req, res, db);
-                case "expenses":
-                    return await handleExpenses(req, res, db);
-                case "bundles":
-                    return await handleBundles(req, res, db);
-                case "images":
-                    return await handleImages(req, res, db, access.business.id);
-                case "customers":
-                    return await handleCustomers(req, res, db);
-                case "shop-orders":
-                    return await handleShopOrders(req, res, db);
-                case "settings":
-                    return await handleSettings(req, res, db);
-                case "supplier-catalog":
-                    return await handleSupplierCatalog(req, res, db);
-                default:
-                    return sendJson(res, 404, { error: "Not found" });
-            }
-        } catch (error) {
-            console.error(`Admin ${resource} request failed:`, error);
-            return sendJson(res, 500, { error: "Request failed" });
+    if (!isAdmin) {
+        return sendJson(res, 403, { error: "Forbidden" });
+    }
+
+    let db: Db;
+    try {
+        db = getDb();
+    } catch (error) {
+        return sendJson(res, 500, { error: (error as Error).message });
+    }
+
+    try {
+        switch (resource) {
+            case "items":
+                return await handleItems(req, res, db);
+            case "orders":
+                return await handleOrders(req, res, db);
+            case "inventory":
+                return await handleInventory(req, res, db);
+            case "adjust":
+                return await handleAdjust(req, res, db);
+            case "sales":
+                return await handleSales(req, res, db);
+            case "expenses":
+                return await handleExpenses(req, res, db);
+            case "bundles":
+                return await handleBundles(req, res, db);
+            case "images":
+                return await handleImages(req, res, db);
+            case "customers":
+                return await handleCustomers(req, res, db);
+            case "shop-orders":
+                return await handleShopOrders(req, res, db);
+            case "settings":
+                return await handleSettings(req, res, db);
+            default:
+                return sendJson(res, 404, { error: "Not found" });
         }
-    });
+    } catch (error) {
+        console.error(`Admin ${resource} request failed:`, error);
+        return sendJson(res, 500, { error: "Request failed" });
+    }
 }

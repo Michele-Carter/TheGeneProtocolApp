@@ -111,30 +111,6 @@ export interface ProtocolRecord {
   updatedAt: string;
 }
 
-// Dosing notes from the Peptide DB source for a Protocol Builder peptide (shown in My Stack).
-export interface PeptideDbMeta {
-  molecularType: string;
-  typicalDose: string;
-  frequency: string;
-  cycleDuration: string;
-  storage: string;
-}
-
-// Dosing notes from the Peptide Dosages source for a Protocol Builder peptide (shown in My Stack).
-export interface PeptideDosagesMeta {
-  reconstitution: string;
-  cycle: string;
-}
-
-// A business's own peptide library, as the app uses it (loaded by usePeptideLibrary, see shared/library.ts).
-export interface PeptideLibrary {
-  entries: PeptideDbEntry[];
-  peptides: PeptideProtocolInfo[];
-  interactions: PeptideInteraction[];
-  peptideDbMeta: Record<string, PeptideDbMeta>;
-  peptideDosagesMeta: Record<string, PeptideDosagesMeta>;
-}
-
 export interface PeptideInteraction {
   peptideA: string;
   peptideB: string;

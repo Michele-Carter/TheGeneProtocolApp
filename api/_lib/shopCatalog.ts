@@ -1,5 +1,5 @@
 import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
-import type { Db } from "./business.js";
+import { getDb } from "./db.js";
 import { bundles, invItems, inventoryLots, sales, shopOrders } from "./schema.js";
 import type { SaleInput } from "../../shared/sales.js";
 import type { BundleComponent } from "../../shared/bundles.js";
@@ -12,14 +12,10 @@ import {
   type ShopProduct,
 } from "../../shared/shop.js";
 
-type Tx = Db;
+type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const MAX_PER_LINE = 99;
-
-// Taken while an order is sent or confirmed, so the business's last unit can't be promised twice.
-export async function lockStock(tx: Tx) {
-  await tx.execute(sql`select pg_advisory_xact_lock(724101, hashtext(current_setting('app.business_id')))`);
-}
 
 // What can still be promised to new orders, per inventory item: stock on hand, minus what open customer
 // orders will take when they're completed, minus what's in shop orders still waiting for confirmation.

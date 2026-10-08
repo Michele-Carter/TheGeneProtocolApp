@@ -5,31 +5,30 @@
 
 import React, { useMemo, useState } from "react";
 import { BookOpen, ArrowRight, Search, ShieldCheck } from "lucide-react";
-import { usePeptideLibrary } from "../../hooks/usePeptideLibrary";
+import { PEPTIDEDB_ENTRIES } from "../../data/peptideDb";
 import { getColorClasses } from "../../lib/protocolBuilderUtils";
 
 const normalize = (text: string) => text.toLowerCase().trim();
 
 export default function PeptideDbBrowse({ onSelect }: { onSelect: (slug: string) => void }) {
-  const { entries } = usePeptideLibrary();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    entries.forEach((entry) => entry.categories.forEach((c) => set.add(c)));
+    PEPTIDEDB_ENTRIES.forEach((entry) => entry.categories.forEach((c) => set.add(c)));
     return [...set].sort();
-  }, [entries]);
+  }, []);
 
   const filteredEntries = useMemo(() => {
     const query = normalize(searchQuery);
-    return entries.filter((entry) => {
+    return PEPTIDEDB_ENTRIES.filter((entry) => {
       if (activeCategory && !entry.categories.includes(activeCategory)) return false;
       if (!query) return true;
       const haystack = normalize(`${entry.name} ${entry.subtitle} ${entry.overview} ${entry.categories.join(" ")}`);
       return haystack.includes(query);
     }).sort((a, b) => a.name.localeCompare(b.name));
-  }, [entries, searchQuery, activeCategory]);
+  }, [searchQuery, activeCategory]);
 
   return (
     <div className="space-y-8">
@@ -45,7 +44,7 @@ export default function PeptideDbBrowse({ onSelect }: { onSelect: (slug: string)
         </h1>
         <p className="text-slate-400 text-sm max-w-2xl mx-auto leading-relaxed">
           A research reference library compiled from peptide-db.com — molecular data, dosing protocols,
-          interactions, and safety information for {entries.length} peptides.
+          interactions, and safety information for {PEPTIDEDB_ENTRIES.length} peptides.
         </p>
       </div>
 

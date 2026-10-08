@@ -4,8 +4,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePeptideLibrary } from "./usePeptideLibrary";
-import { DosingSourceId, GoalDoseOption, PeptideDoseConfig, PeptideInteraction, PeptideLibrary, PeptideProtocolInfo, PersistedProtocolBuilderPayload, ProtocolRecord } from "../types";
+import { PEPTIDES_DATABASE, PEPTIDE_INTERACTIONS } from "../data/peptides";
+import { PEPTIDEDOSAGES_META } from "../data/peptideDosagesSource";
+import { PEPTIDEDB_META } from "../data/peptideDbSource";
+import { DosingSourceId, GoalDoseOption, PeptideDoseConfig, PeptideProtocolInfo, PersistedProtocolBuilderPayload, ProtocolRecord } from "../types";
 import { JS_DAY_SHORT, addDays, parseIsoDate, startOfWeek, toIsoDate } from "../lib/protocolBuilderUtils";
 import { parseWeekStart } from "../lib/doseParsing";
 
@@ -20,9 +22,9 @@ export const DOSING_SOURCE_LABELS: Record<DosingSourceId, string> = {
 // The free-text cycle description for a peptide, as published by the currently-active dosing
 // source — used both for calendar on/off-cycle scheduling and for the manual-mode "use source
 // default" cycle control. Not every source publishes cycle data for every peptide.
-const getSourceCycleText = (library: PeptideLibrary, peptide: PeptideProtocolInfo, source: DosingSourceId): string | undefined => {
-  if (source === "peptidedosages") return library.peptideDosagesMeta[peptide.id]?.cycle;
-  if (source === "peptide-db") return library.peptideDbMeta[peptide.id]?.cycleDuration;
+const getSourceCycleText = (peptide: PeptideProtocolInfo, source: DosingSourceId): string | undefined => {
+  if (source === "peptidedosages") return PEPTIDEDOSAGES_META[peptide.id]?.cycle;
+  if (source === "peptide-db") return PEPTIDEDB_META[peptide.id]?.cycleDuration;
   return peptide.cycle;
 };
 
@@ -183,7 +185,6 @@ export function useProtocolBuilderState(
   protocol: ProtocolRecord,
   onPersist: (data: PersistedProtocolBuilderPayload) => void
 ) {
-  const library = usePeptideLibrary();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPeptides, setSelectedPeptides] = useState<PeptideProtocolInfo[]>([]);
   const [doseConfigByPeptide, setDoseConfigByPeptide] = useState<Record<string, PeptideDoseConfig>>({});
@@ -223,7 +224,7 @@ export function useProtocolBuilderState(
       let restoredPeptides: PeptideProtocolInfo[] = [];
       if (Array.isArray(parsed.selectedPeptideIds)) {
         restoredPeptides = parsed.selectedPeptideIds
-          .map((id) => library.peptides.find((p) => p.id === id))
+          .map((id) => PEPTIDES_DATABASE.find((p) => p.id === id))
           .filter((p): p is PeptideProtocolInfo => Boolean(p));
         setSelectedPeptides(restoredPeptides);
       }
@@ -387,26 +388,26 @@ export function useProtocolBuilderState(
   const filteredPeptides = useMemo(() => {
     if (!searchQuery) return [];
     const query = searchQuery.toLowerCase();
-    return library.peptides.filter(
+    return PEPTIDES_DATABASE.filter(
       (p) =>
         p.name.toLowerCase().includes(query) ||
         p.category.toLowerCase().includes(query) ||
         p.description.toLowerCase().includes(query)
     );
-  }, [library, searchQuery]);
+  }, [searchQuery]);
 
   const suggestions = useMemo(() => {
-    return library.peptides.filter((p) => !selectedPeptides.some((sel) => sel.id === p.id));
-  }, [library, selectedPeptides]);
+    return PEPTIDES_DATABASE.filter((p) => !selectedPeptides.some((sel) => sel.id === p.id));
+  }, [selectedPeptides]);
 
   // --- Stack interactions ---
   const activeInteractions = useMemo(() => {
-    const list: { interaction: PeptideInteraction; nameA: string; nameB: string; idA: string; idB: string }[] = [];
+    const list: { interaction: (typeof PEPTIDE_INTERACTIONS)[number]; nameA: string; nameB: string; idA: string; idB: string }[] = [];
     for (let i = 0; i < selectedPeptides.length; i++) {
       for (let j = i + 1; j < selectedPeptides.length; j++) {
         const idA = selectedPeptides[i].id;
         const idB = selectedPeptides[j].id;
-        const match = library.interactions.find(
+        const match = PEPTIDE_INTERACTIONS.find(
           (inter) =>
             (inter.peptideA === idA && inter.peptideB === idB) ||
             (inter.peptideA === idB && inter.peptideB === idA)
@@ -417,7 +418,7 @@ export function useProtocolBuilderState(
       }
     }
     return list;
-  }, [library, selectedPeptides]);
+  }, [selectedPeptides]);
 
   // --- Stack mutation ---
   const addPeptide = (peptide: PeptideProtocolInfo) => {
@@ -700,7 +701,7 @@ export function useProtocolBuilderState(
   // cycle text doesn't (it's continuous-duration prose, not "X on / Y off").
   const getSourceCycleInfo = (peptide: PeptideProtocolInfo) => {
     const source = getEffectiveSource(peptide.id);
-    const text = getSourceCycleText(library, peptide, source);
+    const text = getSourceCycleText(peptide, source);
     const parsed = text ? parseCycleOnOffText(text) : null;
     return { text, parsed, sourceLabel: DOSING_SOURCE_LABELS[source] };
   };
@@ -733,7 +734,7 @@ export function useProtocolBuilderState(
             const totalWeeks = config.cycleOnWeeks + (config.cycleOffWeeks ?? 0);
             isOnCycle = totalWeeks <= 0 || (peptideWeek - 1) % totalWeeks < config.cycleOnWeeks;
           } else {
-            const sourceCycleText = getSourceCycleText(library, pep, effectiveSource);
+            const sourceCycleText = getSourceCycleText(pep, effectiveSource);
             const sourceCycle = sourceCycleText ? parseCycleOnOffText(sourceCycleText) : null;
             if (sourceCycle) {
               const totalWeeks = sourceCycle.onWeeks + sourceCycle.offWeeks;
@@ -775,7 +776,7 @@ export function useProtocolBuilderState(
         })
         .filter((d): d is ProtocolTimelineDose => d !== null);
     },
-    [library, selectedPeptides, doseConfigByPeptide, protocolStartDate, protocolDataSource, sourceOverrideByPeptide, selectedGoalOptionByPeptide]
+    [selectedPeptides, doseConfigByPeptide, protocolStartDate, protocolDataSource, sourceOverrideByPeptide, selectedGoalOptionByPeptide]
   );
 
   const getWeekDays = useCallback(

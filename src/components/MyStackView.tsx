@@ -9,8 +9,9 @@ import { ArrowLeft, ChevronDown, ChevronUp, AlertTriangle, ShieldAlert, Info, Ex
 import { ProtocolBuilderState, resolveDoseForWeek } from "../hooks/useProtocolBuilderState";
 import { ProtocolSubView } from "./ProtocolBuilder";
 import { getColorClasses, getDistinctRoutes } from "../lib/protocolBuilderUtils";
-import { usePeptideLibrary } from "../hooks/usePeptideLibrary";
-import { DosingSourceId, PeptideLibrary, PeptideProtocolInfo } from "../types";
+import { PEPTIDEDOSAGES_META } from "../data/peptideDosagesSource";
+import { PEPTIDEDB_META } from "../data/peptideDbSource";
+import { DosingSourceId, PeptideProtocolInfo } from "../types";
 
 // The three "Protocol intelligence" panel layouts, one per dosing source. Kept as small sibling
 // components (rather than a widening if/else chain) so a future 4th source is a one-case addition.
@@ -193,16 +194,15 @@ function PeptideDbIntelPanel({
 }
 
 function renderIntelPanel(
-  library: PeptideLibrary,
   source: DosingSourceId,
   pep: PeptideProtocolInfo,
   currentDoseBlock: React.ReactNode
 ) {
   switch (source) {
     case "peptidedosages":
-      return <PeptideDosagesIntelPanel currentDoseBlock={currentDoseBlock} meta={library.peptideDosagesMeta[pep.id]} />;
+      return <PeptideDosagesIntelPanel currentDoseBlock={currentDoseBlock} meta={PEPTIDEDOSAGES_META[pep.id]} />;
     case "peptide-db":
-      return <PeptideDbIntelPanel currentDoseBlock={currentDoseBlock} meta={library.peptideDbMeta[pep.id]} />;
+      return <PeptideDbIntelPanel currentDoseBlock={currentDoseBlock} meta={PEPTIDEDB_META[pep.id]} />;
     case "pep-pedia":
     default:
       return <PepPediaIntelPanel pep={pep} currentDoseBlock={currentDoseBlock} />;
@@ -218,7 +218,6 @@ export default function MyStackView({
   onNavigate: (view: ProtocolSubView) => void;
   onBack: () => void;
 }) {
-  const library = usePeptideLibrary();
   const {
     selectedPeptides,
     removePeptide,
@@ -398,7 +397,7 @@ export default function MyStackView({
                         transition={{ duration: 0.2 }}
                         className="border-t border-slate-800/80 bg-slate-950/40 overflow-hidden"
                       >
-                        {renderIntelPanel(library, getEffectiveSource(pep.id), pep, currentDoseBlock)}
+                        {renderIntelPanel(getEffectiveSource(pep.id), pep, currentDoseBlock)}
                       </motion.div>
                     )}
                   </AnimatePresence>

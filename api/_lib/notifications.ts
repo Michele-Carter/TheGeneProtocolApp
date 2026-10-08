@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "./business.js";
+import { getDb } from "./db.js";
 import { notifications, shopOrders } from "./schema.js";
 import type { NotificationKind } from "../../shared/shop.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
 
-type Tx = Db;
+type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const money = (n: number) => `$${n.toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 

@@ -1,11 +1,11 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { createClerkClient, type User } from "@clerk/backend";
-import type { Db } from "./business.js";
-import { businessMembers, customers, sales } from "./schema.js";
+import { isAdminUserId } from "./admin.js";
+import { getDb } from "./db.js";
+import { customers, sales } from "./schema.js";
 import { toAddress } from "../../shared/customers.js";
 
-// Everything here runs as one business (api/_lib/business.ts), so it only ever sees that business's customers.
-
+type Db = ReturnType<typeof getDb>;
 type CustomerRow = typeof customers.$inferSelect;
 
 function clerk() {
@@ -73,7 +73,7 @@ export async function linkCustomerByEmail(db: Db, customer: CustomerRow): Promis
 
     const { data } = await clerk().users.getUserList({ emailAddress: [email], limit: 1 });
     const user = data[0];
-    if (!user || (await isOwner(db, user.id))) return customer;
+    if (!user || isAdminUserId(user.id)) return customer;
     const verified = user.emailAddresses.some(
         (e) => e.emailAddress.toLowerCase() === email && e.verification?.status === "verified"
     );
@@ -100,8 +100,19 @@ export async function linkCustomerByEmail(db: Db, customer: CustomerRow): Promis
     });
 }
 
-// Whether a login runs this business (owners aren't customers of their own business).
-async function isOwner(db: Db, userId: string): Promise<boolean> {
-    const [member] = await db.select().from(businessMembers).where(eq(businessMembers.clerkUserId, userId));
-    return Boolean(member);
+// Makes sure every registered app user (except the owner) has a customer record, so the admin
+// Customers list shows everyone who can log in - not just people who've opened their account page.
+export async function syncCustomersFromLogins(db: Db) {
+    const linked = new Set(
+        (await db.select({ id: customers.clerkUserId }).from(customers).where(isNotNull(customers.clerkUserId))).map((r) => r.id)
+    );
+    const pageSize = 100;
+    for (let offset = 0; ; offset += pageSize) {
+        const page = await clerk().users.getUserList({ limit: pageSize, offset });
+        for (const user of page.data) {
+            if (linked.has(user.id) || isAdminUserId(user.id)) continue;
+            await linkOrCreate(db, user);
+        }
+        if (page.data.length < pageSize) break;
+    }
 }
