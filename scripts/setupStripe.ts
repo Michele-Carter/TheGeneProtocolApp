@@ -10,7 +10,7 @@ dotenv.config({ path: ".env.local", quiet: true });
 const key = process.env.STRIPE_SECRET_KEY;
 if (!key) throw new Error("STRIPE_SECRET_KEY is missing from .env.local");
 const stripe = new Stripe(key);
-console.log(`Stripe ${key.startsWith("sk_live_") ? "LIVE" : "test"} mode`);
+console.log(`Stripe ${key.includes("_live_") ? "LIVE" : "test"} mode`);
 
 const PRODUCT_NAME = "PepPal subscription";
 
