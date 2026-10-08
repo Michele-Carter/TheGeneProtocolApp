@@ -5,8 +5,8 @@
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { PeptideDoseConfig, PersistedProtocolBuilderPayload, ProtocolRecord } from "../types";
-import { PEPTIDES_DATABASE } from "../data/peptides";
+import { PeptideDoseConfig, PeptideProtocolInfo, PersistedProtocolBuilderPayload, ProtocolRecord } from "../types";
+import { usePeptideLibrary } from "./usePeptideLibrary";
 import { toIsoDate } from "../lib/protocolBuilderUtils";
 import { createProtocol, deleteProtocol as deleteProtocolRequest, listProtocols, updateProtocol } from "../lib/protocolsApi";
 
@@ -71,14 +71,14 @@ type LegacyV1Payload = {
   expandedIntel?: Record<string, boolean>;
 };
 
-const migrateLegacyV1Payload = (legacy: LegacyV1Payload): PersistedProtocolBuilderPayload => {
+const migrateLegacyV1Payload = (legacy: LegacyV1Payload, peptides: PeptideProtocolInfo[]): PersistedProtocolBuilderPayload => {
   const fallbackStartDate =
     typeof legacy.manualStartDate === "string" && legacy.manualStartDate ? legacy.manualStartDate : toIsoDate(new Date());
   const isManual = legacy.protocolMode === "manual";
 
   const doseConfigByPeptide: Record<string, PeptideDoseConfig> = {};
   for (const peptideId of legacy.selectedPeptideIds ?? []) {
-    const peptide = PEPTIDES_DATABASE.find((p) => p.id === peptideId);
+    const peptide = peptides.find((p) => p.id === peptideId);
     if (!peptide) continue;
 
     const optionId = legacy.selectedDoseOptionByPeptide?.[peptideId] ?? peptide.goalDoseOptions?.[0]?.id;
@@ -117,7 +117,7 @@ const migrateLegacyV1Payload = (legacy: LegacyV1Payload): PersistedProtocolBuild
 
 // Looks for a single-protocol payload left over from before multi-protocol support. Returns null
 // if this browser has never used the Protocol Builder (or has already been migrated and cleared).
-const loadLegacyPayload = (): PersistedProtocolBuilderPayload | null => {
+const loadLegacyPayload = (peptides: PeptideProtocolInfo[]): PersistedProtocolBuilderPayload | null => {
   const currentRaw = window.localStorage.getItem(PROTOCOL_BUILDER_STORAGE_KEY);
   if (currentRaw) {
     try {
@@ -166,7 +166,7 @@ const loadLegacyPayload = (): PersistedProtocolBuilderPayload | null => {
   if (legacyV1Raw) {
     try {
       const legacy = JSON.parse(legacyV1Raw) as LegacyV1Payload;
-      return migrateLegacyV1Payload(legacy);
+      return migrateLegacyV1Payload(legacy, peptides);
     } catch (error) {
       console.error(`Failed to parse legacy protocol builder state (${LEGACY_V1_STORAGE_KEY})`, error);
     }
@@ -186,6 +186,7 @@ const clearLegacyStorageKeys = () => {
 };
 
 export function useProtocols() {
+  const { peptides } = usePeptideLibrary();
   const { getToken, isLoaded, isSignedIn, userId } = useAuth();
   const [protocols, setProtocols] = useState<ProtocolRecord[]>([]);
   const [activeProtocolId, setActiveProtocolId] = useState<string | null>(null);
@@ -213,7 +214,7 @@ export function useProtocols() {
       let list = await listProtocols(getClientToken);
 
       if (list.length === 0) {
-        const legacyPayload = loadLegacyPayload();
+        const legacyPayload = loadLegacyPayload(peptides);
         const created = await createProtocol(
           legacyPayload
             ? { name: DEFAULT_PROTOCOL_NAME, data: legacyPayload }
@@ -242,7 +243,7 @@ export function useProtocols() {
     } finally {
       setIsLoading(false);
     }
-  }, [getClientToken, setProtocolsAndCache]);
+  }, [getClientToken, peptides, setProtocolsAndCache]);
 
   // useLayoutEffect (not useEffect) so a cache hit is applied before the browser paints the
   // "Loading your protocols..." fallback — on a returning visit the user never sees it flash.
