@@ -29,6 +29,7 @@ import {
 } from "./components/business/BusinessScreens";
 import { LibraryGate, PeptideLibraryProvider } from "./hooks/usePeptideLibrary";
 import { useWaitingOrders } from "./hooks/useWaitingOrders";
+import { PEPBIZ_ICON, setTabBranding } from "./lib/tabBranding";
 import type { AdminSection } from "./components/admin/AdminArea";
 import {
   Beaker,
@@ -158,9 +159,11 @@ export default function App() {
   const appReady = context != null && context.access === "ok" && !startingBusiness;
   const isAdmin = appReady && context.isAdmin;
   const businessName = context?.business.name ?? "PepBiz";
+  // Customers only ever see their shop's name and logo; with no logo they get none, never the PepBiz badge.
+  const businessLogo = context?.business.logoUrl ?? (context?.isAdmin ? PEPBIZ_ICON : null);
   useEffect(() => {
-    document.title = businessName;
-  }, [businessName]);
+    if (context) setTabBranding(context.business.name, businessLogo);
+  }, [context, businessLogo]);
 
   const {
     waiting: newOrders,
@@ -360,14 +363,16 @@ export default function App() {
               <div className="flex items-center px-1">
                 <div className="flex items-center gap-1">
                   <div className="h-9 w-6 flex items-center justify-center">
-                    <img
-                      src={context?.business.logoUrl ?? "/favicon.png"}
-                      alt=""
-                      className="h-6 w-6 object-contain rounded"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = "none";
-                      }}
-                    />
+                    {businessLogo && (
+                      <img
+                        src={businessLogo}
+                        alt=""
+                        className="h-6 w-6 object-contain rounded"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 -ml-0.5">
                     <span className="text-lg font-black text-white tracking-tight leading-tight">{businessName}</span>
@@ -516,14 +521,16 @@ export default function App() {
             <div className="px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <div className="h-8 w-5 flex items-center justify-center">
-                  <img
-                    src={context?.business.logoUrl ?? "/favicon.png"}
-                    alt=""
-                    className="h-5 w-5 object-contain rounded"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
-                    }}
-                  />
+                  {businessLogo && (
+                    <img
+                      src={businessLogo}
+                      alt=""
+                      className="h-5 w-5 object-contain rounded"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  )}
                 </div>
                 <span className="text-base font-black text-white tracking-tight truncate">{businessName}</span>
               </div>
@@ -673,7 +680,7 @@ export default function App() {
                 <ShieldAlert size={14} />
               </div>
               <p className="max-w-2xl mx-auto">
-                PepBiz is an informational tool built from publicly compiled research guidelines on pep-pedia.org and attached price sheets. This system does not diagnose, treat, prevent, or cure any clinical conditions. All calculations, timelines, and comparisons are intended exclusively for standard pre-clinical lab modeling.
+                This app is an informational tool built from publicly compiled research guidelines on pep-pedia.org and attached price sheets. This system does not diagnose, treat, prevent, or cure any clinical conditions. All calculations, timelines, and comparisons are intended exclusively for standard pre-clinical lab modeling.
               </p>
               <div className="mt-4 flex items-center justify-center space-x-4 text-[12px] font-semibold">
                 <a
@@ -687,7 +694,7 @@ export default function App() {
                   <ExternalLink size={9} />
                 </a>
                 <span className="text-slate-800">•</span>
-                <span className="text-slate-600">© 2026 PepBiz. All Rights Reserved.</span>
+                <span className="text-slate-600">© 2026 {context?.isAdmin ? "PepBiz" : businessName}. All Rights Reserved.</span>
               </div>
             </footer>
           </div>

@@ -1,27 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { SignInButton, SignUpButton } from "@clerk/react";
 import type { BusinessInfo } from "../../shared/billing";
-import { businessApi, shopSlug, wantsToStartBusiness } from "../lib/business";
+import { businessApi, cacheShop, rememberedShop, shopSlug, wantsToStartBusiness } from "../lib/business";
 import { useSetClerkBrandName } from "../lib/clerkBranding";
-
-// The last shop shown, so a returning customer sees their shop straight away instead of waiting for it to load.
-const SHOP_CACHE_KEY = "peppal.shopInfo.v1";
-function cachedShop(slug: string | null): BusinessInfo | null {
-    if (!slug) return null;
-    try {
-        const saved = JSON.parse(window.localStorage.getItem(SHOP_CACHE_KEY) || "null");
-        return saved?.slug === slug ? (saved.info as BusinessInfo) : null;
-    } catch {
-        return null;
-    }
-}
-function cacheShop(slug: string, info: BusinessInfo) {
-    try {
-        window.localStorage.setItem(SHOP_CACHE_KEY, JSON.stringify({ slug, info }));
-    } catch {
-        // Only means the next visit waits for the shop to load.
-    }
-}
+import { PEPBIZ_ICON, setTabBranding } from "../lib/tabBranding";
 
 // Sign in / register. Arriving from a shop link shows that shop's name and logo; arriving from /start
 // is someone setting up their own business.
@@ -29,13 +11,18 @@ export default function AuthPage() {
     const starting = wantsToStartBusiness();
     // Shop links show the shop's own branding (or none), never PepBiz's - here and in Clerk's windows.
     const onShopLink = !!shopSlug() && !starting;
-    const [shop, setShop] = useState<BusinessInfo | null>(() => (onShopLink ? cachedShop(shopSlug()) : null));
+    const [shop, setShop] = useState<BusinessInfo | null>(() => (onShopLink ? rememberedShop() : null));
     const [shopLoading, setShopLoading] = useState(onShopLink && !shop);
     const setClerkBrandName = useSetClerkBrandName();
 
     useEffect(() => {
         if (shop) setClerkBrandName(shop.name);
     }, [shop, setClerkBrandName]);
+
+    useEffect(() => {
+        if (!onShopLink) setTabBranding("PepBiz", PEPBIZ_ICON);
+        else setTabBranding(shop?.name ?? "Welcome", shop?.logoUrl ?? null);
+    }, [onShopLink, shop]);
 
     useEffect(() => {
         const slug = shopSlug();
@@ -87,7 +74,7 @@ export default function AuthPage() {
                 ) : (
                     <div className="flex justify-center mb-4">
                         <img
-                            src="/favicon.png"
+                            src={PEPBIZ_ICON}
                             alt="PepBiz"
                             className="h-20 w-20 object-contain drop-shadow-[0_0_18px_rgba(219,169,49,0.35)]"
                         />

@@ -30,7 +30,7 @@ export function ScreenFrame({ children, footer = true }: { children: React.React
 function Heading({ eyebrow, title, children }: { eyebrow: string; title: string; children?: React.ReactNode }) {
   return (
     <div className="text-center space-y-2.5">
-      <p className="text-xs uppercase tracking-[0.3em] text-gold-400 font-bold">{eyebrow}</p>
+      {eyebrow && <p className="text-xs uppercase tracking-[0.3em] text-gold-400 font-bold">{eyebrow}</p>}
       <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">{title}</h1>
       {children && <div className="text-zinc-400 text-sm sm:text-base space-y-2">{children}</div>}
     </div>
@@ -355,7 +355,8 @@ export function BusinessErrorScreen({ message, onRetry }: { message: string; onR
       <div className="flex justify-center mb-3">
         <AlertTriangle size={24} className="text-red-400" />
       </div>
-      <Heading eyebrow="PepBiz" title="Something went wrong">
+      {/* Anyone can land here, customers included, so no PepBiz name. */}
+      <Heading eyebrow="" title="Something went wrong">
         <p>{message}</p>
       </Heading>
       <button className={`${bigButton} mt-6`} onClick={onRetry}>
