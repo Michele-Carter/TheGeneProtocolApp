@@ -18,7 +18,7 @@ import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useBusiness } from "./hooks/useBusiness";
-import { forgetShopSlug, setWantsToStartBusiness, shopSlug, wantsToStartBusiness } from "./lib/business";
+import { forgetShopSlug, setWantsToStartBusiness, shopSlug, showShopInAddress, wantsToStartBusiness } from "./lib/business";
 import {
   BillingScreen,
   BusinessErrorScreen,
@@ -173,6 +173,8 @@ export default function App() {
     // Owners always use their own business, so a shop link they opened (e.g. testing a shop) shouldn't keep
     // showing that shop on their sign-in page next time.
     if (context?.isAdmin && shopSlug()) forgetShopSlug();
+    // Customers see their shop's link in the address bar; owners just pepbiz.io.
+    if (context) showShopInAddress(context.isAdmin ? null : context.business.slug);
   }, [context]);
 
   const {

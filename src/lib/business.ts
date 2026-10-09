@@ -26,25 +26,34 @@ function write(storage: () => Storage, key: string, value: string | null) {
 let slug: string | null = read(() => window.localStorage, SLUG_KEY);
 let startRequested = read(() => window.sessionStorage, START_KEY) === "1";
 
-// Picks up /shop/<slug> and /start from the address, then tidies the address back to the app's home.
+// Picks up /shop/<slug> and /start from the address. A shop link stays in the address (customers see their
+// shop's link the whole time); /start is tidied back to the app's home.
 (function captureFromUrl() {
   const shop = /^\/shop\/([a-z0-9-]{3,40})\/?$/i.exec(window.location.pathname);
   if (shop) {
     slug = shop[1].toLowerCase();
     write(() => window.localStorage, SLUG_KEY, slug);
+    showShopInAddress(slug);
   } else if (/^\/start\/?$/i.test(window.location.pathname)) {
     startRequested = true;
     write(() => window.sessionStorage, START_KEY, "1");
-  } else {
-    return;
+    showShopInAddress(null);
   }
-  window.history.replaceState(null, "", "/" + window.location.search);
 })();
+
+// Shows /shop/<slug> in the address bar (null = the app's home), keeping anything after it (e.g. ?billing=).
+export function showShopInAddress(forSlug: string | null) {
+  const path = forSlug ? `/shop/${forSlug}` : "/";
+  if (window.location.pathname !== path) {
+    window.history.replaceState(window.history.state, "", path + window.location.search + window.location.hash);
+  }
+}
 
 export const shopSlug = () => slug;
 export function forgetShopSlug() {
   slug = null;
   write(() => window.localStorage, SLUG_KEY, null);
+  if (window.location.pathname.startsWith("/shop/")) showShopInAddress(null);
 }
 
 // The name and logo of the remembered shop, so a returning customer sees their shop straight away instead of
