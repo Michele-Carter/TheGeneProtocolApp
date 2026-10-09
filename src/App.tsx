@@ -30,6 +30,7 @@ import {
 import { LibraryGate, PeptideLibraryProvider } from "./hooks/usePeptideLibrary";
 import { useWaitingOrders } from "./hooks/useWaitingOrders";
 import { PEPBIZ_ICON, setTabBranding } from "./lib/tabBranding";
+import { useSetClerkBrandName } from "./lib/clerkBranding";
 import type { AdminSection } from "./components/admin/AdminArea";
 import {
   Beaker,
@@ -161,9 +162,13 @@ export default function App() {
   const businessName = context?.business.name ?? "PepBiz";
   // Customers only ever see their shop's name and logo; with no logo they get none, never the PepBiz badge.
   const businessLogo = context?.business.logoUrl ?? (context?.isAdmin ? PEPBIZ_ICON : null);
+  const setClerkBrandName = useSetClerkBrandName();
   useEffect(() => {
-    if (context) setTabBranding(context.business.name, businessLogo);
-  }, [context, businessLogo]);
+    if (!context) return;
+    setTabBranding(context.business.name, businessLogo);
+    // Clerk's account windows: the shop's name for customers, PepBiz for owners.
+    setClerkBrandName(context.isAdmin ? null : context.business.name);
+  }, [context, businessLogo, setClerkBrandName]);
   useEffect(() => {
     // Owners always use their own business, so a shop link they opened (e.g. testing a shop) shouldn't keep
     // showing that shop on their sign-in page next time.

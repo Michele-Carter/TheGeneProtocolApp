@@ -2,9 +2,10 @@ import React, { createContext, useContext, useMemo, useState } from "react";
 import { ClerkProvider } from "@clerk/react";
 import { enUS } from "@clerk/localizations";
 
-// Clerk's sign-in/register windows say "Sign in to PepBiz", "to continue to PepBiz" etc. (the Clerk
-// application's name). Customers must only ever see their shop's name, so on a shop link every
-// {{applicationName}} in Clerk's English wording is swapped for the shop's name.
+// Clerk's windows say "Sign in to <app name>", "to continue to <app name>" etc. The Clerk application's own
+// name is kept neutral, because it also appears in Clerk's emails, which every shop's customers receive (custom
+// email templates need Clerk's paid plan). So the name is always filled in here: the shop's name for its
+// customers, PepBiz for business owners.
 
 type Localization = typeof enUS;
 
@@ -18,7 +19,7 @@ function withName(value: unknown, name: string): unknown {
 
 const SetBrandName = createContext<(name: string | null) => void>(() => {});
 
-// Called by the sign-in page once it knows which shop it's showing (null = PepBiz itself).
+// Set to the shop's name once it's known (null = PepBiz itself).
 export const useSetClerkBrandName = () => useContext(SetBrandName);
 
 export function BrandedClerkProvider({
@@ -26,10 +27,7 @@ export function BrandedClerkProvider({
     ...props
 }: React.ComponentProps<typeof ClerkProvider>) {
     const [brandName, setBrandName] = useState<string | null>(null);
-    const localization = useMemo(
-        () => (brandName ? (withName(enUS, brandName) as Localization) : undefined),
-        [brandName],
-    );
+    const localization = useMemo(() => withName(enUS, brandName ?? "PepBiz") as Localization, [brandName]);
 
     return (
         <ClerkProvider {...props} localization={localization}>
