@@ -18,7 +18,7 @@ import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useBusiness } from "./hooks/useBusiness";
-import { setWantsToStartBusiness, wantsToStartBusiness } from "./lib/business";
+import { forgetShopSlug, setWantsToStartBusiness, shopSlug, wantsToStartBusiness } from "./lib/business";
 import {
   BillingScreen,
   BusinessErrorScreen,
@@ -164,6 +164,11 @@ export default function App() {
   useEffect(() => {
     if (context) setTabBranding(context.business.name, businessLogo);
   }, [context, businessLogo]);
+  useEffect(() => {
+    // Owners always use their own business, so a shop link they opened (e.g. testing a shop) shouldn't keep
+    // showing that shop on their sign-in page next time.
+    if (context?.isAdmin && shopSlug()) forgetShopSlug();
+  }, [context]);
 
   const {
     waiting: newOrders,
