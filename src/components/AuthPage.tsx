@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { SignInButton, SignUpButton } from "@clerk/react";
 import type { BusinessInfo } from "../../shared/billing";
-import { businessApi, cacheShop, rememberedShop, shopSlug, wantsToStartBusiness } from "../lib/business";
+import { businessApi, cacheShop, rememberedShop, shopSlug, showShopInAddress, wantsToStartBusiness } from "../lib/business";
 import { useSetClerkBrandName } from "../lib/clerkBranding";
 import { PEPBIZ_ICON, setTabBranding } from "../lib/tabBranding";
 
@@ -18,6 +18,11 @@ export default function AuthPage() {
     useEffect(() => {
         if (shop) setClerkBrandName(shop.name);
     }, [shop, setClerkBrandName]);
+
+    useEffect(() => {
+        // A returning customer who typed plain pepbiz.io still sees their shop's link.
+        if (onShopLink) showShopInAddress(shopSlug());
+    }, [onShopLink]);
 
     useEffect(() => {
         if (!onShopLink) setTabBranding("PepBiz", PEPBIZ_ICON);
