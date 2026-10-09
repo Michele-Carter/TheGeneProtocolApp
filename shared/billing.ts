@@ -1,4 +1,4 @@
-// Businesses pay a monthly subscription to use PepPal: NZ$20 in New Zealand, US$20 everywhere else, after a
+// Businesses pay a monthly subscription to use PepBiz: NZ$20 in New Zealand, US$20 everywhere else, after a
 // 14-day free trial (card taken up front). Payments are handled by Stripe (api/_lib/billing.ts).
 
 export const TRIAL_DAYS = 14;
@@ -49,7 +49,7 @@ export interface BillingInfo {
 // ---- Shop links: /shop/<slug> ----
 
 export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
-const RESERVED_SLUGS = new Set(["start", "shop", "api", "admin", "app", "www", "peppal", "help", "support", "billing", "login", "signup"]);
+const RESERVED_SLUGS = new Set(["start", "shop", "api", "admin", "app", "www", "peppal", "pepbiz", "help", "support", "billing", "login", "signup"]);
 
 export function slugProblem(slug: string): string | null {
   if (!SLUG_PATTERN.test(slug)) return "Use 3-40 lower-case letters, numbers and dashes (not at the start or end).";

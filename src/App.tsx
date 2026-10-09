@@ -157,7 +157,7 @@ export default function App() {
   }, [startingBusiness, context]);
   const appReady = context != null && context.access === "ok" && !startingBusiness;
   const isAdmin = appReady && context.isAdmin;
-  const businessName = context?.business.name ?? "PepPal";
+  const businessName = context?.business.name ?? "PepBiz";
   useEffect(() => {
     document.title = businessName;
   }, [businessName]);
@@ -235,7 +235,7 @@ export default function App() {
       <UserButton.UserProfilePage label="Business" url="business" labelIcon={<Store size={15} />}>
         <AccountWindowPage
           title="Business"
-          description="Your business name and logo, the link that brings customers to your shop, and your PepPal subscription."
+          description="Your business name and logo, the link that brings customers to your shop, and your PepBiz subscription."
         >
           <BusinessSettingsView context={context!} onChanged={() => void refreshBusiness()} />
         </AccountWindowPage>
@@ -673,7 +673,7 @@ export default function App() {
                 <ShieldAlert size={14} />
               </div>
               <p className="max-w-2xl mx-auto">
-                PepPal is an informational tool built from publicly compiled research guidelines on pep-pedia.org and attached price sheets. This system does not diagnose, treat, prevent, or cure any clinical conditions. All calculations, timelines, and comparisons are intended exclusively for standard pre-clinical lab modeling.
+                PepBiz is an informational tool built from publicly compiled research guidelines on pep-pedia.org and attached price sheets. This system does not diagnose, treat, prevent, or cure any clinical conditions. All calculations, timelines, and comparisons are intended exclusively for standard pre-clinical lab modeling.
               </p>
               <div className="mt-4 flex items-center justify-center space-x-4 text-[12px] font-semibold">
                 <a
@@ -687,7 +687,7 @@ export default function App() {
                   <ExternalLink size={9} />
                 </a>
                 <span className="text-slate-800">•</span>
-                <span className="text-slate-600">© 2026 PepPal Research Engine. All Rights Reserved.</span>
+                <span className="text-slate-600">© 2026 PepBiz. All Rights Reserved.</span>
               </div>
             </footer>
           </div>

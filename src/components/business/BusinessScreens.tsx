@@ -49,7 +49,7 @@ function ErrorLine({ message }: { message: string | null }) {
 export function NoBusinessScreen({ shopNotFound, onStart }: { shopNotFound: boolean; onStart: () => void }) {
   return (
     <ScreenFrame>
-      <Heading eyebrow="PepPal" title={shopNotFound ? "That shop link didn't work" : "Open your shop's link"}>
+      <Heading eyebrow="PepBiz" title={shopNotFound ? "That shop link didn't work" : "Open your shop's link"}>
         <p>
           {shopNotFound
             ? "Please check the link with the shop that sent it to you, then open it again."
@@ -58,7 +58,7 @@ export function NoBusinessScreen({ shopNotFound, onStart }: { shopNotFound: bool
       </Heading>
       <div className="mt-6 rounded-3xl bg-zinc-950/80 border border-zinc-800 p-4 text-sm text-zinc-300">
         <p className="font-semibold text-zinc-100">Run your own business?</p>
-        <p className="mt-1 text-zinc-400">Set up PepPal for your own shop, customers and stock.</p>
+        <p className="mt-1 text-zinc-400">Set up PepBiz for your own shop, customers and stock.</p>
         <button
           className="mt-3 text-gold-400 hover:text-gold-300 font-bold cursor-pointer"
           onClick={() => {
@@ -73,7 +73,7 @@ export function NoBusinessScreen({ shopNotFound, onStart }: { shopNotFound: bool
   );
 }
 
-// The customer's shop has stopped using PepPal for now.
+// The customer's shop has stopped using PepBiz for now.
 export function ShopUnavailableScreen({ context }: { context: BusinessContext }) {
   return (
     <ScreenFrame>
@@ -145,11 +145,11 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
     action = { label: `Start ${TRIAL_DAYS}-day free trial`, where: "checkout" };
   } else if (status === "unpaid" || status === "paused") {
     title = "Your payment didn't go through";
-    text = <p>Update your card to carry on using PepPal. Your shop, customers and stock are all kept safe in the meantime.</p>;
+    text = <p>Update your card to carry on using PepBiz. Your shop, customers and stock are all kept safe in the meantime.</p>;
     action = { label: "Update payment details", where: "portal" };
   } else if (status === "trialing" || status === "active" || status === "past_due") {
     title = "Your account is on hold";
-    text = <p>Please get in touch with PepPal support to sort this out. Your data is kept safe.</p>;
+    text = <p>Please get in touch with PepBiz support to sort this out. Your data is kept safe.</p>;
     action = null;
   } else {
     title = "Your subscription has ended";
@@ -268,7 +268,7 @@ export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => v
 
   return (
     <ScreenFrame>
-      <Heading eyebrow="PepPal for business" title="Set up your business">
+      <Heading eyebrow="PepBiz for business" title="Set up your business">
         <p>Your own shop, customers, stock and peptide library - kept completely separate from anyone else's.</p>
       </Heading>
 
@@ -355,7 +355,7 @@ export function BusinessErrorScreen({ message, onRetry }: { message: string; onR
       <div className="flex justify-center mb-3">
         <AlertTriangle size={24} className="text-red-400" />
       </div>
-      <Heading eyebrow="PepPal" title="Something went wrong">
+      <Heading eyebrow="PepBiz" title="Something went wrong">
         <p>{message}</p>
       </Heading>
       <button className={`${bigButton} mt-6`} onClick={onRetry}>

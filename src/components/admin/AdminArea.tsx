@@ -46,7 +46,7 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
   },
   business: {
     title: "Business",
-    description: "Your business name and logo, the link that brings customers to your shop, and your PepPal subscription.",
+    description: "Your business name and logo, the link that brings customers to your shop, and your PepBiz subscription.",
   },
   "price-list": {
     title: "Vendor Price List",

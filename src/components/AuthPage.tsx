@@ -15,14 +15,14 @@ export default function AuthPage() {
         businessApi.shop(slug).then(setShop).catch(() => setShop(null));
     }, [starting]);
 
-    const eyebrow = starting ? "PepPal for business" : shop ? shop.name : "PepPal";
+    const eyebrow = starting ? "PepBiz for business" : shop ? shop.name : "PepBiz";
     const title = starting
         ? "Create your account to set up your business"
         : shop
           ? `Welcome to ${shop.name}`
           : "Register a new account or sign in if you already have one";
     const blurb = starting
-        ? "Register with your email (or sign in if you already have a PepPal account). Next you'll name your business and choose your shop link."
+        ? "Register with your email (or sign in if you already have a PepBiz account). Next you'll name your business and choose your shop link."
         : "Use Register to create a new account, or Sign In if you already have one. Registration and password recovery are handled by Clerk automatically.";
 
     return (

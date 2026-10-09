@@ -126,7 +126,7 @@ export async function serveAsBusiness(
     const state = accessState(access.business);
     if (state !== "ok" && !options.evenWithoutAccess) {
         return access.role === "owner"
-            ? sendJson(res, 402, { error: "Your PepPal subscription isn't active.", code: "subscription-required" })
+            ? sendJson(res, 402, { error: "Your PepBiz subscription isn't active.", code: "subscription-required" })
             : sendJson(res, 402, { error: `${access.business.name} is unavailable right now.`, code: "shop-unavailable" });
     }
 
