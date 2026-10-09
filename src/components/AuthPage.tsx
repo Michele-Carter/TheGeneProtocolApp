@@ -2,26 +2,63 @@ import React, { useEffect, useState } from "react";
 import { SignInButton, SignUpButton } from "@clerk/react";
 import type { BusinessInfo } from "../../shared/billing";
 import { businessApi, shopSlug, wantsToStartBusiness } from "../lib/business";
+import { useSetClerkBrandName } from "../lib/clerkBranding";
+
+// The last shop shown, so a returning customer sees their shop straight away instead of waiting for it to load.
+const SHOP_CACHE_KEY = "peppal.shopInfo.v1";
+function cachedShop(slug: string | null): BusinessInfo | null {
+    if (!slug) return null;
+    try {
+        const saved = JSON.parse(window.localStorage.getItem(SHOP_CACHE_KEY) || "null");
+        return saved?.slug === slug ? (saved.info as BusinessInfo) : null;
+    } catch {
+        return null;
+    }
+}
+function cacheShop(slug: string, info: BusinessInfo) {
+    try {
+        window.localStorage.setItem(SHOP_CACHE_KEY, JSON.stringify({ slug, info }));
+    } catch {
+        // Only means the next visit waits for the shop to load.
+    }
+}
 
 // Sign in / register. Arriving from a shop link shows that shop's name and logo; arriving from /start
 // is someone setting up their own business.
 export default function AuthPage() {
-    const [shop, setShop] = useState<BusinessInfo | null>(null);
     const starting = wantsToStartBusiness();
-    // Shop links show the shop's own branding (or none), never PepBiz's.
+    // Shop links show the shop's own branding (or none), never PepBiz's - here and in Clerk's windows.
     const onShopLink = !!shopSlug() && !starting;
+    const [shop, setShop] = useState<BusinessInfo | null>(() => (onShopLink ? cachedShop(shopSlug()) : null));
+    const [shopLoading, setShopLoading] = useState(onShopLink && !shop);
+    const setClerkBrandName = useSetClerkBrandName();
+
+    useEffect(() => {
+        if (shop) setClerkBrandName(shop.name);
+    }, [shop, setClerkBrandName]);
 
     useEffect(() => {
         const slug = shopSlug();
         if (!slug || starting) return;
-        businessApi.shop(slug).then(setShop).catch(() => setShop(null));
+        businessApi
+            .shop(slug)
+            .then((found) => {
+                setShop(found);
+                cacheShop(slug, found);
+            })
+            .catch(() => {})
+            .finally(() => setShopLoading(false));
     }, [starting]);
 
-    const eyebrow = starting ? "PepBiz for business" : shop ? shop.name : "PepBiz";
+
+    // On a shop link, a neutral "Welcome" until the shop's name is known - never "PepBiz".
+    const eyebrow = starting ? "PepBiz for business" : onShopLink ? (shop?.name ?? "\u00a0") : "PepBiz";
     const title = starting
         ? "Create your account to set up your business"
-        : shop
-          ? `Welcome to ${shop.name}`
+        : onShopLink
+          ? shop
+              ? `Welcome to ${shop.name}`
+              : "Welcome"
           : "Register a new account or sign in if you already have one";
     const blurb = starting
         ? "Register with your email (or sign in if you already have a PepBiz account). Next you'll name your business and choose your shop link."
@@ -64,12 +101,18 @@ export default function AuthPage() {
 
                 <div className="mt-6 sm:mt-8 grid gap-3.5 sm:gap-4">
                     <SignInButton mode="modal">
-                        <button className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-gold-500 text-black hover:bg-gold-400 transition-colors shadow-[0_8px_24px_-6px_rgba(194,145,31,0.55)]">
+                        <button
+                            disabled={shopLoading}
+                            className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-gold-500 text-black hover:bg-gold-400 transition-colors shadow-[0_8px_24px_-6px_rgba(194,145,31,0.55)] disabled:opacity-60"
+                        >
                             Sign In
                         </button>
                     </SignInButton>
                     <SignUpButton mode="modal">
-                        <button className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-[#232329] text-[#E5E7EB] hover:text-gold-300 transition-colors">
+                        <button
+                            disabled={shopLoading}
+                            className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-[#232329] text-[#E5E7EB] hover:text-gold-300 transition-colors disabled:opacity-60"
+                        >
                             Register
                         </button>
                     </SignUpButton>
