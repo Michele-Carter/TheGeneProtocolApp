@@ -67,6 +67,9 @@ async function publicShop(req: any, res: any) {
               .where(eq(businesses.slug, slug))
         : [];
     if (!row) return sendJson(res, 404, { error: "We couldn't find that shop. Please check the link.", code: "shop-not-found" });
+    // Public and rarely changes: Vercel's edge keeps a copy so the sign-in page shows the shop straight away
+    // (a renamed shop or new logo shows within about 5 minutes).
+    res.setHeader("Cache-Control", "public, s-maxage=300, stale-while-revalidate=86400");
     return sendJson(res, 200, row);
 }
 

@@ -1,4 +1,4 @@
-import { ClerkProvider } from '@clerk/react';
+import { BrandedClerkProvider } from './lib/clerkBranding';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
@@ -37,6 +37,9 @@ const clerkAppearance = {
     fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
   },
   elements: {
+    // No logo in the sign-in/register windows: the page behind already shows the right one (PepBiz or the shop's).
+    // A style object, because Clerk's own styles override Tailwind classes here.
+    logoBox: { display: 'none' },
     modalBackdrop: 'bg-zinc-950/80 backdrop-blur-sm',
     modalContent: 'bg-transparent shadow-none border-0 p-4 sm:p-6 min-h-[100dvh] flex items-center justify-center',
     cardBox: 'w-[min(92vw,28rem)] max-h-[88dvh] overflow-y-auto bg-transparent shadow-none my-auto',
@@ -61,8 +64,8 @@ const clerkAppearance = {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY} appearance={clerkAppearance}>
+    <BrandedClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY} appearance={clerkAppearance}>
       <App />
-    </ClerkProvider>
+    </BrandedClerkProvider>
   </StrictMode>,
 );
