@@ -47,6 +47,22 @@ export function forgetShopSlug() {
   write(() => window.localStorage, SLUG_KEY, null);
 }
 
+// The name and logo of the remembered shop, so a returning customer sees their shop straight away instead of
+// waiting for it to load.
+const SHOP_CACHE_KEY = "peppal.shopInfo.v1";
+export function rememberedShop(): BusinessInfo | null {
+  if (!slug) return null;
+  try {
+    const saved = JSON.parse(read(() => window.localStorage, SHOP_CACHE_KEY) || "null");
+    return saved?.slug === slug ? (saved.info as BusinessInfo) : null;
+  } catch {
+    return null;
+  }
+}
+export function cacheShop(forSlug: string, info: BusinessInfo) {
+  write(() => window.localStorage, SHOP_CACHE_KEY, JSON.stringify({ slug: forSlug, info }));
+}
+
 // Someone came to set up their own business (/start).
 export const wantsToStartBusiness = () => startRequested;
 export function setWantsToStartBusiness(value: boolean) {
