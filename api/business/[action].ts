@@ -11,7 +11,7 @@ import { businesses, businessMembers } from "../_lib/schema.js";
 import { accessState, slugProblem } from "../../shared/billing.js";
 import { MAX_IMAGE_BYTES } from "../../shared/shop.js";
 
-// Setting up and running a business on PepPal (the business's own data is in api/admin):
+// Setting up and running a business on PepBiz (the business's own data is in api/admin):
 //   GET    /api/business/shop?slug=     a shop link's name and logo, for its sign-in page (no sign-in needed)
 //   GET    /api/business/slug?slug=     is this shop link free?  { available, problem }
 //   POST   /api/business/create         { name, slug, region }   sign up a new business (the caller becomes its owner)
@@ -95,7 +95,7 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
     }
 
     if (action === "create" && req.method === "POST") {
-        if (await ownedBusiness(userId)) return sendJson(res, 409, { error: "You already have a business on PepPal." });
+        if (await ownedBusiness(userId)) return sendJson(res, 409, { error: "You already have a business on PepBiz." });
         const parsed = createSchema.safeParse(await parseJsonBody(req));
         if (!parsed.success) return sendJson(res, 400, { error: parsed.error.issues[0]?.message ?? "Please check your details" });
         const { name, slug, region } = parsed.data;

@@ -1,4 +1,4 @@
-// One-off (safe to re-run): creates PepPal's subscription in the Stripe account in STRIPE_SECRET_KEY - the
+// One-off (safe to re-run): creates PepBiz's subscription in the Stripe account in STRIPE_SECRET_KEY - the
 // product, its monthly NZD and USD prices (found by the app by lookup key), and the settings for Stripe's
 // billing page where owners change their card or cancel. Run once in test mode and once with the live key.
 // Usage: npx tsx scripts/setupStripe.ts
@@ -12,7 +12,7 @@ if (!key) throw new Error("STRIPE_SECRET_KEY is missing from .env.local");
 const stripe = new Stripe(key);
 console.log(`Stripe ${key.includes("_live_") ? "LIVE" : "test"} mode`);
 
-const PRODUCT_NAME = "PepPal subscription";
+const PRODUCT_NAME = "PepBiz subscription";
 
 // The product (one, shared by both prices).
 // Listed rather than searched: search results can lag a few seconds behind a product just created.
@@ -49,7 +49,7 @@ for (const plan of Object.values(PLANS)) {
 // Stripe's billing page: update card, see invoices, cancel at the end of the paid month.
 const configs = await stripe.billingPortal.configurations.list({ is_default: true, limit: 1 });
 const portalSettings = {
-  business_profile: { headline: "Manage your PepPal subscription" },
+  business_profile: { headline: "Manage your PepBiz subscription" },
   features: {
     customer_update: { enabled: true, allowed_updates: ["email", "name", "address"] as const },
     invoice_history: { enabled: true },

@@ -7,7 +7,7 @@ import { Card, ErrorNote, Field, inputClass, primaryButton, secondaryButton } fr
 import { prepareImage } from "./ProductImages";
 import { Spinner } from "../LoadingSpinner";
 
-// The business itself: its name and logo (shown to customers), its shop link, and its PepPal subscription.
+// The business itself: its name and logo (shown to customers), its shop link, and its PepBiz subscription.
 
 const LOGO_EDGE = 512;
 
@@ -131,7 +131,7 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
         </div>
       </Card>
 
-      <Card title="PepPal subscription">
+      <Card title="PepBiz subscription">
         {!billing || billing.exempt ? (
           <p className="text-sm text-slate-400">No subscription is needed for this business.</p>
         ) : (
@@ -160,6 +160,6 @@ function subscriptionLine(billing: NonNullable<BusinessContext["billing"]>): str
       : `Free trial until ${date(billing.trialEndsAt)}, then billed monthly.`;
   }
   if (billing.subscriptionStatus === "past_due") return "Your last payment didn't go through - please update your card.";
-  if (billing.cancelAtPeriodEnd) return `Cancelled - you can keep using PepPal until ${date(billing.currentPeriodEnd)}.`;
+  if (billing.cancelAtPeriodEnd) return `Cancelled - you can keep using PepBiz until ${date(billing.currentPeriodEnd)}.`;
   return `Active - next payment ${date(billing.currentPeriodEnd)}.`;
 }

@@ -119,7 +119,7 @@ export default function DashboardPage({ setActiveTab, isAdmin = false, waitingOr
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <h2 className="text-lg font-black text-white tracking-tight">Suite Launcher</h2>
-            <p className="text-sm text-slate-400">Launch any of PepPal's tools instantly.</p>
+            <p className="text-sm text-slate-400">Launch any of PepBiz's tools instantly.</p>
           </div>
         </div>
 
