@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { SignInButton, SignUpButton } from "@clerk/react";
+import LoadingSpinner from "./LoadingSpinner";
 import type { BusinessInfo } from "../../shared/billing";
 import { businessApi, cacheShop, rememberedShop, shopSlug, showShopInAddress, wantsToStartBusiness } from "../lib/business";
 import { useSetClerkBrandName } from "../lib/clerkBranding";
@@ -69,47 +70,50 @@ export default function AuthPage() {
                         "radial-gradient(50rem 24rem at 50% 0%, rgba(219, 169, 49, 0.05), transparent 70%)",
                 }}
             />
-            <div className="relative z-10 w-full max-w-lg bg-[#18181B]/90 backdrop-blur-md border border-zinc-800 rounded-[1.6rem] p-5 sm:p-8 shadow-2xl">
-                {onShopLink ? (
-                    shop?.logoUrl && (
+            {/* On a shop link, just a spinner until the shop's name and logo are known. */}
+            {shopLoading ? (
+                <LoadingSpinner label="Loading..." className="relative z-10" />
+            ) : (
+                <div className="relative z-10 w-full max-w-lg bg-[#18181B]/90 backdrop-blur-md border border-zinc-800 rounded-[1.6rem] p-5 sm:p-8 shadow-2xl">
+                    {onShopLink ? (
+                        shop?.logoUrl && (
+                            <div className="flex justify-center mb-4">
+                                <img src={shop.logoUrl} alt="" className="h-16 w-16 object-contain rounded-2xl" />
+                            </div>
+                        )
+                    ) : (
                         <div className="flex justify-center mb-4">
-                            <img src={shop.logoUrl} alt="" className="h-16 w-16 object-contain rounded-2xl" />
+                            <img
+                                src={PEPBIZ_ICON}
+                                alt="PepBiz"
+                                className="h-20 w-20 object-contain drop-shadow-[0_0_18px_rgba(219,169,49,0.35)]"
+                            />
                         </div>
-                    )
-                ) : (
-                    <div className="flex justify-center mb-4">
-                        <img
-                            src={PEPBIZ_ICON}
-                            alt="PepBiz"
-                            className="h-20 w-20 object-contain drop-shadow-[0_0_18px_rgba(219,169,49,0.35)]"
-                        />
+                    )}
+                    <div className="text-center space-y-2.5 sm:space-y-3">
+                        <p className="text-xs uppercase tracking-[0.3em] text-gold-400 font-bold">{eyebrow}</p>
+                        <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">{title}</h1>
+                        <p className="text-[#E5E7EB] text-sm sm:text-base">{blurb}</p>
                     </div>
-                )}
-                <div className="text-center space-y-2.5 sm:space-y-3">
-                    <p className="text-xs uppercase tracking-[0.3em] text-gold-400 font-bold">{eyebrow}</p>
-                    <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">{title}</h1>
-                    <p className="text-[#E5E7EB] text-sm sm:text-base">{blurb}</p>
-                </div>
 
-                <div className="mt-6 sm:mt-8 grid gap-3.5 sm:gap-4">
-                    <SignInButton mode="modal">
-                        <button
-                            disabled={shopLoading}
-                            className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-gold-500 text-black hover:bg-gold-400 transition-colors shadow-[0_8px_24px_-6px_rgba(194,145,31,0.55)] disabled:opacity-60"
-                        >
-                            Sign In
-                        </button>
-                    </SignInButton>
-                    <SignUpButton mode="modal">
-                        <button
-                            disabled={shopLoading}
-                            className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-[#232329] text-[#E5E7EB] hover:text-gold-300 transition-colors disabled:opacity-60"
-                        >
-                            Register
-                        </button>
-                    </SignUpButton>
+                    <div className="mt-6 sm:mt-8 grid gap-3.5 sm:gap-4">
+                        <SignInButton mode="modal">
+                            <button
+                                className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-gold-500 text-black hover:bg-gold-400 transition-colors shadow-[0_8px_24px_-6px_rgba(194,145,31,0.55)]"
+                            >
+                                Sign In
+                            </button>
+                        </SignInButton>
+                        <SignUpButton mode="modal">
+                            <button
+                                className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-[#232329] text-[#E5E7EB] hover:text-gold-300 transition-colors"
+                            >
+                                Register
+                            </button>
+                        </SignUpButton>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
