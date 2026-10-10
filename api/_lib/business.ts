@@ -103,6 +103,9 @@ export interface BusinessRequest {
     userId: string;
     access: BusinessAccess;
     res: HeldResponse;
+    // Work to do once the request's changes are saved (e.g. telling the owner about a new order). Runs before
+    // the response goes out, because Vercel may stop the function once it has answered.
+    afterSave: (task: () => Promise<void>) => void;
 }
 
 // Serves a signed-in user's request as their business. ownersOnly turns away customers. A business whose
@@ -131,10 +134,11 @@ export async function serveAsBusiness(
     }
 
     const held = new HeldResponse();
+    const tasks: Array<() => Promise<void>> = [];
     try {
         await runAsBusiness(access.business.id, async (db) => {
             if (access.role === "customer") await customerForUser(db, userId);
-            await fn({ db, userId, access, res: held });
+            await fn({ db, userId, access, res: held, afterSave: (task) => tasks.push(task) });
             if (held.statusCode >= 500) throw new RollBack();
         });
     } catch (error) {
@@ -142,6 +146,8 @@ export async function serveAsBusiness(
             console.error(`Request for business ${access.business.id} failed:`, error);
             return sendJson(res, 500, { error: "Something went wrong - please try again." });
         }
+        tasks.length = 0; // rolled back: nothing was saved
     }
+    await Promise.allSettled(tasks.map((task) => task()));
     held.sendTo(res);
 }

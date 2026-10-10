@@ -242,6 +242,17 @@ export default function App() {
     });
   }, []);
 
+  // Tapping a new-order notification opens the app at ?open=new-orders (public/sw.js).
+  useEffect(() => {
+    if (!isAdmin) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("open") !== "new-orders") return;
+    params.delete("open");
+    const rest = params.toString();
+    window.history.replaceState(window.history.state, "", window.location.pathname + (rest ? `?${rest}` : ""));
+    navigateAdmin("new-orders");
+  }, [isAdmin, navigateAdmin]);
+
   // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings.
   // The owner (who doesn't order from their own shop) just has Manage account and Sign out; their business
   // settings and payment details are pages inside Manage account, next to Profile and Security.
