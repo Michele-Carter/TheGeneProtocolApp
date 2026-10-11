@@ -189,6 +189,7 @@ function OrderReview({
   const { getToken } = useAuth();
   const [order, setOrder] = useState<ShopOrderDetail | null>(null);
   const [qty, setQty] = useState<Record<string, number | null>>({});
+  const [price, setPrice] = useState<Record<string, number | null>>({});
   const [shipping, setShipping] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -199,6 +200,7 @@ function OrderReview({
       const o = await adminApi.getShopOrder(id, getToken);
       setOrder(o);
       setQty(Object.fromEntries(o.lines.map((l) => [l.key, l.qty])));
+      setPrice(Object.fromEntries(o.lines.map((l) => [l.key, l.unitPriceNzd])));
       setShipping(o.shippingNzd);
       setMessage(o.adminMessage);
     } catch (e) {
@@ -212,9 +214,18 @@ function OrderReview({
 
   const editable = order?.status === "submitted";
   const qtyOf = (key: string) => qty[key] ?? 0;
-  const subtotal = order ? order.lines.reduce((t, l) => t + qtyOf(l.key) * l.unitPriceNzd, 0) : 0;
+  const priceOf = (key: string) => price[key] ?? 0;
+  const subtotal = order ? order.lines.reduce((t, l) => t + qtyOf(l.key) * priceOf(l.key), 0) : 0;
   const short = order ? order.lines.filter((l) => qtyOf(l.key) > l.available) : [];
   const changed = order ? order.lines.some((l) => qtyOf(l.key) !== l.qty) : false;
+  const repriced = order ? order.lines.some((l) => priceOf(l.key) !== l.unitPriceNzd) : false;
+  const missingPrice = order ? order.lines.some((l) => qtyOf(l.key) > 0 && price[l.key] == null) : false;
+  // Lines whose shop price has changed since the customer sent the order (and aren't already at it).
+  const outOfDate = order
+    ? order.lines.filter((l) => l.currentPriceNzd != null && l.currentPriceNzd !== priceOf(l.key))
+    : [];
+  const useCurrentPrices = () =>
+    setPrice((m) => ({ ...m, ...Object.fromEntries(outOfDate.map((l) => [l.key, l.currentPriceNzd])) }));
   const anyLeft = order ? order.lines.some((l) => qtyOf(l.key) > 0) : false;
 
   const confirm = async () => {
@@ -228,7 +239,11 @@ function OrderReview({
     try {
       await adminApi.confirmShopOrder(
         order.id,
-        { lines: order.lines.map((l) => ({ key: l.key, qty: qtyOf(l.key) })), shippingNzd: shipping, message },
+        {
+          lines: order.lines.map((l) => ({ key: l.key, qty: qtyOf(l.key), unitPriceNzd: priceOf(l.key) })),
+          shippingNzd: shipping,
+          message,
+        },
         getToken
       );
       onDecided();
@@ -303,7 +318,7 @@ function OrderReview({
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wider text-white">
                       <th className="py-1.5 pr-3 font-bold">Item</th>
-                      <th className="py-1.5 pr-3 font-bold text-right">Price</th>
+                      <th className={`py-1.5 pr-3 font-bold text-right ${editable ? "w-28" : ""}`}>Price</th>
                       <th className="py-1.5 pr-3 font-bold text-right">{editable ? "Available" : ""}</th>
                       <th className="py-1.5 pr-3 font-bold text-right w-24">Qty</th>
                       <th className="py-1.5 font-bold text-right">Total</th>
@@ -312,6 +327,7 @@ function OrderReview({
                   <tbody className="divide-y divide-slate-800/70">
                     {order.lines.map((line) => {
                       const q = qtyOf(line.key);
+                      const p = priceOf(line.key);
                       const over = editable && q > line.available;
                       return (
                         <tr key={line.key} className={q === 0 ? "opacity-40" : ""}>
@@ -324,7 +340,27 @@ function OrderReview({
                               <div className="text-[10px] text-amber-400">Customer asked for {line.qty}</div>
                             )}
                           </td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-slate-300">{nzd(line.unitPriceNzd)}</td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-slate-300 align-top">
+                            {editable ? (
+                              <>
+                                <NumberField
+                                  price
+                                  ariaLabel={`Price of ${line.name}`}
+                                  value={price[line.key] ?? null}
+                                  onChange={(v) => setPrice((m) => ({ ...m, [line.key]: v }))}
+                                  placeholder="0.00"
+                                />
+                                {p !== line.unitPriceNzd && (
+                                  <div className="text-[10px] text-amber-400 mt-0.5">Customer saw {nzd(line.unitPriceNzd)}</div>
+                                )}
+                                {line.currentPriceNzd != null && line.currentPriceNzd !== p && (
+                                  <div className="text-[10px] text-slate-500 mt-0.5">Shop price now {nzd(line.currentPriceNzd)}</div>
+                                )}
+                              </>
+                            ) : (
+                              nzd(line.unitPriceNzd)
+                            )}
+                          </td>
                           <td className={`py-2 pr-3 text-right tabular-nums font-bold ${over ? "text-red-400" : "text-slate-400"}`}>
                             {editable ? line.available : ""}
                           </td>
@@ -341,17 +377,26 @@ function OrderReview({
                               <span className="tabular-nums text-slate-200 font-semibold">{line.qty}</span>
                             )}
                           </td>
-                          <td className="py-2 text-right tabular-nums text-slate-100 font-bold">{nzd(q * line.unitPriceNzd)}</td>
+                          <td className="py-2 text-right tabular-nums text-slate-100 font-bold">{nzd(q * (editable ? p : line.unitPriceNzd))}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
+              {editable && outOfDate.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-amber-300">
+                  <AlertTriangle size={13} className="flex-shrink-0" />
+                  Your shop prices have changed since this order was sent.
+                  <button className={secondaryButton} onClick={useCurrentPrices}>
+                    Use current shop prices
+                  </button>
+                </div>
+              )}
               {editable && (
                 <p className="text-[11px] text-slate-500 mt-3">
                   Available = stock on hand less what other open and waiting orders need. Set a quantity to 0 to remove an
-                  item.
+                  item. You can change a price before confirming - the customer sees the new price on their order.
                 </p>
               )}
               {short.length > 0 && (
@@ -393,7 +438,13 @@ function OrderReview({
                       className={`${inputClass} min-h-[4.5rem] resize-y`}
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder={changed ? "e.g. We only had 2 left, so we've adjusted your order." : ""}
+                      placeholder={
+                        repriced
+                          ? "e.g. Our prices have dropped, so we've updated your order."
+                          : changed
+                            ? "e.g. We only had 2 left, so we've adjusted your order."
+                            : ""
+                      }
                     />
                   </Field>
                   <div>
@@ -405,7 +456,7 @@ function OrderReview({
                     <button
                       className={primaryButton}
                       onClick={confirm}
-                      disabled={busy != null || short.length > 0 || !anyLeft || shipping == null}
+                      disabled={busy != null || short.length > 0 || !anyLeft || shipping == null || missingPrice}
                     >
                       {busy === "confirm" ? <Spinner size={13} /> : <CheckCircle2 size={13} />} Confirm order
                     </button>

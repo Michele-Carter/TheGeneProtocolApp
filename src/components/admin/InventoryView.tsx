@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { AlertTriangle, ArrowLeft, Pencil, RefreshCw, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, PackagePlus, Pencil, RefreshCw, Search, Trash2 } from "lucide-react";
 import {
   adminApi,
   nzd,
@@ -17,6 +17,7 @@ import { Card, ErrorNote, Field, NumberField, StatRow, dateButtonClass, inputCla
 import StyledDatePicker from "../StyledDatePicker";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import BundlesView from "./BundlesView";
+import AddStockPanel from "./AddStockPanel";
 
 type KindFilter = "all" | "peptide" | "supply";
 type View = "items" | "bundles";
@@ -78,6 +79,7 @@ export default function InventoryView() {
   const [hideEmpty, setHideEmpty] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("items");
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -177,10 +179,15 @@ export default function InventoryView() {
           <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
           Hide out of stock
         </label>
-        <button className={`${secondaryButton} ml-auto`} onClick={() => void load()} aria-label="Refresh">
+        <button className={`${primaryButton} ml-auto`} onClick={() => setAdding(true)}>
+          <PackagePlus size={13} /> Add stock
+        </button>
+        <button className={secondaryButton} onClick={() => void load()} aria-label="Refresh">
           <RefreshCw size={13} />
         </button>
       </div>
+
+      {adding && <AddStockPanel inventory={rows ?? []} onAdded={() => void load()} onClose={() => setAdding(false)} />}
 
       <ErrorNote message={error} />
       {rows == null && !error && <LoadingSpinner label="Loading inventory..." />}
@@ -191,7 +198,10 @@ export default function InventoryView() {
             {rows.length === 0 ? "Nothing in inventory yet." : "No items match."}
           </p>
           {rows.length === 0 && (
-            <p className="text-xs text-slate-500 mt-1">Stock appears here when you mark a supply order as received.</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Stock appears here when you mark a supply order as received - or use Add stock to enter what you already
+              have.
+            </p>
           )}
         </div>
       )}

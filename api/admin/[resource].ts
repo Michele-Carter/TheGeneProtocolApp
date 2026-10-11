@@ -27,7 +27,7 @@ import {
 } from "../../shared/shop.js";
 import { toAddress } from "../../shared/customers.js";
 import { linkCustomerByEmail } from "../_lib/customers.js";
-import { availableStock, lockStock, orderDemand } from "../_lib/shopCatalog.js";
+import { availableStock, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import {
     cancelShopOrderForDeletedSale,
     confirmedMessage,
@@ -76,7 +76,7 @@ import type { OrderAlertsInfo } from "../../shared/shop.js";
 //   PATCH  /api/admin/customers?id=         DELETE /api/admin/customers?id=
 //   POST   /api/admin/customers?id=&action=merge   { intoId }
 //   GET    /api/admin/shop-orders[?id=|?count=1]
-//   POST   /api/admin/shop-orders?id=&action=confirm   { lines: [{ key, qty }], shippingNzd, message }
+//   POST   /api/admin/shop-orders?id=&action=confirm   { lines: [{ key, qty, unitPriceNzd? }], shippingNzd, message }
 //   POST   /api/admin/shop-orders?id=&action=decline   { message }
 //   POST   /api/admin/shop-orders?id=&action=mark-paid
 //   GET    /api/admin/settings              PUT /api/admin/settings   { paymentDetails }
@@ -1158,7 +1158,10 @@ async function handleCustomers(req: any, res: any, db: Db) {
 // ---- Orders sent from the shop ----
 
 const confirmSchema = z.object({
-    lines: z.array(z.object({ key: z.string().min(1), qty: z.number().int().min(0).max(999) })).min(1),
+    // unitPriceNzd: the owner can change a line's price before confirming (e.g. prices dropped after it was sent).
+    lines: z
+        .array(z.object({ key: z.string().min(1), qty: z.number().int().min(0).max(999), unitPriceNzd: money.min(0).optional() }))
+        .min(1),
     shippingNzd: money.min(0),
     message: z.string().max(2000).default(""),
 });
@@ -1299,9 +1302,15 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId));
             const free = await stockFreeFor(db, order);
             const orderSales = await salesFor(db, [order]);
+            // Today's shop price for each line, so the owner can see if prices have changed since it was sent.
+            const { orderable } = order.status === "submitted" ? await loadCatalog(db) : { orderable: new Map() };
             return sendJson(res, 200, {
                 ...shopOrderSummary(order, customer, order.saleId ? orderSales.get(order.saleId) : undefined),
-                lines: order.lines.map((line) => ({ ...line, available: lineAvailability(line, free) })),
+                lines: order.lines.map((line) => ({
+                    ...line,
+                    available: lineAvailability(line, free),
+                    currentPriceNzd: orderable.get(line.key)?.priceNzd ?? null,
+                })),
                 notes: order.notes,
                 adminMessage: order.adminMessage,
                 shippingAddress: toAddress(order.shippingAddress),
@@ -1384,9 +1393,13 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             if (!order) throw new NotFoundError("Order not found");
             if (order.status !== "submitted") throw new InventoryError("This order has already been dealt with.");
 
-            const qtyByKey = new Map(parsed.data.lines.map((l) => [l.key, l.qty]));
+            const changes = new Map(parsed.data.lines.map((l) => [l.key, l]));
             const lines = order.lines
-                .map((line) => ({ ...line, qty: qtyByKey.get(line.key) ?? line.qty }))
+                .map((line) => ({
+                    ...line,
+                    qty: changes.get(line.key)?.qty ?? line.qty,
+                    unitPriceNzd: changes.get(line.key)?.unitPriceNzd ?? line.unitPriceNzd,
+                }))
                 .filter((line) => line.qty > 0);
             if (lines.length === 0) throw new InventoryError("Every item has been removed - decline the order instead.");
 

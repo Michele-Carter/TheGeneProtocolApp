@@ -113,7 +113,8 @@ export interface ShopOrderSummary {
 }
 
 export interface ShopOrderDetail extends ShopOrderSummary {
-  lines: (ShopOrderLine & { available: number })[]; // available: free for this order right now
+  // available: free for this order right now; currentPriceNzd: today's shop price (null if no longer in the shop)
+  lines: (ShopOrderLine & { available: number; currentPriceNzd: number | null })[];
   notes: string;
   adminMessage: string;
   shippingAddress: ShippingAddress;
@@ -262,6 +263,8 @@ export const adminApi = {
       }
     >(`orders?id=${q(id)}&action=unreceive`, { method: "POST", body: "{}" }, t),
 
+  createItem: (data: { kind: ItemKind; name: string; variant: string; unit: string }, t: GetToken) =>
+    adminFetch<InvItem>("items", { method: "POST", body: JSON.stringify(data) }, t),
   inventory: (t: GetToken) => adminFetch<InventorySummaryRow[]>("inventory", { method: "GET" }, t),
   inventoryItem: (id: string, t: GetToken) => adminFetch<InventoryDetail>(`inventory?id=${q(id)}`, { method: "GET" }, t),
   adjust: (
@@ -346,7 +349,7 @@ export const adminApi = {
   getShopOrder: (id: string, t: GetToken) => adminFetch<ShopOrderDetail>(`shop-orders?id=${q(id)}`, { method: "GET" }, t),
   confirmShopOrder: (
     id: string,
-    payload: { lines: { key: string; qty: number }[]; shippingNzd: number; message: string },
+    payload: { lines: { key: string; qty: number; unitPriceNzd: number }[]; shippingNzd: number; message: string },
     t: GetToken
   ) =>
     adminFetch<{ saleId: string }>(
