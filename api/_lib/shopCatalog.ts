@@ -99,15 +99,19 @@ export async function loadCatalog(db: Db | Tx) {
       images: sizes.find((s) => s.images.length > 0)?.images ?? [],
       variants: sizes.map((item) => {
         const key = `item:${item.id}`;
-        orderable.set(key, { kind: "item", refId: item.id, name: item.name, variant: item.variant, priceNzd: item.sellPriceNzd! });
         const units = avail(item.id);
+        // Coming soon: shown, but can't be ordered until its stock arrives (then it's a normal product).
+        const soon = item.comingSoon && units <= 0;
+        if (!soon) {
+          orderable.set(key, { kind: "item", refId: item.id, name: item.name, variant: item.variant, priceNzd: item.sellPriceNzd! });
+        }
         return {
           key,
           label: item.variant,
           priceNzd: item.sellPriceNzd!,
-          stock: stockLevel(units, item.reorderLevel),
+          stock: soon ? "soon" : stockLevel(units, item.reorderLevel),
           // Not limited by stock: beyond it, it's a pre-order.
-          maxQty: MAX_PER_LINE,
+          maxQty: soon ? 0 : MAX_PER_LINE,
           images: item.images,
           coaUrl: item.coaUrl,
         };

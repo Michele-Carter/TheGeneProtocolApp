@@ -21,13 +21,18 @@ export function StockBadge({ stock }: { stock: StockLevel }) {
       ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
       : stock === "low"
         ? "text-amber-300 bg-amber-500/10 border-amber-500/30"
-        : "text-sky-300 bg-sky-500/10 border-sky-500/30";
+        : stock === "soon"
+          ? "text-violet-300 bg-violet-500/10 border-violet-500/30"
+          : "text-sky-300 bg-sky-500/10 border-sky-500/30";
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide ${style}`}>
-      {stock === "in" ? "In stock" : stock === "low" ? "Low stock" : "Pre-order"}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${style}`}>
+      {stock === "in" ? "In stock" : stock === "low" ? "Low stock" : stock === "soon" ? "Coming soon" : "Pre-order"}
     </span>
   );
 }
+
+// Under a coming-soon product.
+export const SOON_NOTE = "Coming soon - you'll be able to order this once it arrives.";
 
 // Under a pre-order: what happens next.
 export const PREORDER_NOTE = "Pre-order - we'll confirm your order once it arrives.";
@@ -111,7 +116,8 @@ export function productStock(product: ShopProduct): StockLevel {
   const levels = product.variants.map((v) => v.stock);
   if (levels.includes("in")) return "in";
   if (levels.includes("low")) return "low";
-  return "preorder";
+  if (levels.includes("preorder")) return "preorder";
+  return "soon";
 }
 
 export const variantName = (product: ShopProduct, variant: ShopVariant) =>

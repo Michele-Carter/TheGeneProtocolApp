@@ -251,15 +251,17 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                   <StockBadge stock={stock} />
                 </div>
                 <div className="flex-shrink-0">
-                  {single ? (
+                  {single && stock === "soon" ? null : single ? (
                     <button
                       className={cardPrimary}
                       onClick={() => quickAdd(product)}
                       disabled={cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty}
                       title={
-                        cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty
-                          ? "That's the most you can order at once"
-                          : undefined
+                        stock === "soon"
+                          ? "Not available to order yet"
+                          : cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty
+                            ? "That's the most you can order at once"
+                            : undefined
                       }
                     >
                       {justAdded === product.id ? (
@@ -268,6 +270,8 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                         </>
                       ) : stock === "preorder" ? (
                         "Pre-order"
+                      ) : stock === "soon" ? (
+                        "Coming soon"
                       ) : (
                         "Add to cart"
                       )}

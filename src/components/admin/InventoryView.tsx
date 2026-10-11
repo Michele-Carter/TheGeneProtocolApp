@@ -292,6 +292,7 @@ function ShopCard({
   const { getToken } = useAuth();
   const [price, setPrice] = useState<number | null>(item.sellPriceNzd);
   const [visible, setVisible] = useState(item.shopVisible);
+  const [comingSoon, setComingSoon] = useState(item.comingSoon);
   const [categories, setCategories] = useState(item.shopCategories);
   const [description, setDescription] = useState(item.shopDescription);
   const [section, setSection] = useState<ItemShopSection>(itemSection(item));
@@ -311,6 +312,7 @@ function ShopCard({
   const dirty =
     price !== item.sellPriceNzd ||
     visible !== item.shopVisible ||
+    comingSoon !== item.comingSoon ||
     categories.join("\n") !== item.shopCategories.join("\n") ||
     description !== item.shopDescription ||
     section !== itemSection(item);
@@ -328,6 +330,7 @@ function ShopCard({
         {
           sellPriceNzd: price,
           shopVisible: visible,
+          comingSoon,
           shopCategories: categories,
           shopDescription: description,
           shopSection: section,
@@ -358,6 +361,16 @@ function ShopCard({
               Show in shop
             </label>
           </div>
+          <label className="flex items-start gap-2 text-xs text-slate-300 cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={comingSoon} onChange={(e) => setComingSoon(e.target.checked)} />
+            <span>
+              Coming soon
+              <span className="block text-[11px] text-slate-500">
+                Shows a "Coming soon" label and can't be ordered until its first stock arrives - then it sells as
+                normal by itself.
+              </span>
+            </span>
+          </label>
           <div className="space-y-1">
             <span className="block text-[11px] font-bold text-white">Shows under</span>
             <div className="flex gap-2">

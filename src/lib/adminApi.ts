@@ -133,6 +133,7 @@ export interface InvItem {
   reorderLevel: number | null;
   sellPriceNzd: number | null;
   shopVisible: boolean;
+  comingSoon: boolean; // shown as "Coming soon", not orderable until it has stock
   shopCategories: string[];
   shopDescription: string;
   shopSection: ItemShopSection | null; // shop tab; null = by kind (itemSection)
@@ -145,7 +146,16 @@ export interface InvItem {
 export type ItemPatch = Partial<
   Pick<
     InvItem,
-    "name" | "variant" | "unit" | "reorderLevel" | "sellPriceNzd" | "shopVisible" | "shopCategories" | "shopDescription" | "shopSection"
+    | "name"
+    | "variant"
+    | "unit"
+    | "reorderLevel"
+    | "sellPriceNzd"
+    | "shopVisible"
+    | "comingSoon"
+    | "shopCategories"
+    | "shopDescription"
+    | "shopSection"
   >
 > & { applyToSizes?: boolean };
 

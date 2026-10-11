@@ -58,8 +58,9 @@ export function itemSection(item: { kind: string; shopSection: string | null }):
 }
 
 // Customers see a label, not the exact count. Nothing is ever "out of stock": with none on hand it's a
-// "preorder" - it can still be ordered, and the owner confirms it once the stock arrives.
-export type StockLevel = "in" | "low" | "preorder";
+// "preorder" - it can still be ordered, and the owner confirms it once the stock arrives - or, for a new
+// product the owner has marked as coming soon, "soon": shown but not orderable until its stock arrives.
+export type StockLevel = "in" | "low" | "preorder" | "soon";
 
 // One buyable option: a size of a peptide (an inventory item) or a bundle.
 export interface ShopVariant {
