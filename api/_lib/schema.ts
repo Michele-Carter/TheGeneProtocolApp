@@ -233,6 +233,22 @@ export const notifications = pgTable(
   (t) => [index("notifications_customer_idx").on(t.customerId, t.createdAt)]
 );
 
+// A phone or computer the business owner turned new-order notifications on for (scripts/order-alerts.sql).
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    businessId: businessId(),
+    clerkUserId: text("clerk_user_id").notNull(),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    device: text("device").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("push_subscriptions_business_endpoint_idx").on(t.businessId, t.endpoint)]
+);
+
 // A reusable kit of inventory items sold together (e.g. "Pen Starter Bundle"). Holds no stock
 // of its own — selling one expands it into a SaleLine per component (shared/bundles.ts).
 export const bundles = pgTable("bundles", {

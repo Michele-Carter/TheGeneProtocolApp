@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
-import { serveAsBusiness, type Db } from "../_lib/business.js";
+import { serveAsBusiness, type BusinessRequest, type Db } from "../_lib/business.js";
+import { alertNewOrder } from "../_lib/orderAlerts.js";
 import { customerForUser } from "../_lib/customers.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { appSettings, customers, notifications, sales, shopOrders } from "../_lib/schema.js";
@@ -148,7 +149,7 @@ function orderDto(
     };
 }
 
-async function handleOrders(req: any, res: any, db: Db, userId: string) {
+async function handleOrders(req: any, res: any, db: Db, userId: string, { access, afterSave }: BusinessRequest) {
     const customer = await customerForUser(db, userId);
     const id = typeof req.query?.id === "string" ? req.query.id : null;
 
@@ -280,6 +281,18 @@ async function handleOrders(req: any, res: any, db: Db, userId: string) {
                     .returning();
                 return created;
             });
+            // Tell the owner (phone/computer notification) once the order is saved.
+            afterSave(() =>
+                alertNewOrder(
+                    access.business,
+                    {
+                        orderNumber: row.orderNumber,
+                        subtotalNzd: Number(row.subtotalNzd),
+                        itemCount: row.lines.reduce((n, l) => n + l.qty, 0),
+                        customerName: customer.name,
+                    }
+                )
+            );
             return sendJson(res, 201, orderDto(row));
         } catch (error) {
             if (error instanceof OrderError) return sendJson(res, 409, { error: error.message });
@@ -344,7 +357,8 @@ export default async function handler(req: any, res: any) {
 
 export async function handleShopRequest(req: any, res: any, userId: string) {
     const resource = req.query?.resource;
-    return serveAsBusiness(req, res, userId, { ownersOnly: false }, async ({ db, res }) => {
+    return serveAsBusiness(req, res, userId, { ownersOnly: false }, async (request) => {
+        const { db, res } = request;
         try {
             switch (resource) {
                 case "me":
@@ -352,7 +366,7 @@ export async function handleShopRequest(req: any, res: any, userId: string) {
                 case "products":
                     return await handleProducts(req, res, db);
                 case "orders":
-                    return await handleOrders(req, res, db, userId);
+                    return await handleOrders(req, res, db, userId, request);
                 case "notifications":
                     return await handleNotifications(req, res, db, userId);
                 default:

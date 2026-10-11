@@ -6,6 +6,7 @@ import { businessApi, type BusinessContext } from "../../lib/business";
 import { Card, ErrorNote, Field, inputClass, primaryButton, secondaryButton } from "./ui";
 import { prepareImage } from "./ProductImages";
 import { Spinner } from "../LoadingSpinner";
+import OrderAlertsCard from "./OrderAlertsCard";
 
 // The business itself: its name and logo (shown to customers), its shop link, and its PepBiz subscription.
 
@@ -130,6 +131,8 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
           </button>
         </div>
       </Card>
+
+      <OrderAlertsCard />
 
       <Card title="PepBiz subscription">
         {!billing || billing.exempt ? (

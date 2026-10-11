@@ -27,7 +27,7 @@ import {
 } from "../../shared/shop.js";
 import { toAddress } from "../../shared/customers.js";
 import { linkCustomerByEmail } from "../_lib/customers.js";
-import { availableStock, lockStock, orderDemand } from "../_lib/shopCatalog.js";
+import { availableStock, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import {
     cancelShopOrderForDeletedSale,
     confirmedMessage,
@@ -44,6 +44,7 @@ import {
     invItems,
     inventoryLots,
     purchaseOrders,
+    pushSubscriptions,
     sales,
     shopOrders,
     stockMovements,
@@ -51,6 +52,8 @@ import {
 } from "../_lib/schema.js";
 import { accessState, type BusinessInfo } from "../../shared/billing.js";
 import { billingInfo } from "../_lib/billing.js";
+import { pushKey, sendAlert } from "../_lib/orderAlerts.js";
+import type { OrderAlertsInfo } from "../../shared/shop.js";
 
 // All owner-only endpoints live in this one function (keeps us under Vercel's function limit). Each request
 // runs as the caller's own business (api/_lib/business.ts), so it only ever sees that business's records.
@@ -73,10 +76,13 @@ import { billingInfo } from "../_lib/billing.js";
 //   PATCH  /api/admin/customers?id=         DELETE /api/admin/customers?id=
 //   POST   /api/admin/customers?id=&action=merge   { intoId }
 //   GET    /api/admin/shop-orders[?id=|?count=1]
-//   POST   /api/admin/shop-orders?id=&action=confirm   { lines: [{ key, qty }], shippingNzd, message }
+//   POST   /api/admin/shop-orders?id=&action=confirm   { lines: [{ key, qty, unitPriceNzd? }], shippingNzd, message }
 //   POST   /api/admin/shop-orders?id=&action=decline   { message }
 //   POST   /api/admin/shop-orders?id=&action=mark-paid
 //   GET    /api/admin/settings              PUT /api/admin/settings   { paymentDetails }
+//   GET    /api/admin/alerts                                    (new-order notifications)
+//   POST   /api/admin/alerts?action=subscribe { subscription, device }   ?action=unsubscribe { endpoint }
+//   POST   /api/admin/alerts?action=test { endpoint? }
 //   GET    /api/admin/supplier-catalog      POST /api/admin/supplier-catalog
 //   PATCH  /api/admin/supplier-catalog?id=  DELETE /api/admin/supplier-catalog?id=
 
@@ -1152,7 +1158,10 @@ async function handleCustomers(req: any, res: any, db: Db) {
 // ---- Orders sent from the shop ----
 
 const confirmSchema = z.object({
-    lines: z.array(z.object({ key: z.string().min(1), qty: z.number().int().min(0).max(999) })).min(1),
+    // unitPriceNzd: the owner can change a line's price before confirming (e.g. prices dropped after it was sent).
+    lines: z
+        .array(z.object({ key: z.string().min(1), qty: z.number().int().min(0).max(999), unitPriceNzd: money.min(0).optional() }))
+        .min(1),
     shippingNzd: money.min(0),
     message: z.string().max(2000).default(""),
 });
@@ -1293,9 +1302,15 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId));
             const free = await stockFreeFor(db, order);
             const orderSales = await salesFor(db, [order]);
+            // Today's shop price for each line, so the owner can see if prices have changed since it was sent.
+            const { orderable } = order.status === "submitted" ? await loadCatalog(db) : { orderable: new Map() };
             return sendJson(res, 200, {
                 ...shopOrderSummary(order, customer, order.saleId ? orderSales.get(order.saleId) : undefined),
-                lines: order.lines.map((line) => ({ ...line, available: lineAvailability(line, free) })),
+                lines: order.lines.map((line) => ({
+                    ...line,
+                    available: lineAvailability(line, free),
+                    currentPriceNzd: orderable.get(line.key)?.priceNzd ?? null,
+                })),
                 notes: order.notes,
                 adminMessage: order.adminMessage,
                 shippingAddress: toAddress(order.shippingAddress),
@@ -1378,9 +1393,13 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             if (!order) throw new NotFoundError("Order not found");
             if (order.status !== "submitted") throw new InventoryError("This order has already been dealt with.");
 
-            const qtyByKey = new Map(parsed.data.lines.map((l) => [l.key, l.qty]));
+            const changes = new Map(parsed.data.lines.map((l) => [l.key, l]));
             const lines = order.lines
-                .map((line) => ({ ...line, qty: qtyByKey.get(line.key) ?? line.qty }))
+                .map((line) => ({
+                    ...line,
+                    qty: changes.get(line.key)?.qty ?? line.qty,
+                    unitPriceNzd: changes.get(line.key)?.unitPriceNzd ?? line.unitPriceNzd,
+                }))
                 .filter((line) => line.qty > 0);
             if (lines.length === 0) throw new InventoryError("Every item has been removed - decline the order instead.");
 
@@ -1482,6 +1501,74 @@ async function handleSettings(req: any, res: any, db: Db) {
         return sendJson(res, 200, { paymentDetails: value });
     }
     res.setHeader("Allow", "GET, PUT");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
+// ---- New-order alerts (phone/computer notifications) ----
+
+const subscribeSchema = z.object({
+    subscription: z.object({
+        endpoint: z.string().url(),
+        keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+    }),
+    device: z.string().trim().max(120).default(""),
+});
+
+async function alertsInfo(db: Db): Promise<OrderAlertsInfo> {
+    const devices = await db.select().from(pushSubscriptions).orderBy(asc(pushSubscriptions.createdAt));
+    return {
+        pushKey: pushKey(),
+        devices: devices.map((d) => ({ id: d.id, endpoint: d.endpoint, device: d.device, createdAt: d.createdAt.toISOString() })),
+    };
+}
+
+async function handleAlerts(req: any, res: any, db: Db, access: BusinessAccess, userId: string) {
+    const action = req.query?.action;
+    if (req.method === "GET") return sendJson(res, 200, await alertsInfo(db));
+
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+    const body = (read.body ?? {}) as any;
+
+    if (req.method === "POST" && action === "subscribe") {
+        const parsed = subscribeSchema.safeParse(body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const { subscription, device } = parsed.data;
+        const values = { clerkUserId: userId, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth, device };
+        await db
+            .insert(pushSubscriptions)
+            .values({ id: crypto.randomUUID(), endpoint: subscription.endpoint, ...values })
+            .onConflictDoUpdate({ target: [pushSubscriptions.businessId, pushSubscriptions.endpoint], set: values });
+        return sendJson(res, 200, await alertsInfo(db));
+    }
+
+    if (req.method === "POST" && action === "unsubscribe") {
+        const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
+        const id = typeof body.id === "string" ? body.id : "";
+        if (!endpoint && !id) return sendJson(res, 400, { error: "Which device?" });
+        await db.delete(pushSubscriptions).where(endpoint ? eq(pushSubscriptions.endpoint, endpoint) : eq(pushSubscriptions.id, id));
+        return sendJson(res, 200, await alertsInfo(db));
+    }
+
+    if (req.method === "POST" && action === "test") {
+        // A test goes to this device only.
+        const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
+        const [device] = endpoint ? await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)) : [];
+        await sendAlert(
+            db,
+            access.business,
+            {
+                title: "Test: new order alerts are working",
+                body: "This is what you'll see when a customer sends an order. Tap to open your new orders.",
+                url: "/?open=new-orders",
+                tag: "order-alert-test",
+            },
+            device?.id ?? "none"
+        );
+        return sendJson(res, 200, { sent: true });
+    }
+
+    res.setHeader("Allow", "GET, POST");
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
@@ -1823,6 +1910,8 @@ export async function handleAdminRequest(req: any, res: any, userId: string) {
                     return await handleSettings(req, res, db);
                 case "supplier-catalog":
                     return await handleSupplierCatalog(req, res, db);
+                case "alerts":
+                    return await handleAlerts(req, res, db, access, userId);
                 default:
                     return sendJson(res, 404, { error: "Not found" });
             }

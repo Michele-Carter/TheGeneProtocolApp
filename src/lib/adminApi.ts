@@ -3,7 +3,8 @@ import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sal
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
-import type { ItemShopSection, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
+import type { ItemShopSection, OrderAlertsInfo, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
+import type { PushSubscriptionData } from "./orderAlerts";
 import type { SupplierProduct } from "../../shared/library";
 import { ApiError, businessHeaders, type BusinessContext } from "./business";
 
@@ -112,7 +113,8 @@ export interface ShopOrderSummary {
 }
 
 export interface ShopOrderDetail extends ShopOrderSummary {
-  lines: (ShopOrderLine & { available: number })[]; // available: free for this order right now
+  // available: free for this order right now; currentPriceNzd: today's shop price (null if no longer in the shop)
+  lines: (ShopOrderLine & { available: number; currentPriceNzd: number | null })[];
   notes: string;
   adminMessage: string;
   shippingAddress: ShippingAddress;
@@ -261,6 +263,8 @@ export const adminApi = {
       }
     >(`orders?id=${q(id)}&action=unreceive`, { method: "POST", body: "{}" }, t),
 
+  createItem: (data: { kind: ItemKind; name: string; variant: string; unit: string }, t: GetToken) =>
+    adminFetch<InvItem>("items", { method: "POST", body: JSON.stringify(data) }, t),
   inventory: (t: GetToken) => adminFetch<InventorySummaryRow[]>("inventory", { method: "GET" }, t),
   inventoryItem: (id: string, t: GetToken) => adminFetch<InventoryDetail>(`inventory?id=${q(id)}`, { method: "GET" }, t),
   adjust: (
@@ -333,10 +337,19 @@ export const adminApi = {
   getSettings: (t: GetToken) => adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "GET" }, t),
   updateSettings: (data: { paymentDetails: PaymentDetails }, t: GetToken) =>
     adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "PUT", body: JSON.stringify(data) }, t),
+
+  // New-order notifications (Admin -> Business)
+  getAlerts: (t: GetToken) => adminFetch<OrderAlertsInfo>("alerts", { method: "GET" }, t),
+  subscribeAlerts: (subscription: PushSubscriptionData, device: string, t: GetToken) =>
+    adminFetch<OrderAlertsInfo>("alerts?action=subscribe", { method: "POST", body: JSON.stringify({ subscription, device }) }, t),
+  unsubscribeAlerts: (target: { endpoint?: string; id?: string }, t: GetToken) =>
+    adminFetch<OrderAlertsInfo>("alerts?action=unsubscribe", { method: "POST", body: JSON.stringify(target) }, t),
+  testAlert: (endpoint: string | null, t: GetToken) =>
+    adminFetch<{ sent: boolean }>("alerts?action=test", { method: "POST", body: JSON.stringify({ endpoint }) }, t),
   getShopOrder: (id: string, t: GetToken) => adminFetch<ShopOrderDetail>(`shop-orders?id=${q(id)}`, { method: "GET" }, t),
   confirmShopOrder: (
     id: string,
-    payload: { lines: { key: string; qty: number }[]; shippingNzd: number; message: string },
+    payload: { lines: { key: string; qty: number; unitPriceNzd: number }[]; shippingNzd: number; message: string },
     t: GetToken
   ) =>
     adminFetch<{ saleId: string }>(

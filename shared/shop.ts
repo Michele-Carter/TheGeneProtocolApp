@@ -198,3 +198,17 @@ export interface CustomerNotification {
 // Product images are resized in the browser before upload, so this is a generous ceiling.
 export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 export const MAX_IMAGES_PER_PRODUCT = 8;
+
+// ---- New-order notifications for the business owner (Admin -> Business) ----
+
+export interface OrderAlertDevice {
+  id: string;
+  endpoint: string;
+  device: string;
+  createdAt: string;
+}
+
+export interface OrderAlertsInfo {
+  pushKey: string | null; // null until phone notifications are set up on the server
+  devices: OrderAlertDevice[];
+}
