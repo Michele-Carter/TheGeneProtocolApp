@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, Pencil, Send, ShoppingCart, Trash2 } from "lu
 import { addressLines, isAddressComplete, type ShippingAddress } from "../../../shared/customers";
 import type { ShopOrder, ShopProduct, ShopVariant } from "../../../shared/shop";
 import { money, shopApi, type MyDetails } from "../../lib/shopApi";
+import { askForCustomerNotifications } from "../../lib/customerNotifications";
 import type { Cart } from "../../hooks/useCart";
 import AddressFields from "../AddressFields";
 import { ErrorNote } from "../admin/ui";
@@ -88,6 +89,8 @@ export default function CartPage({
   };
 
   const send = async () => {
+    // So they hear when the order is confirmed - the browser asks once ("Allow notifications?").
+    askForCustomerNotifications(getToken);
     setBusy("send");
     setError(null);
     try {

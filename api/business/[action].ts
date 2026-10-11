@@ -73,8 +73,41 @@ async function publicShop(req: any, res: any) {
     return sendJson(res, 200, row);
 }
 
+// The "app" details a phone uses when someone adds the app to their home screen (needed on iPhone for
+// notifications): the shop's name, logo and link - or PepBiz's for business owners.
+async function webAppManifest(req: any, res: any) {
+    const slug = String(req.query?.slug ?? "").trim().toLowerCase();
+    const [shop] = slug
+        ? await getDb()
+              .select({ name: businesses.name, slug: businesses.slug, logoUrl: businesses.logoUrl })
+              .from(businesses)
+              .where(eq(businesses.slug, slug))
+        : [];
+    const name = shop?.name ?? "PepBiz";
+    const icons = shop
+        ? shop.logoUrl
+            ? [{ src: shop.logoUrl, sizes: "512x512", purpose: "any" }]
+            : []
+        : [{ src: "/favicon.png", sizes: "256x256", type: "image/png", purpose: "any" }];
+    res.setHeader("Content-Type", "application/manifest+json");
+    res.setHeader("Cache-Control", "public, s-maxage=300, stale-while-revalidate=86400");
+    return res.status(200).send(
+        JSON.stringify({
+            name,
+            short_name: name, // the phone shortens it under the icon if it has to
+            start_url: shop ? `/shop/${shop.slug}` : "/",
+            scope: "/",
+            display: "standalone",
+            background_color: "#09090B",
+            theme_color: "#09090B",
+            icons,
+        })
+    );
+}
+
 export default async function handler(req: any, res: any) {
     if (req.query?.action === "shop" && req.method === "GET") return publicShop(req, res);
+    if (req.query?.action === "manifest" && req.method === "GET") return webAppManifest(req, res);
     const userId = await requireAuthUserId(req);
     if (!userId) return sendJson(res, 401, { error: "Unauthenticated" });
     try {

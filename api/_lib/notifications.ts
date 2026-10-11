@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "./business.js";
+import { afterSave, currentBusiness, type Db } from "./business.js";
+import { alertCustomer } from "./orderAlerts.js";
 import { notifications, shopOrders } from "./schema.js";
 import type { NotificationKind } from "../../shared/shop.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
@@ -13,6 +14,9 @@ export async function notify(
   n: { customerId: string; shopOrderId: string | null; kind: NotificationKind; title: string; body: string }
 ) {
   await db.insert(notifications).values({ id: crypto.randomUUID(), ...n });
+  // The same message on the customer's phone/computer, if they have notifications on - once it's saved.
+  const business = currentBusiness();
+  if (business) afterSave(() => alertCustomer(business, n.customerId, n));
 }
 
 export function confirmedMessage(orderNumber: number, totalNzd: number, adminMessage: string) {

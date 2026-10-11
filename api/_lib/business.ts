@@ -1,4 +1,5 @@
 import "./env.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { asc, eq, sql } from "drizzle-orm";
 import { customerForUser } from "./customers.js";
 import { getDb } from "./db.js";
@@ -98,6 +99,18 @@ class HeldResponse {
 
 class RollBack extends Error {}
 
+// The request being served, so code deep inside it (e.g. notify()) can queue work for after it's saved.
+const current = new AsyncLocalStorage<{ business: Business; tasks: Array<() => Promise<void>> }>();
+
+// Runs task once the current request's changes are saved (dropped if they're rolled back). Outside a request
+// (scripts) it does nothing.
+export function afterSave(task: () => Promise<void>) {
+    current.getStore()?.tasks.push(task);
+}
+
+// The business the current request is for, if any.
+export const currentBusiness = () => current.getStore()?.business ?? null;
+
 export interface BusinessRequest {
     db: Db;
     userId: string;
@@ -138,7 +151,9 @@ export async function serveAsBusiness(
     try {
         await runAsBusiness(access.business.id, async (db) => {
             if (access.role === "customer") await customerForUser(db, userId);
-            await fn({ db, userId, access, res: held, afterSave: (task) => tasks.push(task) });
+            await current.run({ business: access.business, tasks }, () =>
+                fn({ db, userId, access, res: held, afterSave: (task) => tasks.push(task) })
+            );
             if (held.statusCode >= 500) throw new RollBack();
         });
     } catch (error) {

@@ -75,7 +75,8 @@ export function notificationTip(): string {
         return "Not seeing them? On your phone, check Settings > Notifications > Chrome is allowed, and Do not disturb is off.";
     }
     if (/iPhone|iPad|iPod/i.test(ua)) {
-        return "Not seeing them? Check Settings > Notifications > PepBiz is allowed, and Focus is off.";
+        // The home-screen app is named after the page (the shop's name for customers), never PepBiz for them.
+        return `Not seeing them? Check Settings > Notifications > ${document.title || "this app"} is allowed, and Focus is off.`;
     }
     if (/Windows/i.test(ua)) {
         return "Not seeing them? Make sure Windows notifications are turned on (Settings > System > Notifications), Google Chrome is allowed there, and Focus / Do not disturb is off.";

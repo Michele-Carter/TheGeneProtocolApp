@@ -31,6 +31,7 @@ import { LibraryGate, PeptideLibraryProvider } from "./hooks/usePeptideLibrary";
 import { useWaitingOrders } from "./hooks/useWaitingOrders";
 import { PEPBIZ_ICON, setTabBranding } from "./lib/tabBranding";
 import { useSetClerkBrandName } from "./lib/clerkBranding";
+import { keepCustomerNotificationsOn } from "./lib/customerNotifications";
 import type { AdminSection } from "./components/admin/AdminArea";
 import {
   Beaker,
@@ -165,7 +166,7 @@ export default function App() {
   const setClerkBrandName = useSetClerkBrandName();
   useEffect(() => {
     if (!context) return;
-    setTabBranding(context.business.name, businessLogo);
+    setTabBranding(context.business.name, businessLogo, context.isAdmin ? null : context.business.slug);
     // Clerk's account windows: the shop's name for customers, PepBiz for owners.
     setClerkBrandName(context.isAdmin ? null : context.business.name);
   }, [context, businessLogo, setClerkBrandName]);
@@ -242,16 +243,24 @@ export default function App() {
     });
   }, []);
 
-  // Tapping a new-order notification opens the app at ?open=new-orders (public/sw.js).
+  // Tapping a notification opens the app at ?open=new-orders (owner) or ?open=orders (customer) - public/sw.js.
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!appReady) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("open") !== "new-orders") return;
+    const open = params.get("open");
+    if (open !== "new-orders" && open !== "orders") return;
     params.delete("open");
     const rest = params.toString();
     window.history.replaceState(window.history.state, "", window.location.pathname + (rest ? `?${rest}` : ""));
-    navigateAdmin("new-orders");
-  }, [isAdmin, navigateAdmin]);
+    if (open === "new-orders" && isAdmin) navigateAdmin("new-orders");
+    if (open === "orders" && !isAdmin) openAccount("orders");
+  }, [appReady, isAdmin, navigateAdmin, openAccount]);
+
+  // A customer's device that already allows notifications keeps getting them (e.g. after reinstalling the
+  // browser), unless they turned them off.
+  useEffect(() => {
+    if (appReady && !isAdmin) void keepCustomerNotificationsOn(getToken).catch(() => {});
+  }, [appReady, isAdmin, getToken]);
 
   // Profile picture menu: the customer's orders and details live here, alongside Clerk's account settings.
   // The owner (who doesn't order from their own shop) just has Manage account and Sign out; their business

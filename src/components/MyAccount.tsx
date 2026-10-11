@@ -5,6 +5,7 @@ import { emptyAddress, isAddressComplete, type ShippingAddress } from "../../sha
 import { shopApi, type MyDetails } from "../lib/shopApi";
 import AddressFields from "./AddressFields";
 import MyOrders from "./shop/MyOrders";
+import NotificationsCard from "./shop/NotificationsCard";
 import { Card, ErrorNote, Field, inputClass, primaryButton } from "./admin/ui";
 import LoadingSpinner, { Spinner } from "./LoadingSpinner";
 
@@ -136,6 +137,8 @@ export default function MyAccount({ initialTab = "orders", onShop }: { initialTa
               </span>
             )}
           </div>
+
+          <NotificationsCard />
         </div>
       )}
 
