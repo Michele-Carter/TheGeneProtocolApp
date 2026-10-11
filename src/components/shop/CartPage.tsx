@@ -171,7 +171,9 @@ export default function CartPage({
                 {line.variant && line.qty > line.variant.maxQty && (
                   <p className="flex items-center gap-1.5 text-xs text-amber-300">
                     <AlertTriangle size={12} />
-                    {`At most ${line.variant.maxQty} per order - please reduce the quantity.`}
+                    {line.variant.maxQty === 0
+                      ? "Coming soon - this can't be ordered yet. Please remove it."
+                      : `At most ${line.variant.maxQty} per order - please reduce the quantity.`}
                   </p>
                 )}
                 {line.variant?.stock === "preorder" && <p className="text-xs text-sky-300">{PREORDER_NOTE}</p>}

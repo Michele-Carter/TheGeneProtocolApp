@@ -86,6 +86,8 @@ export const invItems = pgTable("inv_items", {
   // Shop front. images: string[] of image URLs, the first is the main image.
   sellPriceNzd: numeric("sell_price_nzd", { precision: 14, scale: 2, mode: "number" }),
   shopVisible: boolean("shop_visible").notNull().default(false),
+  // Shown in the shop as "Coming soon" and can't be ordered while it has no stock (scripts/coming-soon.sql).
+  comingSoon: boolean("coming_soon").notNull().default(false),
   shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
   shopDescription: text("shop_description").notNull().default(""),
   shopSection: text("shop_section"), // "peptides" | "supplies"; null = by kind (shared/shop.ts itemSection)

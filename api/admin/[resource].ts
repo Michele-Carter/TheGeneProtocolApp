@@ -144,6 +144,7 @@ const itemPatchSchema = z.object({
     reorderLevel: z.number().int().min(0).nullable().optional(),
     sellPriceNzd: money.min(0).nullable().optional(),
     shopVisible: z.boolean().optional(),
+    comingSoon: z.boolean().optional(),
     shopCategories: z.array(z.string()).transform(normalizeCategories).optional(),
     shopDescription: z.string().optional(),
     shopSection: z.enum(["peptides", "supplies"]).nullable().optional(),
