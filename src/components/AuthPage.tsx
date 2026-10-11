@@ -27,7 +27,7 @@ export default function AuthPage() {
 
     useEffect(() => {
         if (!onShopLink) setTabBranding("PepBiz", PEPBIZ_ICON);
-        else setTabBranding(shop?.name ?? "Welcome", shop?.logoUrl ?? null);
+        else setTabBranding(shop?.name ?? "Welcome", shop?.logoUrl ?? null, shopSlug());
     }, [onShopLink, shop]);
 
     useEffect(() => {

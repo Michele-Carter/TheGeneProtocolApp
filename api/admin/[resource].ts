@@ -52,7 +52,7 @@ import {
 } from "../_lib/schema.js";
 import { accessState, type BusinessInfo } from "../../shared/billing.js";
 import { billingInfo } from "../_lib/billing.js";
-import { pushKey, sendAlert } from "../_lib/orderAlerts.js";
+import { ownerDevices, pushKey, removeDevice, saveDevice, sendAlert, subscribeSchema } from "../_lib/orderAlerts.js";
 import type { OrderAlertsInfo } from "../../shared/shop.js";
 
 // All owner-only endpoints live in this one function (keeps us under Vercel's function limit). Each request
@@ -1506,16 +1506,8 @@ async function handleSettings(req: any, res: any, db: Db) {
 
 // ---- New-order alerts (phone/computer notifications) ----
 
-const subscribeSchema = z.object({
-    subscription: z.object({
-        endpoint: z.string().url(),
-        keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
-    }),
-    device: z.string().trim().max(120).default(""),
-});
-
 async function alertsInfo(db: Db): Promise<OrderAlertsInfo> {
-    const devices = await db.select().from(pushSubscriptions).orderBy(asc(pushSubscriptions.createdAt));
+    const devices = await db.select().from(pushSubscriptions).where(ownerDevices).orderBy(asc(pushSubscriptions.createdAt));
     return {
         pushKey: pushKey(),
         devices: devices.map((d) => ({ id: d.id, endpoint: d.endpoint, device: d.device, createdAt: d.createdAt.toISOString() })),
@@ -1533,12 +1525,7 @@ async function handleAlerts(req: any, res: any, db: Db, access: BusinessAccess, 
     if (req.method === "POST" && action === "subscribe") {
         const parsed = subscribeSchema.safeParse(body);
         if (!parsed.success) return validationError(res, parsed.error);
-        const { subscription, device } = parsed.data;
-        const values = { clerkUserId: userId, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth, device };
-        await db
-            .insert(pushSubscriptions)
-            .values({ id: crypto.randomUUID(), endpoint: subscription.endpoint, ...values })
-            .onConflictDoUpdate({ target: [pushSubscriptions.businessId, pushSubscriptions.endpoint], set: values });
+        await saveDevice(db, { clerkUserId: userId, customerId: null }, parsed.data);
         return sendJson(res, 200, await alertsInfo(db));
     }
 
@@ -1546,14 +1533,16 @@ async function handleAlerts(req: any, res: any, db: Db, access: BusinessAccess, 
         const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
         const id = typeof body.id === "string" ? body.id : "";
         if (!endpoint && !id) return sendJson(res, 400, { error: "Which device?" });
-        await db.delete(pushSubscriptions).where(endpoint ? eq(pushSubscriptions.endpoint, endpoint) : eq(pushSubscriptions.id, id));
+        await removeDevice(db, { customerId: null }, endpoint ? { endpoint } : { id });
         return sendJson(res, 200, await alertsInfo(db));
     }
 
     if (req.method === "POST" && action === "test") {
         // A test goes to this device only.
         const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
-        const [device] = endpoint ? await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)) : [];
+        const [device] = endpoint
+            ? await db.select().from(pushSubscriptions).where(and(eq(pushSubscriptions.endpoint, endpoint), ownerDevices))
+            : [];
         await sendAlert(
             db,
             access.business,

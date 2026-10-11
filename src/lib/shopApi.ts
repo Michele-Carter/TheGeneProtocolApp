@@ -1,6 +1,7 @@
 import type { CustomerDetails, ShippingAddress } from "../../shared/customers";
 import type { CartLine, CustomerNotification, ShopOrder, ShopProduct } from "../../shared/shop";
 import { businessHeaders } from "./business";
+import type { PushSubscriptionData } from "./orderAlerts";
 
 // Calls made by signed-in customers (api/shop). The server only ever returns the caller's own data.
 
@@ -54,7 +55,19 @@ export const shopApi = {
     shopFetch<{ unread: number; items: CustomerNotification[] }>("notifications", { method: "GET" }, t),
   markNotificationsRead: (t: GetToken) =>
     shopFetch<{ success: true }>("notifications?action=read", { method: "POST", body: "{}" }, t),
+
+  // Phone/computer notifications for the customer's order updates (src/lib/customerNotifications.ts).
+  pushInfo: (t: GetToken) => shopFetch<PushInfo>("push", { method: "GET" }, t),
+  subscribePush: (subscription: PushSubscriptionData, device: string, t: GetToken) =>
+    shopFetch<PushInfo>("push?action=subscribe", { method: "POST", body: JSON.stringify({ subscription, device }) }, t),
+  unsubscribePush: (endpoint: string, t: GetToken) =>
+    shopFetch<PushInfo>("push?action=unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }, t),
 };
+
+export interface PushInfo {
+  pushKey: string | null; // null until notifications are set up on the server
+  endpoints: string[]; // the customer's devices that get notifications
+}
 
 export const money = (value: number) =>
   `$${value.toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

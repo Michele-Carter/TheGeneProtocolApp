@@ -233,13 +233,15 @@ export const notifications = pgTable(
   (t) => [index("notifications_customer_idx").on(t.customerId, t.createdAt)]
 );
 
-// A phone or computer the business owner turned new-order notifications on for (scripts/order-alerts.sql).
+// A phone or computer that gets notifications (scripts/order-alerts.sql): the owner's (new orders) or a
+// customer's (their order updates).
 export const pushSubscriptions = pgTable(
   "push_subscriptions",
   {
     id: text("id").primaryKey(),
     businessId: businessId(),
     clerkUserId: text("clerk_user_id").notNull(),
+    customerId: text("customer_id"), // set for a customer's device; empty for the owner's
     endpoint: text("endpoint").notNull(),
     p256dh: text("p256dh").notNull(),
     auth: text("auth").notNull(),

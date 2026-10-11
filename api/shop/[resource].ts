@@ -2,10 +2,10 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
 import { serveAsBusiness, type BusinessRequest, type Db } from "../_lib/business.js";
-import { alertNewOrder } from "../_lib/orderAlerts.js";
+import { alertNewOrder, pushKey, removeDevice, saveDevice, subscribeSchema } from "../_lib/orderAlerts.js";
 import { customerForUser } from "../_lib/customers.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
-import { appSettings, customers, notifications, sales, shopOrders } from "../_lib/schema.js";
+import { appSettings, customers, notifications, pushSubscriptions, sales, shopOrders } from "../_lib/schema.js";
 import { loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import { isAddressComplete, toAddress } from "../../shared/customers.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
@@ -30,6 +30,8 @@ import {
 //   POST /api/shop/orders?id=&action=paid     tell the owner they've paid { reference }
 //   GET  /api/shop/notifications              latest notifications + unread count
 //   POST /api/shop/notifications?action=read  mark them all read
+//   GET  /api/shop/push                       phone/computer notifications: the key + the caller's devices
+//   POST /api/shop/push?action=subscribe { subscription, device }   ?action=unsubscribe { endpoint }
 
 type CustomerRow = typeof customers.$inferSelect;
 
@@ -304,6 +306,40 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+// The customer's own phones/computers that get their order updates (api/_lib/orderAlerts.ts).
+async function handlePush(req: any, res: any, db: Db, userId: string) {
+    const customer = await customerForUser(db, userId);
+    const info = async () => {
+        const devices = await db
+            .select({ endpoint: pushSubscriptions.endpoint })
+            .from(pushSubscriptions)
+            .where(eq(pushSubscriptions.customerId, customer.id));
+        return { pushKey: pushKey(), endpoints: devices.map((d) => d.endpoint) };
+    };
+    if (req.method === "GET") return sendJson(res, 200, await info());
+
+    let body: any;
+    try {
+        body = (await parseJsonBody(req)) ?? {};
+    } catch {
+        return sendJson(res, 400, { error: "Invalid JSON body" });
+    }
+    if (req.method === "POST" && req.query?.action === "subscribe") {
+        const parsed = subscribeSchema.safeParse(body);
+        if (!parsed.success) return sendJson(res, 400, { error: "That device couldn't be set up for notifications." });
+        await saveDevice(db, { clerkUserId: userId, customerId: customer.id }, parsed.data);
+        return sendJson(res, 200, await info());
+    }
+    if (req.method === "POST" && req.query?.action === "unsubscribe") {
+        const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
+        if (!endpoint) return sendJson(res, 400, { error: "Which device?" });
+        await removeDevice(db, { customerId: customer.id }, { endpoint });
+        return sendJson(res, 200, await info());
+    }
+    res.setHeader("Allow", "GET, POST");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
 async function loadPaymentDetails(db: Db): Promise<PaymentDetails> {
     const [row] = await db.select().from(appSettings).where(eq(appSettings.key, PAYMENT_DETAILS_KEY));
     return toPaymentDetails(row?.value);
@@ -369,6 +405,8 @@ export async function handleShopRequest(req: any, res: any, userId: string) {
                     return await handleOrders(req, res, db, userId, request);
                 case "notifications":
                     return await handleNotifications(req, res, db, userId);
+                case "push":
+                    return await handlePush(req, res, db, userId);
                 default:
                     return sendJson(res, 404, { error: "Not found" });
             }
