@@ -9,7 +9,7 @@ import type { Cart } from "../../hooks/useCart";
 import AddressFields from "../AddressFields";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
-import { ProductImage, QtyStepper, shopPrimary, shopSecondary, variantName } from "./parts";
+import { PREORDER_NOTE, ProductImage, QtyStepper, shopPrimary, shopSecondary, variantName } from "./parts";
 
 interface LineView {
   key: string;
@@ -171,11 +171,10 @@ export default function CartPage({
                 {line.variant && line.qty > line.variant.maxQty && (
                   <p className="flex items-center gap-1.5 text-xs text-amber-300">
                     <AlertTriangle size={12} />
-                    {line.variant.maxQty === 0
-                      ? "Now sold out - please remove it."
-                      : `Only ${line.variant.maxQty} available - please reduce the quantity.`}
+                    {`At most ${line.variant.maxQty} per order - please reduce the quantity.`}
                   </p>
                 )}
+                {line.variant?.stock === "preorder" && <p className="text-xs text-sky-300">{PREORDER_NOTE}</p>}
               </div>
             </div>
           ))}

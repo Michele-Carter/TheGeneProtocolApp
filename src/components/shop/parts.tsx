@@ -1,5 +1,5 @@
 import React from "react";
-import { Minus, Package, Plus } from "lucide-react";
+import { CheckCircle2, Minus, Package, Plus } from "lucide-react";
 import type { ShopProduct, ShopVariant, StockLevel } from "../../../shared/shop";
 import { money } from "../../lib/shopApi";
 
@@ -11,7 +11,7 @@ export const shopSecondary = `${shopButton} border-slate-700 text-slate-200 hove
 
 // Compact versions for the product cards in the shop grid.
 const cardButton =
-  "inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-[11px] leading-4 font-black border whitespace-nowrap transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
+  "inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] leading-4 font-black border whitespace-nowrap transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
 export const cardPrimary = `${cardButton} theme-keep-bg border-gold-500 bg-gold-500 text-slate-950 hover:bg-gold-400 hover:border-gold-400`;
 export const cardSecondary = `${cardButton} border-slate-700 text-slate-300`;
 
@@ -21,13 +21,42 @@ export function StockBadge({ stock }: { stock: StockLevel }) {
       ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
       : stock === "low"
         ? "text-amber-300 bg-amber-500/10 border-amber-500/30"
-        : "text-slate-400 bg-slate-800/60 border-slate-700";
+        : "text-sky-300 bg-sky-500/10 border-sky-500/30";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide ${style}`}>
-      {stock === "in" ? "In stock" : stock === "low" ? "Low stock" : "Out of stock"}
+      {stock === "in" ? "In stock" : stock === "low" ? "Low stock" : "Pre-order"}
     </span>
   );
 }
+
+// Under a pre-order: what happens next.
+export const PREORDER_NOTE = "Pre-order - we'll confirm your order once it arrives.";
+
+// The certificate of analysis button that sits on a product photo. With a url it opens the COA (image, PDF or
+// the lab's page) in a new tab; with onClick it does that instead (e.g. go to the product to pick a size).
+const coaPill =
+  "absolute z-10 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-600 bg-slate-950/85 text-[10px] font-black uppercase tracking-wide text-white shadow-lg hover:border-gold-500/70 transition cursor-pointer";
+
+export function CoaButton({ url, onClick, className = "top-2 left-2" }: { url?: string; onClick?: () => void; className?: string }) {
+  const content = (
+    <>
+      <CheckCircle2 size={12} className="text-emerald-400" /> View COA
+    </>
+  );
+  return url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className={`${coaPill} ${className}`} onClick={(e) => e.stopPropagation()}>
+      {content}
+    </a>
+  ) : (
+    <button type="button" className={`${coaPill} ${className}`} onClick={onClick}>
+      {content}
+    </button>
+  );
+}
+
+// The different COAs among a product's sizes.
+export const productCoas = (product: ShopProduct) =>
+  Array.from(new Set(product.variants.map((v) => v.coaUrl).filter((u): u is string => Boolean(u))));
 
 // Product photos have white backgrounds, so they sit on a white panel.
 export function ProductImage({ src, alt, className = "" }: { src: string | undefined; alt: string; className?: string }) {
@@ -82,7 +111,7 @@ export function productStock(product: ShopProduct): StockLevel {
   const levels = product.variants.map((v) => v.stock);
   if (levels.includes("in")) return "in";
   if (levels.includes("low")) return "low";
-  return "out";
+  return "preorder";
 }
 
 export const variantName = (product: ShopProduct, variant: ShopVariant) =>

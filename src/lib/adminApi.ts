@@ -100,6 +100,7 @@ export interface ShopOrderSummary {
   customerName: string;
   customerEmail: string;
   units: number;
+  preorder: boolean; // something was ordered beyond the stock - confirm once it arrives
   subtotalNzd: number;
   shippingNzd: number | null;
   saleId: string | null; // the customer order it became, once confirmed
@@ -136,6 +137,7 @@ export interface InvItem {
   shopDescription: string;
   shopSection: ItemShopSection | null; // shop tab; null = by kind (itemSection)
   images: string[]; // first is the main image
+  coaUrl: string | null; // certificate of analysis: an uploaded image/PDF or the testing lab's page
   createdAt: string;
   updatedAt: string;
 }
@@ -236,6 +238,12 @@ export const adminApi = {
   me: (t: GetToken) => adminFetch<BusinessContext>("me", { method: "GET" }, t),
 
   listItems: (t: GetToken) => adminFetch<InvItem[]>("items", { method: "GET" }, t),
+  // Certificate of analysis for a product size: upload an image/PDF (as a data URL), set a lab link, or remove it.
+  uploadCoa: (id: string, dataUrl: string, t: GetToken) =>
+    adminFetch<InvItem>(`coa?id=${q(id)}`, { method: "POST", body: JSON.stringify({ dataUrl }) }, t),
+  setCoaLink: (id: string, url: string, t: GetToken) =>
+    adminFetch<InvItem>(`coa?id=${q(id)}`, { method: "PUT", body: JSON.stringify({ url }) }, t),
+  removeCoa: (id: string, t: GetToken) => adminFetch<InvItem>(`coa?id=${q(id)}`, { method: "DELETE" }, t),
   updateItem: (id: string, patch: ItemPatch, t: GetToken) =>
     adminFetch<InvItem>(`items?id=${q(id)}`, { method: "PATCH", body: JSON.stringify(patch) }, t),
 

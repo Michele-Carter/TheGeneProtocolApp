@@ -250,20 +250,13 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
                     });
                 }
 
+                // More than is in stock is a pre-order: the order still goes through, and the owner confirms it
+                // once the stock has arrived.
                 for (const [itemId, qty] of orderDemand(lines)) {
-                    const left = Math.max(0, available.get(itemId) ?? 0);
-                    if (qty <= left) continue;
-                    const line =
-                        lines.find((l) => l.kind === "item" && l.refId === itemId) ??
-                        lines.find((l) => l.components?.some((c) => c.itemId === itemId))!;
-                    const name = [line.name, line.variant].filter(Boolean).join(" ");
-                    throw new OrderError(
-                        line.kind === "item"
-                            ? left === 0
-                                ? `Sorry, ${name} has just sold out. Please remove it from your cart.`
-                                : `Sorry, there ${left === 1 ? "is" : "are"} only ${left} of ${name} available right now. Please reduce the quantity in your cart.`
-                            : `Sorry, there isn't enough stock for ${name} right now. Please reduce the quantity or remove it from your cart.`
-                    );
+                    if (qty <= Math.max(0, available.get(itemId) ?? 0)) continue;
+                    for (const line of lines) {
+                        if (line.refId === itemId || line.components?.some((c) => c.itemId === itemId)) line.preorder = true;
+                    }
                 }
 
                 const subtotal = Math.round(lines.reduce((t, l) => t + l.qty * l.unitPriceNzd, 0) * 100) / 100;

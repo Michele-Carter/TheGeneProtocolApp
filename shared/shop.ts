@@ -57,8 +57,9 @@ export function itemSection(item: { kind: string; shopSection: string | null }):
   return item.kind === "supply" ? "supplies" : "peptides";
 }
 
-// Customers see a label, not the exact count.
-export type StockLevel = "in" | "low" | "out";
+// Customers see a label, not the exact count. Nothing is ever "out of stock": with none on hand it's a
+// "preorder" - it can still be ordered, and the owner confirms it once the stock arrives.
+export type StockLevel = "in" | "low" | "preorder";
 
 // One buyable option: a size of a peptide (an inventory item) or a bundle.
 export interface ShopVariant {
@@ -68,6 +69,7 @@ export interface ShopVariant {
   stock: StockLevel;
   maxQty: number; // most that can be ordered right now
   images: string[];
+  coaUrl: string | null; // certificate of analysis: an image, a PDF, or the testing lab's page
 }
 
 export interface ShopProduct {
@@ -91,7 +93,7 @@ export interface CartLine {
 export const LOW_STOCK_DEFAULT = 3;
 
 export function stockLevel(available: number, reorderLevel: number | null): StockLevel {
-  if (available <= 0) return "out";
+  if (available <= 0) return "preorder";
   return available <= (reorderLevel ?? LOW_STOCK_DEFAULT) ? "low" : "in";
 }
 
@@ -117,6 +119,7 @@ export interface ShopOrderLine {
   qty: number;
   unitPriceNzd: number; // fixed when the order was sent
   components?: { itemId: string; qty: number }[]; // bundles: per one bundle, as it was when ordered
+  preorder?: boolean; // more than was in stock when it was ordered - confirmed once the stock arrives
 }
 
 export interface ShopOrder {
@@ -198,6 +201,8 @@ export interface CustomerNotification {
 // Product images are resized in the browser before upload, so this is a generous ceiling.
 export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 export const MAX_IMAGES_PER_PRODUCT = 8;
+// A COA file (image or PDF) - bigger ones can be shared as a link instead.
+export const MAX_COA_BYTES = 3 * 1024 * 1024;
 
 // ---- New-order notifications for the business owner (Admin -> Business) ----
 

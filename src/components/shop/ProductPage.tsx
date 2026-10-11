@@ -3,7 +3,18 @@ import { ArrowLeft, Check, ShoppingCart } from "lucide-react";
 import type { ShopProduct } from "../../../shared/shop";
 import { money } from "../../lib/shopApi";
 import type { Cart } from "../../hooks/useCart";
-import { ProductImage, QtyStepper, StockBadge, priceRange, productStock, shopPrimary, shopSecondary } from "./parts";
+import {
+  CoaButton,
+  PREORDER_NOTE,
+  ProductImage,
+  QtyStepper,
+  StockBadge,
+  priceRange,
+  productCoas,
+  productStock,
+  shopPrimary,
+  shopSecondary,
+} from "./parts";
 
 export default function ProductPage({
   product,
@@ -22,6 +33,9 @@ export default function ProductPage({
   // Like most shops, a product with several sizes starts on "Choose an option".
   const [variantKey, setVariantKey] = useState<string>(single ? product.variants[0].key : "");
   const variant = product.variants.find((v) => v.key === variantKey) ?? null;
+  // The chosen size's COA - or, before a size is chosen, the product's COA if all its sizes share one.
+  const coas = productCoas(product);
+  const coaUrl = variant ? variant.coaUrl : coas.length === 1 ? coas[0] : null;
   const gallery = variant && variant.images.length > 0 ? variant.images : product.images;
   const [imageIndex, setImageIndex] = useState(0);
   const [qty, setQty] = useState(1);
@@ -54,7 +68,10 @@ export default function ProductPage({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12 items-start">
         <div className="space-y-3">
-          <ProductImage src={gallery[imageIndex] ?? gallery[0]} alt={product.name} className="aspect-square border border-slate-800" />
+          <div className="relative">
+            <ProductImage src={gallery[imageIndex] ?? gallery[0]} alt={product.name} className="aspect-square border border-slate-800" />
+            {coaUrl && <CoaButton url={coaUrl} className="top-3 left-3" />}
+          </div>
           {gallery.length > 1 && (
             <div className="flex flex-wrap gap-2">
               {gallery.map((url, i) => (
@@ -110,9 +127,9 @@ export default function ProductPage({
                 >
                   <option value="">Choose an option</option>
                   {product.variants.map((v) => (
-                    <option key={v.key} value={v.key} disabled={v.stock === "out"}>
+                    <option key={v.key} value={v.key}>
                       {v.label}
-                      {v.stock === "out" ? " - out of stock" : ""}
+                      {v.stock === "preorder" ? " - pre-order" : ""}
                     </option>
                   ))}
                 </select>
@@ -129,12 +146,10 @@ export default function ProductPage({
             <div className="flex flex-wrap items-center gap-3">
               <QtyStepper value={qty} max={Math.max(1, canAdd)} onChange={setQty} disabled={!variant || canAdd === 0} />
               <button className={`${shopPrimary} h-10 px-6`} onClick={add} disabled={!variant || canAdd === 0}>
-                {variant && variant.stock === "out" ? "Sold out" : "Add to cart"}
+                {variant && variant.stock === "preorder" ? "Pre-order" : "Add to cart"}
               </button>
             </div>
-            {variant && variant.stock !== "out" && canAdd === 0 && (
-              <p className="text-xs text-amber-300">You have all the available stock of this in your cart.</p>
-            )}
+            {variant && variant.stock === "preorder" && <p className="text-xs text-sky-300">{PREORDER_NOTE}</p>}
 
             {added && (
               <div className="flex flex-wrap items-center gap-3 text-sm text-emerald-400">

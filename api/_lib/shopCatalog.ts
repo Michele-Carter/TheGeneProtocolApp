@@ -106,8 +106,10 @@ export async function loadCatalog(db: Db | Tx) {
           label: item.variant,
           priceNzd: item.sellPriceNzd!,
           stock: stockLevel(units, item.reorderLevel),
-          maxQty: Math.min(units, MAX_PER_LINE),
+          // Not limited by stock: beyond it, it's a pre-order.
+          maxQty: MAX_PER_LINE,
           images: item.images,
+          coaUrl: item.coaUrl,
         };
       }),
     });
@@ -171,8 +173,9 @@ export async function loadCatalog(db: Db | Tx) {
           label: option.label,
           priceNzd: bundle.priceNzd!,
           stock: stockLevel(units, null),
-          maxQty: Math.min(units, MAX_PER_LINE),
+          maxQty: MAX_PER_LINE,
           images: [],
+          coaUrl: null,
         };
       }),
     });
