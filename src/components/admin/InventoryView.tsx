@@ -18,6 +18,7 @@ import StyledDatePicker from "../StyledDatePicker";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import BundlesView from "./BundlesView";
 import AddStockPanel from "./AddStockPanel";
+import CoaSection from "./CoaSection";
 
 type KindFilter = "all" | "peptide" | "supply";
 type View = "items" | "bundles";
@@ -415,6 +416,9 @@ function ShopCard({
               onSaved({ ...item, images: next });
             }}
           />
+          <div className="pt-3">
+            <CoaSection item={item} onSaved={(updated) => onSaved({ ...item, coaUrl: updated.coaUrl })} />
+          </div>
         </div>
       </div>
     </Card>

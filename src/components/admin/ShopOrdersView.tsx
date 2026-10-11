@@ -162,7 +162,10 @@ export default function ShopOrdersView({
                   <span className="block text-sm font-bold text-white truncate">{order.customerName}</span>
                   <span className="block text-[10px] text-slate-500 truncate">{order.customerEmail || "No email"}</span>
                 </span>
-                <span className="text-xs text-slate-400 tabular-nums">{order.units} units</span>
+                <span className="text-xs text-slate-400 tabular-nums">
+                  {order.units} units
+                  {order.preorder && <span className="block text-[10px] font-bold uppercase tracking-wide text-sky-300">Pre-order</span>}
+                </span>
                 <span className="text-xs tabular-nums text-slate-200 font-semibold">{nzd(order.subtotalNzd)}</span>
                 <StatusDot tone={rowStatus(order).tone}>{rowStatus(order).label}</StatusDot>
               </div>
@@ -334,6 +337,11 @@ function OrderReview({
                           <td className="py-2 pr-3">
                             <div className="font-bold text-slate-100">
                               {line.name} <span className="text-slate-400 font-semibold">{line.variant}</span>
+                              {line.preorder && (
+                                <span className="ml-1.5 inline-flex px-1.5 py-px rounded-full border border-sky-500/30 bg-sky-500/10 text-[9px] font-bold uppercase tracking-wide text-sky-300 align-middle">
+                                  Pre-order
+                                </span>
+                              )}
                             </div>
                             {line.kind === "bundle" && <div className="text-[10px] text-slate-500">Bundle</div>}
                             {editable && q !== line.qty && (
@@ -464,6 +472,12 @@ function OrderReview({
                       {busy === "decline" ? <Spinner size={13} /> : <XCircle size={13} />} Decline
                     </button>
                   </div>
+                  {order.preorder && (
+                    <p className="text-[11px] text-sky-300">
+                      This is a pre-order: confirm it once you've received the stock (until then it shows as not enough
+                      stock). It stays waiting here in the meantime.
+                    </p>
+                  )}
                   <p className="text-[11px] text-slate-500">
                     Confirming adds it to Customer Orders, where you record payment and shipping and complete it as usual.
                   </p>

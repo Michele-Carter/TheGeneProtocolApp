@@ -17,6 +17,7 @@ import { calculateOrder, isExpenseLine, type OrderInput } from "../../shared/lan
 import { EXPENSE_CATEGORIES, emptySale, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
 import { expenseSummary, expenseTotals } from "../../shared/expenses.js";
 import {
+    MAX_COA_BYTES,
     MAX_IMAGE_BYTES,
     MAX_IMAGES_PER_PRODUCT,
     PAYMENT_DETAILS_KEY,
@@ -80,6 +81,7 @@ import type { OrderAlertsInfo } from "../../shared/shop.js";
 //   POST   /api/admin/shop-orders?id=&action=decline   { message }
 //   POST   /api/admin/shop-orders?id=&action=mark-paid
 //   GET    /api/admin/settings              PUT /api/admin/settings   { paymentDetails }
+//   POST   /api/admin/coa?id=  { dataUrl }  (image/PDF)   PUT /api/admin/coa?id=  { url }  (lab link)   DELETE
 //   GET    /api/admin/alerts                                    (new-order notifications)
 //   POST   /api/admin/alerts?action=subscribe { subscription, device }   ?action=unsubscribe { endpoint }
 //   POST   /api/admin/alerts?action=test { endpoint? }
@@ -1201,6 +1203,7 @@ function shopOrderSummary(
         customerName: customer?.name ?? "Unknown customer",
         customerEmail: customer?.email ?? "",
         units: row.lines.reduce((t, l) => t + l.qty, 0),
+        preorder: row.lines.some((l) => l.preorder),
         subtotalNzd: row.subtotalNzd,
         shippingNzd: row.shippingNzd,
         saleId: row.saleId,
@@ -1842,6 +1845,72 @@ async function handleImages(req: any, res: any, db: Db, businessId: string) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+// ---- Certificate of analysis (COA) for a product size ----
+
+const COA_DATA_URL = /^data:(image\/(?:webp|jpeg|png)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/;
+const coaLinkSchema = z.object({
+    url: z.string().trim().url("Enter the full link, starting with https://").refine((u) => /^https?:\/\//i.test(u), "Enter a web link"),
+});
+
+// Only files this app stored are deleted - never a lab's link.
+const storedFile = (url: string | null) => Boolean(url && /\.blob\.vercel-storage\.com\//.test(url));
+
+async function handleCoa(req: any, res: any, db: Db, businessId: string) {
+    const id = typeof req.query?.id === "string" ? req.query.id : null;
+    if (!id) return sendJson(res, 400, { error: "Which product?" });
+    const [item] = await db.select().from(invItems).where(eq(invItems.id, id));
+    if (!item) return sendJson(res, 404, { error: "Item not found" });
+
+    const setCoa = async (coaUrl: string | null) => {
+        const [updated] = await db
+            .update(invItems)
+            .set({ coaUrl, updatedAt: new Date() })
+            .where(eq(invItems.id, id))
+            .returning();
+        if (storedFile(item.coaUrl) && item.coaUrl !== coaUrl) await deleteBlobs([item.coaUrl!]);
+        return sendJson(res, 200, updated);
+    };
+
+    if (req.method === "DELETE") return setCoa(null);
+
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+
+    if (req.method === "PUT") {
+        const parsed = coaLinkSchema.safeParse(read.body);
+        if (!parsed.success) return sendJson(res, 400, { error: parsed.error.issues[0]?.message ?? "Enter a web link" });
+        return setCoa(parsed.data.url);
+    }
+
+    if (req.method === "POST") {
+        if (!process.env.BLOB_READ_WRITE_TOKEN) {
+            return sendJson(res, 503, { error: "File storage isn't set up yet - add the COA as a link instead." });
+        }
+        const match = COA_DATA_URL.exec(String((read.body as any)?.dataUrl ?? ""));
+        if (!match) return sendJson(res, 400, { error: "A COA must be a PDF or an image (JPEG, PNG or WebP)." });
+        const bytes = Buffer.from(match[2], "base64");
+        if (bytes.length > MAX_COA_BYTES) {
+            return sendJson(res, 413, { error: "That file is too large (3 MB at most) - add it as a link instead." });
+        }
+        const ext = match[1] === "application/pdf" ? "pdf" : match[1] === "image/jpeg" ? "jpg" : match[1].slice("image/".length);
+        let blob;
+        try {
+            blob = await put(`shop/${businessId}/coa/${id.replace(/[^\w-]/g, "_")}/${crypto.randomUUID()}.${ext}`, bytes, {
+                access: "public",
+                contentType: match[1],
+                token: process.env.BLOB_READ_WRITE_TOKEN,
+            });
+        } catch (error) {
+            console.error("COA upload failed:", error);
+            return sendJson(res, 502, { error: `File storage refused the upload: ${(error as Error).message}` });
+        }
+        return setCoa(blob.url);
+    }
+
+    res.setHeader("Allow", "POST, PUT, DELETE");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
 export default async function handler(req: any, res: any) {
     const userId = await requireAuthUserId(req);
     if (!userId) {
@@ -1901,6 +1970,8 @@ export async function handleAdminRequest(req: any, res: any, userId: string) {
                     return await handleSupplierCatalog(req, res, db);
                 case "alerts":
                     return await handleAlerts(req, res, db, access, userId);
+                case "coa":
+                    return await handleCoa(req, res, db, access.business.id);
                 default:
                     return sendJson(res, 404, { error: "Not found" });
             }

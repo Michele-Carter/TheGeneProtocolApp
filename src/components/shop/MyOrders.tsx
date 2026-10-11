@@ -129,6 +129,11 @@ export default function MyOrders({ onShop }: { onShop: () => void }) {
                 <div key={line.key} className="flex justify-between gap-3 text-sm">
                   <span className="text-slate-300">
                     <span className="text-slate-500 tabular-nums">{line.qty}×</span> {[line.name, line.variant].filter(Boolean).join(" ")}
+                    {line.preorder && (
+                      <span className="ml-1.5 inline-flex px-1.5 py-px rounded-full border border-sky-500/30 bg-sky-500/10 text-[9px] font-bold uppercase tracking-wide text-sky-300 align-middle">
+                        Pre-order
+                      </span>
+                    )}
                   </span>
                   <span className="text-slate-200 tabular-nums">{money(line.qty * line.unitPriceNzd)}</span>
                 </div>

@@ -10,7 +10,7 @@ import LoadingSpinner from "../LoadingSpinner";
 import ProductPage from "./ProductPage";
 import CartPage from "./CartPage";
 import OrderSent from "./OrderSent";
-import { ProductImage, StockBadge, priceRange, productStock, cardPrimary, cardSecondary, shopSecondary } from "./parts";
+import { CoaButton, ProductImage, StockBadge, priceRange, productStock, productCoas, cardPrimary, shopSecondary } from "./parts";
 
 type Page = { name: "list" } | { name: "product"; id: string } | { name: "cart" } | { name: "sent"; order: ShopOrder };
 
@@ -220,11 +220,15 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
           const stock = productStock(product);
           const single = product.variants.length === 1;
           const sizes = product.variants.map((v) => v.label).filter(Boolean);
+          const coas = productCoas(product);
           return (
             <div
               key={product.id}
-              className="group bg-slate-900/40 border border-slate-800 rounded-2xl p-4 flex flex-col gap-4 hover:border-slate-700 transition"
+              className="relative group bg-slate-900/40 border border-slate-800 rounded-2xl p-4 flex flex-col gap-4 hover:border-slate-700 transition"
             >
+              {/* One COA opens straight away; different COAs per size: pick the size on the product page. */}
+              {coas.length === 1 && <CoaButton url={coas[0]} className="top-6 left-6" />}
+              {coas.length > 1 && <CoaButton onClick={() => go({ name: "product", id: product.id })} className="top-6 left-6" />}
               <button
                 onClick={() => go({ name: "product", id: product.id })}
                 className="text-left cursor-pointer space-y-4"
@@ -241,39 +245,39 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                   </p>
                 </div>
               </button>
-              <div className="mt-auto flex items-end justify-between gap-2">
+              <div className="mt-auto flex items-end justify-between gap-1.5">
                 <div className="space-y-1.5">
                   <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">{priceRange(product.variants)}</div>
                   <StockBadge stock={stock} />
                 </div>
-                {stock === "out" ? (
-                  <button className={cardSecondary} disabled>
-                    Sold out
-                  </button>
-                ) : single ? (
-                  <button
-                    className={cardPrimary}
-                    onClick={() => quickAdd(product)}
-                    disabled={cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty}
-                    title={
-                      cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty
-                        ? "You have all available stock of this in your cart"
-                        : undefined
-                    }
-                  >
-                    {justAdded === product.id ? (
-                      <>
-                        <Check size={13} /> Added
-                      </>
-                    ) : (
-                      "Add to cart"
-                    )}
-                  </button>
-                ) : (
-                  <button className={cardPrimary} onClick={() => go({ name: "product", id: product.id })}>
-                    Select options
-                  </button>
-                )}
+                <div className="flex-shrink-0">
+                  {single ? (
+                    <button
+                      className={cardPrimary}
+                      onClick={() => quickAdd(product)}
+                      disabled={cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty}
+                      title={
+                        cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty
+                          ? "That's the most you can order at once"
+                          : undefined
+                      }
+                    >
+                      {justAdded === product.id ? (
+                        <>
+                          <Check size={13} /> Added
+                        </>
+                      ) : stock === "preorder" ? (
+                        "Pre-order"
+                      ) : (
+                        "Add to cart"
+                      )}
+                    </button>
+                  ) : (
+                    <button className={cardPrimary} onClick={() => go({ name: "product", id: product.id })}>
+                      Select options
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
