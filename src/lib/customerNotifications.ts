@@ -32,13 +32,13 @@ function rememberOff(off: boolean) {
     }
 }
 
-export type NotificationState = "unavailable" | "needs-home-screen" | "blocked" | "on" | "off";
+export type NotificationState = "unsupported" | "not-set-up" | "needs-home-screen" | "blocked" | "on" | "off";
 
 export async function customerNotificationState(getToken: GetToken): Promise<NotificationState> {
-    if (!pushSupported()) return "unavailable";
+    if (!pushSupported()) return "unsupported";
     if (needsHomeScreen()) return "needs-home-screen";
     const info = await shopApi.pushInfo(getToken);
-    if (!info.pushKey) return "unavailable";
+    if (!info.pushKey) return "not-set-up";
     if (Notification.permission === "denied") return "blocked";
     const subscription = await currentSubscription();
     return subscription && info.endpoints.includes(subscription.endpoint) ? "on" : "off";
