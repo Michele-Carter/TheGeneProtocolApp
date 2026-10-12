@@ -72,17 +72,21 @@ export default function NotificationBell({
 
       {open && (
         <div
-          className={`absolute z-[90] w-[min(20rem,calc(100vw-2rem))] bg-slate-950 border border-slate-800 rounded-xl shadow-2xl overflow-hidden ${
-            placement === "up" ? "bottom-full mb-2 left-0" : "top-full mt-2 right-0"
+          // The app's card grey (not near-black). Opening down (the phone header), it spans the screen with an even
+          // gap each side - pinned to the bell it ran off the left edge.
+          className={`z-[90] bg-[#232329] border border-[#2B2B31] rounded-xl shadow-2xl overflow-hidden ${
+            placement === "up"
+              ? "absolute w-[min(20rem,calc(100vw-2rem))] bottom-full mb-2 left-0"
+              : "fixed left-4 right-4 top-[4.75rem] sm:left-auto sm:w-[22rem]"
           }`}
         >
-          <div className="px-4 py-2.5 border-b border-slate-800 text-[11px] font-black uppercase tracking-widest text-gold-400">
+          <div className="px-4 py-2.5 border-b border-[#2B2B31] text-[11px] font-black uppercase tracking-widest text-gold-400">
             Notifications
           </div>
           {items.length === 0 ? (
             <p className="px-4 py-6 text-xs text-slate-500 text-center">Nothing yet - updates on your orders appear here.</p>
           ) : (
-            <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/70">
+            <div className="max-h-[min(20rem,60vh)] overflow-y-auto divide-y divide-[#2B2B31]">
               {items.map((n) => (
                 <button
                   key={n.id}
@@ -90,7 +94,7 @@ export default function NotificationBell({
                     setOpen(false);
                     onSelect();
                   }}
-                  className={`w-full text-left px-4 py-3 flex gap-2.5 hover:bg-slate-900 transition cursor-pointer ${
+                  className={`w-full text-left px-4 py-3 flex gap-2.5 hover:bg-[#2B2B31] transition cursor-pointer ${
                     highlight.has(n.id) ? "bg-gold-500/5" : ""
                   }`}
                 >
@@ -98,7 +102,7 @@ export default function NotificationBell({
                   <span className="min-w-0">
                     <span className="block text-xs font-bold text-white">{n.title}</span>
                     {n.body && <span className="block text-[11px] text-slate-400 whitespace-pre-line line-clamp-3">{n.body}</span>}
-                    <span className="block text-[10px] text-slate-600 mt-0.5">{when(n.createdAt)}</span>
+                    <span className="block text-[10px] text-slate-500 mt-0.5">{when(n.createdAt)}</span>
                   </span>
                 </button>
               ))}
