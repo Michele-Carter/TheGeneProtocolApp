@@ -17,12 +17,14 @@ export default function NotificationsCard() {
   const [state, setState] = useState<NotificationState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       setState(await customerNotificationState(getToken));
-    } catch {
-      setState("unavailable");
+      setLoadError(null);
+    } catch (e) {
+      setLoadError((e as Error).message || "Couldn't check notifications.");
     }
   }, [getToken]);
 
@@ -44,7 +46,7 @@ export default function NotificationsCard() {
     }
   };
 
-  if (state == null || state === "unavailable") return null;
+  if (state == null && !loadError) return null;
 
   return (
     <Card title="Notifications">
@@ -55,7 +57,20 @@ export default function NotificationsCard() {
         </p>
         <ErrorNote message={error} />
 
-        {state === "needs-home-screen" ? (
+        {loadError ? (
+          <div className="space-y-2">
+            <p className="text-xs text-slate-400">Couldn't check notifications on this device ({loadError}).</p>
+            <button className={secondaryButton} onClick={() => void load()}>
+              Try again
+            </button>
+          </div>
+        ) : state === "unsupported" ? (
+          <p className="text-xs text-slate-400">
+            This browser can't show notifications. Open this page in Chrome (or Safari on iPhone) to turn them on.
+          </p>
+        ) : state === "not-set-up" ? (
+          <p className="text-xs text-slate-400">Notifications aren't available yet - please check back later.</p>
+        ) : state === "needs-home-screen" ? (
           <div className="text-xs text-slate-300 space-y-1">
             <p className="font-semibold text-white">On iPhone, add this app to your home screen first:</p>
             <ol className="list-decimal pl-5 space-y-0.5 text-slate-400">
