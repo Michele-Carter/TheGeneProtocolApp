@@ -1960,6 +1960,8 @@ function businessDto({ business }: BusinessAccess): BusinessSettings {
         country: business.country,
         currency: business.currency,
         timeZone: business.timeZone,
+        contactEmail: business.contactEmail || business.ownerEmail,
+        customContactEmail: business.contactEmail,
     };
 }
 

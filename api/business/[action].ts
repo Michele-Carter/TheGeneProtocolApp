@@ -25,7 +25,7 @@ import { businessCountrySettings, countryInfo, isKnownTimeZone } from "../../sha
 //   POST   /api/business/sync           { sessionId? } after returning from Stripe: start the subscription with the
 //                                        card just saved (if it's allowed), then re-read it   { billing, problem }
 //   PATCH  /api/business/country        { country, timeZone? }  until the business records any money
-//   PATCH  /api/business/details        { name?, timeZone? }
+//   PATCH  /api/business/details        { name?, timeZone?, contactEmail? }
 //   POST   /api/business/logo           { dataUrl }      DELETE /api/business/logo
 // Everything except shop, manifest, slug, invite and create is for the business's owner, and works even when the subscription has
 // stopped (that's how they restart it).
@@ -88,15 +88,28 @@ async function publicShop(req: any, res: any) {
     const slug = String(req.query?.slug ?? "").trim().toLowerCase();
     const [row] = slug
         ? await getDb()
-              .select({ name: businesses.name, slug: businesses.slug, logoUrl: businesses.logoUrl })
+              .select({
+                  name: businesses.name,
+                  slug: businesses.slug,
+                  logoUrl: businesses.logoUrl,
+                  contactEmail: businesses.contactEmail,
+                  ownerEmail: businesses.ownerEmail,
+              })
               .from(businesses)
               .where(eq(businesses.slug, slug))
         : [];
     if (!row) return sendJson(res, 404, { error: "We couldn't find that shop. Please check the link.", code: "shop-not-found" });
+    const shop = {
+        name: row.name,
+        slug: row.slug,
+        logoUrl: row.logoUrl,
+        // For the shop's privacy notice: how its customers reach it.
+        contactEmail: row.contactEmail || row.ownerEmail,
+    };
     // Public and rarely changes: Vercel's edge keeps a copy so the sign-in page shows the shop straight away
     // (a renamed shop or new logo shows within about 5 minutes).
     res.setHeader("Cache-Control", "public, s-maxage=300, stale-while-revalidate=86400");
-    return sendJson(res, 200, row);
+    return sendJson(res, 200, shop);
 }
 
 // The "app" details a phone uses when someone adds the app to their home screen (needed on iPhone for
@@ -273,19 +286,27 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
             .object({
                 name: z.string().trim().min(2, "Enter your business name").max(80).optional(),
                 timeZone: z.string().trim().optional(),
+                contactEmail: z
+                    .union([z.string().trim().toLowerCase().email("That email address doesn't look right").max(200), z.literal("")])
+                    .optional(),
             })
             .safeParse(await parseJsonBody(req));
         if (!parsed.success) return sendJson(res, 400, { error: parsed.error.issues[0]?.message ?? "Please check your details" });
-        const { name, timeZone } = parsed.data;
+        const { name, timeZone, contactEmail } = parsed.data;
         if (timeZone !== undefined && !isKnownTimeZone(countryInfo(business.country), timeZone)) {
             return sendJson(res, 400, { error: "Choose one of your country's time zones" });
         }
         const [updated] = await db
             .update(businesses)
-            .set({ ...(name !== undefined ? { name } : {}), ...(timeZone !== undefined ? { timeZone } : {}), updatedAt: new Date() })
+            .set({
+                ...(name !== undefined ? { name } : {}),
+                ...(timeZone !== undefined ? { timeZone } : {}),
+                ...(contactEmail !== undefined ? { contactEmail } : {}),
+                updatedAt: new Date(),
+            })
             .where(eq(businesses.id, business.id))
             .returning();
-        return sendJson(res, 200, { name: updated.name, timeZone: updated.timeZone });
+        return sendJson(res, 200, { name: updated.name, timeZone: updated.timeZone, contactEmail: updated.contactEmail });
     }
 
     if (action === "logo" && (req.method === "POST" || req.method === "DELETE")) {

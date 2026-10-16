@@ -2,6 +2,7 @@ import { BrandedClerkProvider } from './lib/clerkBranding';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
+import LegalPage, { legalRoute } from './components/legal/LegalPages';
 import './index.css';
 
 document.documentElement.classList.remove('light');
@@ -62,10 +63,17 @@ const clerkAppearance = {
   },
 } as const;
 
+// The Privacy Policy, Terms and each shop's privacy notice are public pages - no sign-in.
+const legal = legalRoute(window.location.pathname);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrandedClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY} appearance={clerkAppearance}>
-      <App />
-    </BrandedClerkProvider>
+    {legal ? (
+      <LegalPage route={legal} />
+    ) : (
+      <BrandedClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY} appearance={clerkAppearance}>
+        <App />
+      </BrandedClerkProvider>
+    )}
   </StrictMode>,
 );

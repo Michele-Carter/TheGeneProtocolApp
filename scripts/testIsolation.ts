@@ -242,7 +242,11 @@ try {
   const ownerOther = await call(handleAdminRequest, OWNER_B, "GET", { resource: "me" }, undefined, { "x-business": "the-gene-protocol" });
   check("An owner opening someone else's shop link still only gets their own business", ownerOther.body?.business?.slug === TEST_SLUG && ownerLink.status === 200, ownerOther.body);
   const publicName = await business(STRANGER, "GET", "shop", undefined, { slug: TEST_SLUG });
-  check("A shop link shows only its name and logo, nothing else", publicName.status === 200 && Object.keys(publicName.body).sort().join() === "logoUrl,name,slug", publicName.body);
+  check(
+    "A shop link shows only its name, logo and customer contact email, nothing else",
+    publicName.status === 200 && Object.keys(publicName.body).sort().join() === "contactEmail,logoUrl,name,slug",
+    publicName.body
+  );
 
   console.log("\n-- Signing up a business");
   const tgpLibCount = (await sql`select count(*)::int n from peptide_library where business_id = 'tgp'`)[0].n;

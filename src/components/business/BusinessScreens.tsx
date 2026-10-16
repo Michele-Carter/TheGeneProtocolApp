@@ -221,7 +221,7 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
   let action: { label: string; where: "checkout" | "portal" } | null;
   if (billing.state === "needs-checkout" && billing.hadSubscription) {
     title = "Restart your subscription";
-    text = <p>It's {plan.label}. Your shop, customers and stock are all still here.</p>;
+    text = <p>It's {plan.label}. Your shop, customers and stock are kept for 30 days after a subscription ends.</p>;
     action = { label: "Restart subscription", where: "checkout" };
   } else if (billing.state === "needs-checkout") {
     title = "Start your free trial";
@@ -246,7 +246,7 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
     title = "Your subscription has ended";
     text = (
       <p>
-        Restart it to pick up where you left off - {plan.label}. Your shop, customers and stock are all still here.
+        Restart it within 30 days to pick up where you left off - {plan.label}. After 30 days your shop, customers and stock are deleted.
       </p>
     );
     action = { label: "Restart subscription", where: "checkout" };
@@ -568,6 +568,17 @@ export function StartBusinessScreen({
             </p>
           </>
         )}
+        <p className="text-center text-xs text-zinc-500">
+          By continuing you agree to the{" "}
+          <a href="/terms" target="_blank" rel="noreferrer" className="text-gold-400 hover:text-gold-300">
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a href="/privacy" target="_blank" rel="noreferrer" className="text-gold-400 hover:text-gold-300">
+            Privacy Policy
+          </a>
+          .
+        </p>
         <button className="w-full text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer" onClick={onCancel} disabled={busy}>
           Cancel
         </button>

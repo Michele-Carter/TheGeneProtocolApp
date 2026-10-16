@@ -6,6 +6,9 @@
     "regions": ["syd1"],
     "rewrites": [
         { "source": "/start", "destination": "/index.html" },
-        { "source": "/shop/:slug", "destination": "/index.html" }
+        { "source": "/shop/:slug", "destination": "/index.html" },
+        { "source": "/shop/:slug/privacy", "destination": "/index.html" },
+        { "source": "/privacy", "destination": "/index.html" },
+        { "source": "/terms", "destination": "/index.html" }
     ]
 }
