@@ -21,6 +21,7 @@ export const businesses = pgTable("businesses", {
   ownerEmail: text("owner_email").notNull().default(""),
   // Subscription (scripts/multi-business-4.sql), kept in step with Stripe by api/_lib/billing.ts.
   billingExempt: boolean("billing_exempt").notNull().default(false),
+  trialDays: integer("trial_days"), // its own free-trial length, from an invite link (null = the usual 14 days)
   stripeCustomerId: text("stripe_customer_id").unique(),
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionStatus: text("subscription_status"), // Stripe's: trialing, active, past_due, canceled...
@@ -29,6 +30,16 @@ export const businesses = pgTable("businesses", {
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Invite links for businesses that use PepBiz free (scripts/invites.sql): /start?invite=<code>, each used once.
+export const signupInvites = pgTable("signup_invites", {
+  code: text("code").primaryKey(),
+  note: text("note").notNull().default(""),
+  businessId: text("business_id"),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  trialDays: integer("trial_days").notNull().default(30), // the free trial it gives, in days
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // People who run a business. Customers live in customers, not here.

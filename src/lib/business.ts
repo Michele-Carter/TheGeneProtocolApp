@@ -7,6 +7,7 @@ import { signedInFetch } from "./signedInFetch";
 
 const SLUG_KEY = "peppal.business.v1";
 const START_KEY = "peppal.startBusiness.v1";
+const INVITE_KEY = "peppal.invite.v1";
 
 function read(storage: () => Storage, key: string): string | null {
   try {
@@ -38,6 +39,15 @@ let startRequested = read(() => window.sessionStorage, START_KEY) === "1";
   } else if (/^\/start\/?$/i.test(window.location.pathname)) {
     startRequested = true;
     write(() => window.sessionStorage, START_KEY, "1");
+    // An invite link (/start?invite=<code>): the business will use PepBiz free.
+    const params = new URLSearchParams(window.location.search);
+    const invite = params.get("invite");
+    if (invite) {
+      write(() => window.sessionStorage, INVITE_KEY, invite.trim().toLowerCase());
+      params.delete("invite");
+      const rest = params.toString();
+      window.history.replaceState(window.history.state, "", window.location.pathname + (rest ? `?${rest}` : ""));
+    }
     showShopInAddress(null);
   }
 })();
@@ -72,6 +82,10 @@ export function rememberedShop(): BusinessInfo | null {
 export function cacheShop(forSlug: string, info: BusinessInfo) {
   write(() => window.localStorage, SHOP_CACHE_KEY, JSON.stringify({ slug: forSlug, info }));
 }
+
+// The invite code from an invite link, kept for this tab until the business is registered.
+export const savedInvite = () => read(() => window.sessionStorage, INVITE_KEY);
+export const forgetInvite = () => write(() => window.sessionStorage, INVITE_KEY, null);
 
 // Someone came to set up their own business (/start).
 export const wantsToStartBusiness = () => startRequested;
@@ -138,8 +152,12 @@ export const businessApi = {
   // Is a shop link free? (no sign-in needed - asked while filling in the registration form)
   checkSlug: (s: string) =>
     businessFetch<{ available: boolean; problem: string | null }>(`slug?slug=${encodeURIComponent(s)}`, { method: "GET" }, null),
-  create: (data: { ownerName: string; name: string; slug: string; country: string; timeZone: string }, t: GetToken) =>
-    businessFetch<{ slug: string }>("create", { method: "POST", body: JSON.stringify(data) }, t),
+  create: (
+    data: { ownerName: string; name: string; slug: string; country: string; timeZone: string; invite?: string },
+    t: GetToken
+  ) => businessFetch<{ slug: string; trialDays: number | null }>("create", { method: "POST", body: JSON.stringify(data) }, t),
+  // Does an invite link still work? (no sign-in needed)
+  checkInvite: (code: string) => businessFetch<{ valid: boolean; trialDays: number | null }>(`invite?code=${encodeURIComponent(code)}`, { method: "GET" }, null),
   checkout: (t: GetToken) => businessFetch<{ url: string }>("checkout", { method: "POST", body: "{}" }, t),
   // Stripe's billing page; "cancel" opens straight on its cancel screen.
   portal: (t: GetToken, flow?: "cancel") => businessFetch<{ url: string }>("portal", { method: "POST", body: JSON.stringify({ flow }) }, t),

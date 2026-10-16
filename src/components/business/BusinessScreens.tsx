@@ -5,7 +5,9 @@ import { PLANS, TRIAL_DAYS, planFor, slugProblem, toSlug } from "../../../shared
 import { COUNTRIES, countryInfo, defaultTimeZone } from "../../../shared/countries";
 import {
   businessApi,
+  forgetInvite,
   saveRegistration,
+  savedInvite,
   savedRegistration,
   setWantsToStartBusiness,
   type BusinessContext,
@@ -226,12 +228,12 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
     text = (
       <>
         <p>
-          Your first {TRIAL_DAYS} days are free, then it's {plan.label}. You'll need a card to start, but you won't be charged if
+          Your first {billing.trialDays} days are free, then it's {plan.label}. You'll need a card to start, but you won't be charged if
           you cancel before the trial ends.
         </p>
       </>
     );
-    action = { label: `Start ${TRIAL_DAYS}-day free trial`, where: "checkout" };
+    action = { label: `Start ${billing.trialDays}-day free trial`, where: "checkout" };
   } else if (status === "unpaid" || status === "paused") {
     title = "Your payment didn't go through";
     text = <p>Update your card to carry on using PepBiz. Your shop, customers and stock are all kept safe in the meantime.</p>;
@@ -324,6 +326,22 @@ export function StartBusinessScreen({
   // Setting the business up from details given before signing in.
   const [settingUp, setSettingUp] = useState(signedIn && draft != null);
   const [error, setError] = useState<string | null>(null);
+  // From an invite link (/start?invite=...): free, no card. null until checked.
+  const invite = useMemo(() => savedInvite(), []);
+  const [inviteValid, setInviteValid] = useState<boolean | null>(null);
+  const [inviteTrialDays, setInviteTrialDays] = useState<number | null>(null);
+  useEffect(() => {
+    if (!invite) return;
+    businessApi
+      .checkInvite(invite)
+      .then((r) => {
+        setInviteValid(r.valid);
+        setInviteTrialDays(r.trialDays);
+      })
+      .catch(() => setInviteValid(null));
+  }, [invite]);
+  // The invite gives a longer free trial than the usual 14 days.
+  const trialDays = invite && inviteValid === true && inviteTrialDays != null ? inviteTrialDays : TRIAL_DAYS;
 
   useEffect(() => {
     if (!signedIn) setTabBranding("PepBiz", PEPBIZ_ICON);
@@ -346,12 +364,14 @@ export function StartBusinessScreen({
 
   const slugMessage = localProblem ?? (slugCheck?.slug === effectiveSlug ? slugCheck.problem : null);
   const slugOk = Boolean(effectiveSlug) && !localProblem && slugCheck?.slug === effectiveSlug && slugCheck.problem == null;
-  const emailOk = signedIn || /^\S+@\S+\.\S+$/.test(email.trim());
+  // A full stop left at the end ("...@gmail.com.") is dropped; the rest must look like name@domain.tld.
+  const cleanEmail = email.trim().replace(/\.+$/, "");
+  const emailOk = signedIn || /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(cleanEmail);
   const ready = effectiveOwnerName.trim().length >= 2 && emailOk && name.trim().length >= 2 && slugOk && Boolean(country);
 
   const details = (): RegistrationDraft => ({
     ownerName: effectiveOwnerName.trim(),
-    email: email.trim(),
+    email: cleanEmail,
     name: name.trim(),
     slug: effectiveSlug,
     country,
@@ -362,8 +382,19 @@ export function StartBusinessScreen({
     setBusy(true);
     setError(null);
     try {
-      await businessApi.create({ ownerName: d.ownerName, name: d.name, slug: d.slug, country: d.country, timeZone: d.timeZone }, getToken);
+      await businessApi.create(
+        {
+          ownerName: d.ownerName,
+          name: d.name,
+          slug: d.slug,
+          country: d.country,
+          timeZone: d.timeZone,
+          ...(invite && inviteValid !== false ? { invite } : {}),
+        },
+        getToken
+      );
       saveRegistration(null);
+      forgetInvite();
       setWantsToStartBusiness(false);
       // Their login gets the name too (shown in Manage account) - if the sign-in settings allow names.
       if (user && d.ownerName !== (user.fullName ?? "")) {
@@ -399,9 +430,9 @@ export function StartBusinessScreen({
     if (ready) saveRegistration(details());
     const [firstName, ...rest] = effectiveOwnerName.trim().split(/\s+/);
     if (mode === "signUp") {
-      clerk.openSignUp({ initialValues: { emailAddress: email.trim(), firstName, lastName: rest.join(" ") } });
+      clerk.openSignUp({ initialValues: { emailAddress: cleanEmail, firstName, lastName: rest.join(" ") } });
     } else {
-      clerk.openSignIn({ initialValues: { emailAddress: email.trim() } });
+      clerk.openSignIn({ initialValues: { emailAddress: cleanEmail } });
     }
   };
 
@@ -425,6 +456,18 @@ export function StartBusinessScreen({
       </Heading>
 
       <div className="mt-6 space-y-4">
+        {invite && inviteValid === true && (
+          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+            <span className="font-bold text-white">You've been invited.</span>{" "}
+            {`Your first ${trialDays} days are free (instead of the usual ${TRIAL_DAYS}).`}
+          </div>
+        )}
+        {invite && inviteValid === false && (
+          <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            This invite link has already been used or isn't valid. You can still register with the normal free trial, or ask
+            PepBiz for a new link.
+          </div>
+        )}
         <SectionTitle>About you</SectionTitle>
         <label className="block space-y-1.5">
           <span className="text-xs font-bold text-white">Your name</span>
@@ -497,7 +540,7 @@ export function StartBusinessScreen({
 
         <div className="rounded-2xl bg-zinc-950/80 border border-zinc-800 p-3.5 text-xs text-zinc-400 space-y-1">
           <p className="text-zinc-200 font-semibold">
-            {country ? `${TRIAL_DAYS} days free, then ${PLANS[planFor(country)].label}` : `${TRIAL_DAYS} days free`}
+            {country ? `${trialDays} days free, then ${PLANS[planFor(country)].label}` : `${trialDays} days free`}
           </p>
           <p>
             {signedIn

@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { createClerkClient } from "@clerk/backend";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { hasMoneyRecords, ownedBusiness, runAsBusiness } from "../_lib/business.
 import { appUrl, billingInfo, billingPortalUrl, changeCountry, checkoutUrl, completeCheckout, resumeSubscription, syncFromStripe } from "../_lib/billing.js";
 import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
-import { businesses, businessMembers } from "../_lib/schema.js";
+import { businesses, businessMembers, signupInvites } from "../_lib/schema.js";
 import { accessState, planFor, slugProblem } from "../../shared/billing.js";
 import { MAX_IMAGE_BYTES } from "../../shared/shop.js";
 import { businessCountrySettings, countryInfo, isKnownTimeZone } from "../../shared/countries.js";
@@ -15,7 +15,9 @@ import { businessCountrySettings, countryInfo, isKnownTimeZone } from "../../sha
 // Setting up and running a business on PepBiz (the business's own data is in api/admin):
 //   GET    /api/business/shop?slug=     a shop link's name and logo, for its sign-in page (no sign-in needed)
 //   GET    /api/business/slug?slug=     is this shop link free? (no sign-in needed)  { available, problem }
-//   POST   /api/business/create         { ownerName, name, slug, country, timeZone? }   register a business (caller owns it)
+//   GET    /api/business/invite?code=   does this invite link still work? (no sign-in needed)  { valid, trialDays }
+//   POST   /api/business/create         { ownerName, name, slug, country, timeZone?, invite? }   register a business
+//                                        (the caller owns it; an invite gives a longer free trial)  { slug, trialDays }
 //   POST   /api/business/checkout       Stripe page to save a card and start the subscription         { url }
 //   POST   /api/business/portal         { flow? } Stripe billing page: change card, invoices, cancel  { url }
 //                                        (flow "cancel" opens straight on its cancel screen)
@@ -25,7 +27,7 @@ import { businessCountrySettings, countryInfo, isKnownTimeZone } from "../../sha
 //   PATCH  /api/business/country        { country, timeZone? }  until the business records any money
 //   PATCH  /api/business/details        { name?, timeZone? }
 //   POST   /api/business/logo           { dataUrl }      DELETE /api/business/logo
-// Everything except shop, manifest, slug and create is for the business's owner, and works even when the subscription has
+// Everything except shop, manifest, slug, invite and create is for the business's owner, and works even when the subscription has
 // stopped (that's how they restart it).
 
 // New businesses start with a copy of this business's peptide library (not its price list or anything else).
@@ -37,11 +39,30 @@ const createSchema = z.object({
     slug: z.string().trim().toLowerCase(),
     country: z.string().trim().toUpperCase(),
     timeZone: z.string().trim().optional(),
+    // An invite link's code: a longer free trial.
+    invite: z.string().trim().toLowerCase().max(40).optional(),
 });
 
 const IMAGE_DATA_URL = /^data:image\/(webp|jpeg|png);base64,([A-Za-z0-9+/=]+)$/;
 
 class SlugTaken extends Error {}
+class InviteUsed extends Error {}
+
+// An invite code that hasn't been used yet, and the free trial it gives (trialDays).
+async function unusedInvite(code: string): Promise<{ trialDays: number } | null> {
+    const [row] = await getDb()
+        .select({ trialDays: signupInvites.trialDays })
+        .from(signupInvites)
+        .where(and(eq(signupInvites.code, code.trim().toLowerCase()), isNull(signupInvites.usedAt)));
+    return row ?? null;
+}
+
+// Does an invite link still work, and what does it give? Asked by the registration form, before sign-in.
+async function inviteCheck(req: any, res: any) {
+    const code = String(req.query?.code ?? "");
+    const found = code.length > 0 && code.length <= 40 ? await unusedInvite(code) : null;
+    return sendJson(res, 200, { valid: found != null, trialDays: found?.trialDays ?? null });
+}
 
 async function slugTaken(slug: string) {
     const [row] = await getDb().select({ id: businesses.id }).from(businesses).where(eq(businesses.slug, slug));
@@ -120,6 +141,7 @@ async function slugCheck(req: any, res: any) {
 export default async function handler(req: any, res: any) {
     if (req.query?.action === "shop" && req.method === "GET") return publicShop(req, res);
     if (req.query?.action === "slug" && req.method === "GET") return slugCheck(req, res);
+    if (req.query?.action === "invite" && req.method === "GET") return inviteCheck(req, res);
     if (req.query?.action === "manifest" && req.method === "GET") return webAppManifest(req, res);
     const userId = await requireAuthUserId(req);
     if (!userId) return sendJson(res, 401, { error: "Unauthenticated" });
@@ -138,6 +160,7 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
     if (action === "shop" && req.method === "GET") return publicShop(req, res);
 
     if (action === "slug" && req.method === "GET") return slugCheck(req, res);
+    if (action === "invite" && req.method === "GET") return inviteCheck(req, res);
 
     if (action === "create" && req.method === "POST") {
         if (await ownedBusiness(userId)) return sendJson(res, 409, { error: "You already have a business on PepBiz." });
@@ -148,6 +171,11 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
         if (problem) return sendJson(res, 400, { error: problem });
         const where = businessCountrySettings(parsed.data.country, parsed.data.timeZone);
         if (!where) return sendJson(res, 400, { error: "Choose the country your business is in" });
+        const invite = parsed.data.invite || null;
+        if (invite && !(await unusedInvite(invite))) {
+            return sendJson(res, 409, { error: "That invite link has already been used or isn't valid - please check it with PepBiz." });
+        }
+        let inviteTrialDays: number | null = null;
 
         const id = crypto.randomUUID();
         const ownerEmail = await loginEmail(userId);
@@ -159,6 +187,18 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
                     .onConflictDoNothing()
                     .returning();
                 if (!created) throw new SlugTaken();
+                // Invited: the code is used up and the business never pays.
+                if (invite) {
+                    const [claimed] = await tx
+                        .update(signupInvites)
+                        .set({ businessId: id, usedAt: new Date() })
+                        .where(and(eq(signupInvites.code, invite), isNull(signupInvites.usedAt)))
+                        .returning();
+                    if (!claimed) throw new InviteUsed();
+                    // A longer free trial than the usual 14 days.
+                    await tx.update(businesses).set({ trialDays: claimed.trialDays }).where(eq(businesses.id, id));
+                    inviteTrialDays = claimed.trialDays;
+                }
                 await tx.insert(businessMembers).values({ businessId: id, clerkUserId: userId, role: "owner" });
                 await tx.execute(sql`
                     insert into peptide_library (business_id, kind, key, sort, data)
@@ -166,9 +206,12 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
             });
         } catch (error) {
             if (error instanceof SlugTaken) return sendJson(res, 409, { error: "That link is already taken - please choose another." });
+            if (error instanceof InviteUsed) {
+                return sendJson(res, 409, { error: "That invite link has already been used or isn't valid - please check it with PepBiz." });
+            }
             throw error;
         }
-        return sendJson(res, 201, { slug });
+        return sendJson(res, 201, { slug, trialDays: inviteTrialDays });
     }
 
     // ---- The caller's own business ----

@@ -313,7 +313,7 @@ export default function ExpensesView() {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <select className={`${inputClass} w-auto`} value={year} onChange={(e) => setYear(e.target.value)} aria-label="Year">
+        <select className={`${inputClass} !w-auto`} value={year} onChange={(e) => setYear(e.target.value)} aria-label="Year">
           {years.map((y) => (
             <option key={y} value={y}>
               {y}
@@ -321,7 +321,7 @@ export default function ExpensesView() {
           ))}
         </select>
         <select
-          className={`${inputClass} w-auto`}
+          className={`${inputClass} !w-auto`}
           value={category}
           onChange={(e) => setCategory(e.target.value as ExpenseCategory | "all")}
           aria-label="Category"

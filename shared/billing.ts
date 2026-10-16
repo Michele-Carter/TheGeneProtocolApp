@@ -51,6 +51,7 @@ export interface BillingInfo {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   hadSubscription: boolean; // the free trial is only for a business's first subscription
+  trialDays: number; // its free trial: 14 days, or longer from an invite link
   // The country (and so currency) can't change any more: the business has recorded money (/api/admin/me only).
   countryLocked?: boolean;
 }
