@@ -4,6 +4,7 @@
     "buildCommand": "npm run build",
     "outputDirectory": "dist",
     "regions": ["syd1"],
+    "crons": [{ "path": "/api/cleanup", "schedule": "0 14 * * *" }],
     "rewrites": [
         { "source": "/start", "destination": "/index.html" },
         { "source": "/shop/:slug", "destination": "/index.html" },

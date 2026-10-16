@@ -11,7 +11,7 @@ import LoadingSpinner from "../LoadingSpinner";
 //                               mentions PepBiz (customers only ever see their shop)
 // Keep these in step with what the app actually does (the services used, the 30 days after a subscription ends).
 
-export const LEGAL_UPDATED = "16 October 2026";
+export const LEGAL_UPDATED = "17 October 2026";
 export const SUPPORT_EMAIL = "support@pepbiz.io";
 // The business that operates PepBiz. A placeholder until it's set up - then change it here.
 const OPERATOR = "PepBiz";
@@ -220,7 +220,8 @@ function PepBizPrivacy() {
           We keep your business's information while your subscription is running. If your subscription ends, we keep it for
           30 days so you can restart and pick up where you left off, and then permanently delete your business and
           everything in it, including your customers' information. Copies in our backups are overwritten in the weeks after
-          that. Before your subscription ends, make sure you've kept any records you need, for example for tax.
+          that. Before your subscription ends, make sure you've kept any records you need, for example for tax. If you register
+          a business but never start a subscription, we delete it 30 days after you registered.
         </p>
         <p>We may keep a record of payments and invoices for as long as the law requires.</p>
       </Section>
