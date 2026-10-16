@@ -52,7 +52,7 @@ export default function SubscriptionEndingBanner({
           {trial ? `Your free trial ends on ${endsOn} and won't continue.` : `Your PepBiz subscription ends on ${endsOn}.`}
         </p>
         <p className="text-xs text-slate-400">
-          After that your shop closes to customers and PepBiz is locked. Everything is kept if you restart later.
+          After that your shop closes to customers and PepBiz is locked. Everything is kept for 30 days in case you restart, then deleted.
           {waitingOrders > 0 && (
             <span className="text-amber-300 font-semibold">
               {" "}

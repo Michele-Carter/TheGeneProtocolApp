@@ -112,6 +112,25 @@ export default function AuthPage() {
                             </button>
                         </SignUpButton>
                     </div>
+                    {/* A shop link shows the shop's own privacy notice; PepBiz's page shows PepBiz's policies. */}
+                    <p className="mt-5 text-center text-xs text-zinc-500 space-x-3">
+                        {onShopLink ? (
+                            shop && (
+                                <a href={`/shop/${shop.slug}/privacy`} target="_blank" rel="noreferrer" className="hover:text-zinc-300">
+                                    Privacy Notice
+                                </a>
+                            )
+                        ) : (
+                            <>
+                                <a href="/privacy" target="_blank" rel="noreferrer" className="hover:text-zinc-300">
+                                    Privacy Policy
+                                </a>
+                                <a href="/terms" target="_blank" rel="noreferrer" className="hover:text-zinc-300">
+                                    Terms of Service
+                                </a>
+                            </>
+                        )}
+                    </p>
                 </div>
             )}
         </div>

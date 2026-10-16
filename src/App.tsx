@@ -571,6 +571,25 @@ export default function App() {
 
             <footer className="bg-transparent border-t border-slate-900/80 px-4 md:px-8 lg:px-12 py-6 text-center text-[12px] font-semibold text-slate-600 max-w-7xl w-full mx-auto">
               © 2026 {context?.isAdmin ? "PepBiz" : businessName}. All Rights Reserved.
+              {/* Owners: PepBiz's own policies. Customers: their shop's privacy notice (never PepBiz's). */}
+              <span className="block mt-1.5 space-x-3">
+                {context?.isAdmin ? (
+                  <>
+                    <a href="/privacy" target="_blank" rel="noreferrer" className="hover:text-slate-300">
+                      Privacy Policy
+                    </a>
+                    <a href="/terms" target="_blank" rel="noreferrer" className="hover:text-slate-300">
+                      Terms of Service
+                    </a>
+                  </>
+                ) : (
+                  context && (
+                    <a href={`/shop/${context.business.slug}/privacy`} target="_blank" rel="noreferrer" className="hover:text-slate-300">
+                      Privacy Notice
+                    </a>
+                  )
+                )}
+              </span>
             </footer>
           </div>
         </div>

@@ -33,6 +33,7 @@ export interface BusinessInfo {
   name: string;
   slug: string;
   logoUrl: string | null;
+  contactEmail?: string; // how its customers reach it (its privacy notice)
 }
 
 // What the app is told about the business it's being used as (see shared/countries.ts).
@@ -40,6 +41,8 @@ export interface BusinessSettings extends BusinessInfo {
   country: string;
   currency: string;
   timeZone: string;
+  contactEmail: string; // the email customers see (the owner's sign-in email unless customContactEmail is set)
+  customContactEmail: string; // the one set on the Business page, or ""
 }
 
 export interface BillingInfo {

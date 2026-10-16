@@ -20,7 +20,8 @@ const date = (iso: string | null) =>
 export default function BusinessSettingsView({ context, onChanged }: { context: BusinessContext; onChanged: () => void }) {
   const { getToken } = useAuth();
   const [name, setName] = useState(context.business.name);
-  const [busy, setBusy] = useState<null | "name" | "logo" | "billing" | "cancel" | "resume" | "timezone" | "country">(null);
+  const [contactEmail, setContactEmail] = useState(context.business.customContactEmail);
+  const [busy, setBusy] = useState<null | "name" | "logo" | "billing" | "cancel" | "resume" | "timezone" | "country" | "contact">(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -30,7 +31,7 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
   // The country (and its currency) can be changed until the business records stock, orders, sales or expenses.
   const countryLocked = context.billing?.countryLocked ?? true;
 
-  const run = async (what: "name" | "logo" | "resume" | "timezone" | "country", fn: () => Promise<unknown>) => {
+  const run = async (what: "name" | "logo" | "resume" | "timezone" | "country" | "contact", fn: () => Promise<unknown>) => {
     setBusy(what);
     setError(null);
     try {
@@ -121,6 +122,28 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
             </div>
             <span className="block text-[11px] text-slate-500 mt-1">A square image works best.</span>
           </div>
+
+          <Field
+            label="Contact email for customers"
+            hint="Shown on your shop's privacy notice, for customers' questions about their details. Leave blank to use the email you sign in with."
+          >
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                type="email"
+                value={contactEmail}
+                placeholder={context.business.customContactEmail ? "" : context.business.contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+              />
+              <button
+                className={primaryButton}
+                disabled={busy != null || contactEmail.trim() === context.business.customContactEmail}
+                onClick={() => void run("contact", () => businessApi.setContactEmail(contactEmail.trim(), getToken))}
+              >
+                {busy === "contact" ? <Spinner size={13} /> : <Save size={13} />} Save
+              </button>
+            </div>
+          </Field>
         </div>
       </Card>
 
@@ -249,7 +272,7 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
             <p className="text-[11px] text-slate-500">
               {billing.cancelAtPeriodEnd
                 ? "Changed your mind? Resume and your subscription carries on as normal."
-                : "Change your card or see invoices on Stripe's secure page. If you cancel, you can keep using PepBiz until the end of the time you've paid for - your shop, customers and stock are kept if you come back."}
+                : "Change your card or see invoices on Stripe's secure page. If you cancel, you can keep using PepBiz until the end of the time you've paid for. Your shop, customers and stock are then kept for 30 days in case you come back, and deleted after that."}
             </p>
           </div>
         )}
