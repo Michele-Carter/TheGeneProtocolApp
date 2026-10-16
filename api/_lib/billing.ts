@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { businesses } from "./schema.js";
-import { PLANS, TRIAL_DAYS, accessState, planFor, type BillingInfo, type PlanId } from "../../shared/billing.js";
+import { PLANS, TRIAL_DAYS, accessState, deletionDate, planFor, type BillingInfo, type PlanId } from "../../shared/billing.js";
 
 // Business subscriptions through Stripe. Owners enter their card on Stripe's own pages (Checkout to start, the
 // billing portal to change card or cancel), so card details never reach the app. Starting is two steps:
@@ -34,6 +34,7 @@ export function billingInfo(b: Business): BillingInfo {
         cancelAtPeriodEnd: b.cancelAtPeriodEnd,
         hadSubscription: b.stripeSubscriptionId != null,
         trialDays: b.trialDays ?? TRIAL_DAYS,
+        deleteOn: deletionDate(b)?.toISOString() ?? null,
     };
 }
 
@@ -193,6 +194,8 @@ export async function syncFromStripe(customerId: string): Promise<Business | nul
     // A cancelled subscription that's still running has cancel_at_period_end or a cancel_at date (Stripe's
     // billing page can set either); either way it ends at cancel_at if there is one.
     const ending = sub != null && sub.status !== "canceled" && (sub.cancel_at_period_end || sub.cancel_at != null);
+    // When the most recent of its subscriptions to end did (the 30 days before deletion count from it).
+    const endedAt = Math.max(0, ...data.filter((s) => s.status === "canceled").map((s) => s.ended_at ?? s.canceled_at ?? 0));
     const [business] = await getDb()
         .update(businesses)
         .set({
@@ -201,6 +204,7 @@ export async function syncFromStripe(customerId: string): Promise<Business | nul
             trialEndsAt: at(sub?.trial_end),
             currentPeriodEnd: at(sub?.cancel_at ?? sub?.items.data[0]?.current_period_end),
             cancelAtPeriodEnd: ending,
+            subscriptionEndedAt: at(endedAt),
             updatedAt: new Date(),
         })
         .where(eq(businesses.stripeCustomerId, customerId))

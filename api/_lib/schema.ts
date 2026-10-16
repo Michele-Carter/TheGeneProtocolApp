@@ -30,6 +30,8 @@ export const businesses = pgTable("businesses", {
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  // When its most recent subscription ended (scripts/cleanup.sql): its data is deleted 30 days later.
+  subscriptionEndedAt: timestamp("subscription_ended_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

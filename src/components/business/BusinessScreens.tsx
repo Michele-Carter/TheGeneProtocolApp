@@ -13,6 +13,7 @@ import {
   type BusinessContext,
   type RegistrationDraft,
 } from "../../lib/business";
+import { formatDate } from "../../lib/locale";
 import { PEPBIZ_ICON, setTabBranding } from "../../lib/tabBranding";
 import { Spinner } from "../LoadingSpinner";
 
@@ -216,12 +217,23 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
     }
   };
 
+  // When everything is deleted if it isn't restarted (api/_lib/cleanup.ts).
+  const deleteOn = billing.deleteOn ? formatDate(billing.deleteOn, { day: "numeric", month: "long", year: "numeric" }) : null;
+  const deletedAfter = deleteOn
+    ? `On ${deleteOn} your shop, customers and stock will be permanently deleted.`
+    : "After 30 days your shop, customers and stock are deleted.";
+
   let title: string;
   let text: React.ReactNode;
   let action: { label: string; where: "checkout" | "portal" } | null;
   if (billing.state === "needs-checkout" && billing.hadSubscription) {
     title = "Restart your subscription";
-    text = <p>It's {plan.label}. Your shop, customers and stock are kept for 30 days after a subscription ends.</p>;
+    text = (
+      <p>
+        It's {plan.label}. Your shop, customers and stock are kept for 30 days after a subscription ends.
+        {deleteOn && ` Restart before ${deleteOn} to keep them.`}
+      </p>
+    );
     action = { label: "Restart subscription", where: "checkout" };
   } else if (billing.state === "needs-checkout") {
     title = "Start your free trial";
@@ -246,7 +258,7 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
     title = "Your subscription has ended";
     text = (
       <p>
-        Restart it within 30 days to pick up where you left off - {plan.label}. After 30 days your shop, customers and stock are deleted.
+        Restart it {deleteOn ? `before ${deleteOn}` : "within 30 days"} to pick up where you left off - {plan.label}. {deletedAfter}
       </p>
     );
     action = { label: "Restart subscription", where: "checkout" };
