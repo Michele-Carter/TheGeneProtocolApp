@@ -1,23 +1,24 @@
 import { PersistedProtocolBuilderPayload, ProtocolRecord } from "../types";
 import { businessHeaders } from "./business";
+import { signedInFetch } from "./signedInFetch";
 
 type GetToken = () => Promise<string | null>;
 
 async function authedFetch(input: string, init: RequestInit, getToken: GetToken) {
-  const token = await getToken();
-  if (!token) {
+  const response = await signedInFetch(getToken, (token) =>
+    fetch(input, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...businessHeaders(),
+        ...(init.headers ?? {}),
+      },
+    })
+  );
+  if (!response) {
     throw new Error("Unauthenticated request");
   }
-
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...businessHeaders(),
-      ...(init.headers ?? {}),
-    },
-  });
 
   if (!response.ok) {
     const errorText = await response.text();

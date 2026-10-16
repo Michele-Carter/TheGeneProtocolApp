@@ -81,6 +81,11 @@ export function saleTotals(sale: SaleInput): SaleTotals {
   };
 }
 
+// Customer Orders' "To pay": still owes money. "To send": paid in full but not posted or collected yet, so it's
+// ready to pack - an order that hasn't been paid waits under To pay instead.
+export const isToPay = (sale: SaleInput) => saleTotals(sale).balance > 0.004;
+export const isToSend = (sale: SaleInput) => sale.shipping.status === "not-sent" && saleTotals(sale).paymentStatus === "paid";
+
 // Profit once the cost of the stock sold is known (exact after completion, estimated before).
 // Based on what was actually paid, not the invoiced total — a discount or manual adjustment
 // can make the total not match what was really collected.

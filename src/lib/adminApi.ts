@@ -7,6 +7,7 @@ import type { ItemShopSection, OrderAlertsInfo, PaymentDetails, ShopOrderLine, S
 import type { PushSubscriptionData } from "./orderAlerts";
 import type { SupplierProduct } from "../../shared/library";
 import { ApiError, businessHeaders, type BusinessContext } from "./business";
+import { signedInFetch } from "./signedInFetch";
 
 export interface SupplierProductRecord extends SupplierProduct {
   sort: number;
@@ -31,6 +32,7 @@ export interface SaleRecord {
   totals: SaleTotals;
   profit: number | null;
   marginPct: number | null;
+  sendTo: ShippingAddress | null; // where to post it (see api/admin sendToAddresses)
 }
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
@@ -221,18 +223,18 @@ export interface InventoryDetail {
 }
 
 async function adminFetch<T>(path: string, init: RequestInit, getToken: GetToken): Promise<T> {
-  const token = await getToken();
-  if (!token) throw new Error("You're signed out - please sign in again.");
-
-  const response = await fetch(`/api/admin/${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...businessHeaders(),
-      ...(init.headers ?? {}),
-    },
-  });
+  const response = await signedInFetch(getToken, (token) =>
+    fetch(`/api/admin/${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...businessHeaders(),
+        ...(init.headers ?? {}),
+      },
+    })
+  );
+  if (!response) throw new Error("You're signed out - please sign in again.");
 
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
