@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Check, Copy, CreditCard, ImagePlus, Save, Trash2 } from "lucide-react";
+import { Check, Copy, CreditCard, ImagePlus, RotateCcw, Save, Trash2, XCircle } from "lucide-react";
 import { PLANS } from "../../../shared/billing";
 import { businessApi, type BusinessContext } from "../../lib/business";
 import { Card, ErrorNote, Field, inputClass, primaryButton, secondaryButton } from "./ui";
@@ -18,14 +18,14 @@ const date = (iso: string | null) =>
 export default function BusinessSettingsView({ context, onChanged }: { context: BusinessContext; onChanged: () => void }) {
   const { getToken } = useAuth();
   const [name, setName] = useState(context.business.name);
-  const [busy, setBusy] = useState<null | "name" | "logo" | "billing">(null);
+  const [busy, setBusy] = useState<null | "name" | "logo" | "billing" | "cancel" | "resume">(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const shopLink = `${window.location.origin}/shop/${context.business.slug}`;
 
-  const run = async (what: "name" | "logo" | "billing", fn: () => Promise<unknown>) => {
+  const run = async (what: "name" | "logo" | "resume", fn: () => Promise<unknown>) => {
     setBusy(what);
     setError(null);
     try {
@@ -48,11 +48,11 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
     }
   };
 
-  const openBilling = async () => {
-    setBusy("billing");
+  const openBilling = async (flow?: "cancel") => {
+    setBusy(flow ?? "billing");
     setError(null);
     try {
-      window.location.assign((await businessApi.portal(getToken)).url);
+      window.location.assign((await businessApi.portal(getToken, flow)).url);
     } catch (e) {
       setError((e as Error).message);
       setBusy(null);
@@ -145,10 +145,34 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
               </div>
               <div>{subscriptionLine(billing)}</div>
             </div>
-            <button className={primaryButton} disabled={busy != null} onClick={() => void openBilling()}>
-              {busy === "billing" ? <Spinner size={13} /> : <CreditCard size={13} />} Manage billing
-            </button>
-            <p className="text-[11px] text-slate-500">Change your card, see invoices or cancel - on Stripe's secure page.</p>
+            <div className="flex flex-wrap gap-2">
+              {billing.cancelAtPeriodEnd && (
+                <button
+                  className={primaryButton}
+                  disabled={busy != null}
+                  onClick={() => void run("resume", () => businessApi.resume(getToken))}
+                >
+                  {busy === "resume" ? <Spinner size={13} /> : <RotateCcw size={13} />} Resume subscription
+                </button>
+              )}
+              <button
+                className={billing.cancelAtPeriodEnd ? secondaryButton : primaryButton}
+                disabled={busy != null}
+                onClick={() => void openBilling()}
+              >
+                {busy === "billing" ? <Spinner size={13} /> : <CreditCard size={13} />} Manage billing
+              </button>
+              {!billing.cancelAtPeriodEnd && billing.state === "ok" && (
+                <button className={secondaryButton} disabled={busy != null} onClick={() => void openBilling("cancel")}>
+                  {busy === "cancel" ? <Spinner size={13} /> : <XCircle size={13} />} Cancel subscription
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {billing.cancelAtPeriodEnd
+                ? "Changed your mind? Resume and your subscription carries on as normal."
+                : "Change your card or see invoices on Stripe's secure page. If you cancel, you can keep using PepBiz until the end of the time you've paid for - your shop, customers and stock are kept if you come back."}
+            </p>
           </div>
         )}
       </Card>

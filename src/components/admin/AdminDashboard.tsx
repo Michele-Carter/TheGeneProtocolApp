@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@clerk/react";
 import { ChevronRight, Clock, Inbox, PiggyBank, Receipt, ShoppingBag, Truck, Wallet } from "lucide-react";
 import { adminApi, nzd, type ExpenseRecord, type SaleRecord } from "../../lib/adminApi";
+import { isToSend } from "../../../shared/sales";
 import { Card, ErrorNote } from "./ui";
 import LoadingSpinner from "../LoadingSpinner";
 import { MONTHS } from "../../lib/protocolBuilderUtils";
@@ -316,7 +317,7 @@ export default function AdminDashboard({
     const netProfit = grossProfit - totalExpenses;
     const openOrders = sales.filter((s) => s.status === "open").length;
     const moneyOwing = sales.reduce((t, s) => t + Math.max(0, s.totals.balance), 0);
-    const ordersToSend = sales.filter((s) => s.data.shipping.status === "not-sent").length;
+    const ordersToSend = sales.filter((s) => isToSend(s.data)).length;
 
     const salesByMonth = months.map((m) =>
       completed.filter((s) => s.orderDate.startsWith(m)).reduce((t, s) => t + s.totals.total, 0)

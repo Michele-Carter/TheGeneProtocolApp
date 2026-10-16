@@ -1,4 +1,5 @@
 import type { BillingInfo, BusinessInfo, AccessState, RegionCode } from "../../shared/billing";
+import { signedInFetch } from "./signedInFetch";
 
 // Which business the app is being used as. Customers join a business by opening its shop link
 // (/shop/<slug>); the slug is remembered and sent with every request (the server checks it). Owners always
@@ -95,12 +96,13 @@ export class ApiError extends Error {
 }
 
 async function businessFetch<T>(path: string, init: RequestInit, getToken: GetToken | null): Promise<T> {
-  const token = getToken ? await getToken() : null;
-  if (getToken && !token) throw new ApiError("You're signed out - please sign in again.", 401, null);
-  const response = await fetch(`/api/business/${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-  });
+  const send = (token: string | null) =>
+    fetch(`/api/business/${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+  const response = getToken ? await signedInFetch(getToken, send) : await send(null);
+  if (!response) throw new ApiError("You're signed out - please sign in again.", 401, null);
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
   if (!response.ok) throw new ApiError(body?.error ?? `Request failed (${response.status})`, response.status, body?.code ?? null);
@@ -115,7 +117,10 @@ export const businessApi = {
   create: (data: { name: string; slug: string; region: RegionCode }, t: GetToken) =>
     businessFetch<{ slug: string }>("create", { method: "POST", body: JSON.stringify(data) }, t),
   checkout: (t: GetToken) => businessFetch<{ url: string }>("checkout", { method: "POST", body: "{}" }, t),
-  portal: (t: GetToken) => businessFetch<{ url: string }>("portal", { method: "POST", body: "{}" }, t),
+  // Stripe's billing page; "cancel" opens straight on its cancel screen.
+  portal: (t: GetToken, flow?: "cancel") => businessFetch<{ url: string }>("portal", { method: "POST", body: JSON.stringify({ flow }) }, t),
+  // Undo a cancellation before the subscription ends.
+  resume: (t: GetToken) => businessFetch<{ billing: BillingInfo }>("resume", { method: "POST", body: "{}" }, t),
   // After Stripe's page: starts the subscription with the card just saved, or says why it can't.
   sync: (sessionId: string | null, t: GetToken) =>
     businessFetch<{ billing: BillingInfo; problem: string | null }>("sync", { method: "POST", body: JSON.stringify({ sessionId }) }, t),

@@ -146,11 +146,36 @@ export async function changeRegion(business: Business, region: string): Promise<
         .where(eq(businesses.id, business.id));
 }
 
-// Stripe's billing page, where the owner can change their card, see invoices or cancel.
-export async function billingPortalUrl(business: Business, returnTo: string): Promise<string> {
+// Stripe's billing page, where the owner can change their card, see invoices or cancel. flow "cancel" opens
+// straight on its cancel screen. Coming back (?billing=) picks up any change straight away (useBusiness).
+export async function billingPortalUrl(business: Business, returnTo: string, flow?: "cancel"): Promise<string> {
     if (!business.stripeCustomerId) throw new Error("This business hasn't set up a subscription yet.");
-    const session = await stripe().billingPortal.sessions.create({ customer: business.stripeCustomerId, return_url: `${returnTo}/` });
+    const returnUrl = `${returnTo}/?billing=portal`;
+    const session = await stripe().billingPortal.sessions.create({
+        customer: business.stripeCustomerId,
+        return_url: returnUrl,
+        ...(flow === "cancel" && business.stripeSubscriptionId
+            ? {
+                  flow_data: {
+                      type: "subscription_cancel" as const,
+                      subscription_cancel: { subscription: business.stripeSubscriptionId },
+                      after_completion: { type: "redirect" as const, redirect: { return_url: returnUrl } },
+                  },
+              }
+            : {}),
+    });
     return session.url;
+}
+
+// Undoes a cancellation that hasn't taken effect yet, so the subscription carries on as before.
+export async function resumeSubscription(business: Business): Promise<Business> {
+    if (!business.stripeSubscriptionId || !business.stripeCustomerId) throw new Error("There's no subscription to resume.");
+    const sub = await stripe().subscriptions.retrieve(business.stripeSubscriptionId);
+    if (sub.status === "canceled") throw new Error("Your subscription has already ended - restart it instead.");
+    // Stripe records "cancel at the end of this period" one of two ways.
+    if (sub.cancel_at_period_end) await stripe().subscriptions.update(sub.id, { cancel_at_period_end: false });
+    else if (sub.cancel_at) await stripe().subscriptions.update(sub.id, { cancel_at: "" });
+    return (await syncFromStripe(business.stripeCustomerId)) ?? business;
 }
 
 // Copies the state of a Stripe customer's subscription onto their business. The subscription that matters is
@@ -160,14 +185,17 @@ export async function syncFromStripe(customerId: string): Promise<Business | nul
     const newestFirst = [...data].sort((a, b) => b.created - a.created);
     const sub = newestFirst.find((s) => s.status !== "canceled" && s.status !== "incomplete_expired") ?? newestFirst[0];
     const at = (seconds: number | null | undefined) => (seconds ? new Date(seconds * 1000) : null);
+    // A cancelled subscription that's still running has cancel_at_period_end or a cancel_at date (Stripe's
+    // billing page can set either); either way it ends at cancel_at if there is one.
+    const ending = sub != null && sub.status !== "canceled" && (sub.cancel_at_period_end || sub.cancel_at != null);
     const [business] = await getDb()
         .update(businesses)
         .set({
             stripeSubscriptionId: sub?.id ?? null,
             subscriptionStatus: sub?.status ?? null,
             trialEndsAt: at(sub?.trial_end),
-            currentPeriodEnd: at(sub?.items.data[0]?.current_period_end),
-            cancelAtPeriodEnd: sub?.cancel_at_period_end ?? false,
+            currentPeriodEnd: at(sub?.cancel_at ?? sub?.items.data[0]?.current_period_end),
+            cancelAtPeriodEnd: ending,
             updatedAt: new Date(),
         })
         .where(eq(businesses.stripeCustomerId, customerId))

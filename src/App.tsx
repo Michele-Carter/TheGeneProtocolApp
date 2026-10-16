@@ -43,7 +43,6 @@ import {
   Menu,
   X,
   LayoutGrid,
-  Lock,
   LayoutDashboard,
   ShoppingBag,
   FlaskConical,
@@ -64,6 +63,7 @@ import {
 const AdminArea = lazy(() => import("./components/admin/AdminArea"));
 const BusinessSettingsView = lazy(() => import("./components/admin/BusinessSettingsView"));
 const PaymentDetailsView = lazy(() => import("./components/admin/PaymentDetailsView"));
+const SubscriptionEndingBanner = lazy(() => import("./components/admin/SubscriptionEndingBanner"));
 
 // A page the owner opens from Manage account (Clerk's account window).
 function AccountWindowPage({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
@@ -80,18 +80,27 @@ function AccountWindowPage({ title, description, children }: { title: string; de
 
 type ActiveTab = "dashboard" | "protocol" | "shop" | "account" | "recon" | "logs" | "peptideDb" | "admin";
 
+// The owner's menu starts with their business, always open (the owner's home page is Overview).
 const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
-  { id: "overview", label: "Overview", icon: <LayoutDashboard size={13} /> },
-  { id: "new-orders", label: "New Customer Orders", icon: <Inbox size={13} /> },
-  { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={13} /> },
-  { id: "customers", label: "Customers", icon: <Users size={13} /> },
-  { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={13} /> },
-  { id: "supply-orders", label: "Supply Orders", icon: <Truck size={13} /> },
-  { id: "inventory", label: "Inventory", icon: <Boxes size={13} /> },
-  { id: "expenses", label: "Expenses", icon: <Receipt size={13} /> },
-  { id: "price-list", label: "Vendor Price List", icon: <Tags size={13} /> },
+  { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
+  { id: "new-orders", label: "New Customer Orders", icon: <Inbox size={14} /> },
+  { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={14} /> },
+  { id: "customers", label: "Customers", icon: <Users size={14} /> },
+  { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={14} /> },
+  { id: "supply-orders", label: "Supply Orders", icon: <Truck size={14} /> },
+  { id: "inventory", label: "Inventory", icon: <Boxes size={14} /> },
+  { id: "expenses", label: "Expenses", icon: <Receipt size={14} /> },
+  { id: "price-list", label: "Vendor Price List", icon: <Tags size={14} /> },
 ];
 // Business and Payment Details are opened from the profile picture menu instead (see accountButton).
+
+// Personal tools: the customer's main menu, and a smaller "My Tools" group at the bottom of the owner's.
+const TOOLS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
+  { id: "protocol", label: "Protocol Builder", icon: <Beaker size={14} /> },
+  { id: "recon", label: "Dosage & Recon", icon: <Scale size={14} /> },
+  { id: "logs", label: "Research Logs", icon: <ClipboardList size={14} /> },
+  { id: "peptideDb", label: "Peptide Database", icon: <BookOpen size={14} /> },
+];
 
 export default function App() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -160,6 +169,8 @@ export default function App() {
   }, [startingBusiness, context]);
   const appReady = context != null && context.access === "ok" && !startingBusiness;
   const isAdmin = appReady && context.isAdmin;
+  // Owners have no Dashboard Hub: their home is the business Overview.
+  const currentTab: ActiveTab = isAdmin && activeTab === "dashboard" ? "admin" : activeTab;
   const businessName = context?.business.name ?? "PepBiz";
   // Customers only ever see their shop's name and logo; with no logo they get none, never the PepBiz badge.
   const businessLogo = context?.business.logoUrl ?? (context?.isAdmin ? PEPBIZ_ICON : null);
@@ -297,7 +308,7 @@ export default function App() {
 
   // Renders the appropriate component based on the active tab
   const renderTabContent = () => {
-    switch (activeTab) {
+    switch (currentTab) {
       case "dashboard":
         return <DashboardPage setActiveTab={navigateTab} isAdmin={isAdmin} waitingOrders={waitingOrders} />;
       case "protocol":
@@ -339,6 +350,47 @@ export default function App() {
       default:
         return <DashboardPage setActiveTab={navigateTab} isAdmin={isAdmin} waitingOrders={waitingOrders} />;
     }
+  };
+
+  // The menu, in the desktop sidebar and the phone's menu. Owners: their business first and always open, then
+  // their shop as customers see it, then their personal tools. Customers: the hub, the tools and the shop.
+  const navMenu = (mobile: boolean) => {
+    const group = mobile ? "flex flex-col gap-1" : "space-y-1.5";
+    const tabLink = (id: ActiveTab, label: string, icon: React.ReactNode) => (
+      <NavButton key={id} mobile={mobile} active={currentTab === id} onClick={() => navigateTab(id)} icon={icon} label={label} />
+    );
+    if (isAdmin) {
+      return (
+        <>
+          <div className={group}>
+            {ADMIN_SECTIONS.map((s) => (
+              <NavButton
+                key={s.id}
+                mobile={mobile}
+                active={currentTab === "admin" && adminSection === s.id}
+                onClick={() => navigateAdmin(s.id)}
+                icon={s.icon}
+                label={s.label}
+              >
+                {s.id === "new-orders" && waitingOrders > 0 && <WaitingBadge count={waitingOrders} />}
+              </NavButton>
+            ))}
+          </div>
+          <div className={`${group} border-t border-slate-900 pt-4`}>{tabLink("shop", "View my shop", <Store size={14} />)}</div>
+          <div className={`${group} border-t border-slate-900 pt-4`}>
+            <p className={`${mobile ? "px-4" : "px-3.5"} pb-1 text-[10px] font-bold uppercase tracking-widest text-white`}>My Tools</p>
+            {TOOLS.map((t) => tabLink(t.id, t.label, t.icon))}
+          </div>
+        </>
+      );
+    }
+    return (
+      <>
+        <div className={group}>{tabLink("dashboard", "Dashboard Hub", <LayoutGrid size={14} />)}</div>
+        <div className={group}>{TOOLS.map((t) => tabLink(t.id, t.label, t.icon))}</div>
+        <div className={group}>{tabLink("shop", "Shop", <ShoppingCart size={14} />)}</div>
+      </>
+    );
   };
 
   // Shown instead of the app until it can be used: setting up a business, starting or restarting its
@@ -413,125 +465,7 @@ export default function App() {
               </div>
 
               {/* Navigation Links List */}
-              <nav className="flex flex-col space-y-4">
-                <div>
-                  <button
-                    onClick={() => navigateTab("dashboard")}
-                    id="sidebar-btn-dashboard"
-                    className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "dashboard"
-                      ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
-                      : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-                      }`}
-                  >
-                    <LayoutGrid size={14} />
-                    <span>Dashboard Hub</span>
-                  </button>
-                </div>
-
-                <div>
-                  <div className="space-y-1.5">
-                    <button
-                      onClick={() => navigateTab("protocol")}
-                      id="sidebar-btn-protocol"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "protocol"
-                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-                        }`}
-                    >
-                      <Beaker size={14} />
-                      <span>Protocol Builder</span>
-                    </button>
-
-                    <button
-                      onClick={() => navigateTab("recon")}
-                      id="sidebar-btn-recon"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "recon"
-                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-                        }`}
-                    >
-                      <Scale size={14} />
-                      <span>Dosage & Recon</span>
-                    </button>
-
-                    <button
-                      onClick={() => navigateTab("logs")}
-                      id="sidebar-btn-logs"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "logs"
-                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-                        }`}
-                    >
-                      <ClipboardList size={14} />
-                      <span>Research Logs</span>
-                    </button>
-
-                    <button
-                      onClick={() => navigateTab("peptideDb")}
-                      id="sidebar-btn-peptideDb"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "peptideDb"
-                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-                        }`}
-                    >
-                      <BookOpen size={14} />
-                      <span>Peptide Database</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="space-y-1.5">
-                    <button
-                      onClick={() => navigateTab("shop")}
-                      id="sidebar-btn-shop"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "shop"
-                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-                        }`}
-                    >
-                      <ShoppingCart size={14} />
-                      <span>Shop</span>
-                    </button>
-                  </div>
-                </div>
-
-                {isAdmin && (
-                  <div className="space-y-1.5">
-                    <button
-                      onClick={() => navigateTab("admin")}
-                      id="sidebar-btn-admin"
-                      className={`flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer font-bold ${activeTab === "admin"
-                        ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
-                        : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-                        }`}
-                    >
-                      <Lock size={14} />
-                      <span>Admin</span>
-                      {waitingOrders > 0 && activeTab !== "admin" && <WaitingBadge count={waitingOrders} />}
-                    </button>
-
-                    {activeTab === "admin" && (
-                      <div className="ml-3.5 pl-3 border-l border-slate-800 space-y-0.5">
-                        {ADMIN_SECTIONS.map((s) => (
-                          <button
-                            key={s.id}
-                            onClick={() => navigateAdmin(s.id)}
-                            className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[11px] transition cursor-pointer font-semibold ${adminSection === s.id
-                              ? "text-gold-400"
-                              : "text-slate-500 hover:text-white"
-                              }`}
-                          >
-                            {s.icon}
-                            <span>{s.label}</span>
-                            {s.id === "new-orders" && waitingOrders > 0 && <WaitingBadge count={waitingOrders} />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </nav>
+              <nav className="flex flex-col space-y-4">{navMenu(false)}</nav>
             </div>
 
             <div className="px-2 pb-1 flex items-center gap-2 flex-shrink-0">
@@ -580,120 +514,24 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg transition"
+                  className="relative p-1.5 text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg transition"
                   aria-label="Toggle navigation menu"
                 >
                   {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+                  {/* Waiting orders, so the owner sees them without opening the menu. */}
+                  {isAdmin && waitingOrders > 0 && !isMobileMenuOpen && (
+                    <span className="absolute -top-1 -right-1">
+                      <WaitingBadge count={waitingOrders} />
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
 
             {/* Mobile Dropdown Menu Panel */}
             {isMobileMenuOpen && (
-              <nav className="absolute top-full left-0 right-0 z-50 border-b border-slate-900 bg-slate-950/95 backdrop-blur-md px-6 py-4 flex flex-col gap-4 shadow-2xl">
-                <div className="flex flex-col gap-1">
-                  <button
-                    onClick={() => {
-                      navigateTab("dashboard");
-                    }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "dashboard" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
-                      }`}
-                  >
-                    <LayoutGrid size={14} />
-                    <span>Dashboard Hub</span>
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <button
-                    onClick={() => {
-                      navigateTab("protocol");
-                    }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "protocol" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
-                      }`}
-                  >
-                    <Beaker size={14} />
-                    <span>Protocol Builder</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      navigateTab("recon");
-                    }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "recon" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
-                      }`}
-                  >
-                    <Scale size={14} />
-                    <span>Dosage & Recon</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      navigateTab("logs");
-                    }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "logs" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
-                      }`}
-                  >
-                    <ClipboardList size={14} />
-                    <span>Research Logs</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      navigateTab("peptideDb");
-                    }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "peptideDb" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
-                      }`}
-                  >
-                    <BookOpen size={14} />
-                    <span>Peptide Database</span>
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <button
-                    onClick={() => {
-                      navigateTab("shop");
-                    }}
-                    className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "shop" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
-                      }`}
-                  >
-                    <ShoppingCart size={14} />
-                    <span>Shop</span>
-                  </button>
-                </div>
-
-                {isAdmin && (
-                  <div className="flex flex-col gap-1">
-                    <button
-                      onClick={() => {
-                        navigateTab("admin");
-                      }}
-                      className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === "admin" ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60" : "text-slate-400 hover:text-white"
-                        }`}
-                    >
-                      <Lock size={14} />
-                      <span>Admin</span>
-                      {waitingOrders > 0 && activeTab !== "admin" && <WaitingBadge count={waitingOrders} />}
-                    </button>
-
-                    {activeTab === "admin" && (
-                      <div className="ml-4 pl-3 border-l border-slate-800 space-y-0.5 mt-1">
-                        {ADMIN_SECTIONS.map((s) => (
-                          <button
-                            key={s.id}
-                            onClick={() => navigateAdmin(s.id)}
-                            className={`w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[11px] transition cursor-pointer font-semibold ${adminSection === s.id
-                              ? "text-gold-400"
-                              : "text-slate-500 hover:text-white"
-                              }`}
-                          >
-                            {s.icon}
-                            <span>{s.label}</span>
-                            {s.id === "new-orders" && waitingOrders > 0 && <WaitingBadge count={waitingOrders} />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+              <nav className="absolute top-full left-0 right-0 z-50 border-b border-slate-900 bg-slate-950/95 backdrop-blur-md px-6 py-4 flex flex-col gap-4 shadow-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto">
+                {navMenu(true)}
               </nav>
             )}
           </header>
@@ -701,33 +539,22 @@ export default function App() {
           {/* RIGHT SIDE STREAM CONTENT & MAIN AREA */}
           <div ref={mainScrollerRef} className="app-main-scroller flex-1 min-h-0 flex flex-col overflow-y-auto">
             <main className="flex-1 px-4 md:px-8 lg:px-12 py-8 md:py-10 max-w-7xl w-full mx-auto">
+              {isAdmin && context?.billing?.cancelAtPeriodEnd && (
+                <Suspense fallback={null}>
+                  <SubscriptionEndingBanner
+                    billing={context.billing}
+                    waitingOrders={waitingOrders}
+                    onResumed={() => void refreshBusiness()}
+                  />
+                </Suspense>
+              )}
               <PeptideLibraryProvider>
-                <ErrorBoundary key={activeTab}>{renderTabContent()}</ErrorBoundary>
+                <ErrorBoundary key={currentTab}>{renderTabContent()}</ErrorBoundary>
               </PeptideLibraryProvider>
             </main>
 
-            {/* DISCLAIMER / RESEARCH-ONLY NOTICE */}
-            <footer className="bg-transparent border-t border-slate-900/80 px-4 md:px-8 lg:px-12 py-6 text-center text-sm text-slate-500 leading-relaxed max-w-7xl w-full mx-auto">
-              <div className="flex items-center justify-center space-x-1.5 text-red-500/80 font-bold mb-2 uppercase tracking-widest">
-                <ShieldAlert size={14} />
-              </div>
-              <p className="max-w-2xl mx-auto">
-                This app is an informational tool built from publicly compiled research guidelines on pep-pedia.org and attached price sheets. This system does not diagnose, treat, prevent, or cure any clinical conditions. All calculations, timelines, and comparisons are intended exclusively for standard pre-clinical lab modeling.
-              </p>
-              <div className="mt-4 flex items-center justify-center space-x-4 text-[12px] font-semibold">
-                <a
-                  href="https://pep-pedia.org"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center space-x-1.5 text-slate-400 hover:text-white transition"
-                >
-                  <BookOpen size={13} />
-                  <span>pep-pedia.org</span>
-                  <ExternalLink size={9} />
-                </a>
-                <span className="text-slate-800">•</span>
-                <span className="text-slate-600">© 2026 {context?.isAdmin ? "PepBiz" : businessName}. All Rights Reserved.</span>
-              </div>
+            <footer className="bg-transparent border-t border-slate-900/80 px-4 md:px-8 lg:px-12 py-6 text-center text-[12px] font-semibold text-slate-600 max-w-7xl w-full mx-auto">
+              © 2026 {context?.isAdmin ? "PepBiz" : businessName}. All Rights Reserved.
             </footer>
           </div>
         </div>
@@ -736,6 +563,34 @@ export default function App() {
         <AuthPage />
       )}
     </>
+  );
+}
+
+function NavButton({
+  mobile,
+  active,
+  onClick,
+  icon,
+  label,
+  children,
+}: {
+  mobile: boolean;
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  children?: React.ReactNode;
+}) {
+  const shape = mobile ? "px-4 rounded-lg" : "px-3.5 rounded-xl";
+  const look = active
+    ? "bg-transparent text-gold-400 font-extrabold border border-gold-500/60"
+    : `text-slate-400 hover:text-white${mobile ? "" : " hover:bg-slate-900/40"}`;
+  return (
+    <button onClick={onClick} className={`flex items-center space-x-2.5 py-2.5 text-xs transition cursor-pointer font-bold ${shape} ${look}`}>
+      {icon}
+      <span>{label}</span>
+      {children}
+    </button>
   );
 }
 

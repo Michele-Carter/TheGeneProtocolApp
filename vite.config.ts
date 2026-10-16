@@ -2,10 +2,12 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
+import { localApi } from './scripts/localApi';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    // localApi: the app's /api server code, run locally inside `npm run dev` (scripts/localApi.ts).
+    plugins: [react(), tailwindcss(), localApi()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -17,13 +19,6 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-      // Route local API calls to Vercel dev server when running `npm run dev:full`.
-      proxy: {
-        '/api': {
-          target: 'http://127.0.0.1:3001',
-          changeOrigin: true,
-        },
-      },
     },
   };
 });

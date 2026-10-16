@@ -1,18 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { ChevronRight, Plus, RefreshCw, Search, X } from "lucide-react";
-import { emptySale, type SaleInput } from "../../../shared/sales";
+import { emptySale, isToPay, isToSend, type SaleInput } from "../../../shared/sales";
 import { adminApi, nzd, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
 import SaleEditor from "./SaleEditor";
 import { ErrorNote, formatMonth, inputClass, MonthFilter, primaryButton, secondaryButton, StatusDot } from "./ui";
 import LoadingSpinner from "../LoadingSpinner";
 
-type Filter = "all" | "open" | "unpaid" | "to-send";
+type Filter = "all" | "open" | "to-pay" | "to-send";
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "open", label: "Not completed" },
-  { id: "unpaid", label: "Owing money" },
+  { id: "to-pay", label: "To pay" },
   { id: "to-send", label: "To send" },
 ];
 
@@ -83,7 +83,7 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
       periodSales: completed.reduce((t, s) => t + s.totals.total, 0),
       periodProfit: completed.reduce((t, s) => t + (s.profit ?? 0), 0),
       owed: all.reduce((t, s) => t + Math.max(0, s.totals.balance), 0),
-      toSend: all.filter((s) => s.data.shipping.status === "not-sent").length,
+      toSend: all.filter((s) => isToSend(s.data)).length,
     };
   }, [sales, month]);
 
@@ -96,8 +96,8 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
       (sales ?? []).filter((s) => {
         if (month != null && !s.orderDate.startsWith(month)) return false;
         if (filter === "open" && s.status !== "open") return false;
-        if (filter === "unpaid" && !(s.totals.balance > 0.004)) return false;
-        if (filter === "to-send" && s.data.shipping.status !== "not-sent") return false;
+        if (filter === "to-pay" && !isToPay(s.data)) return false;
+        if (filter === "to-send" && !isToSend(s.data)) return false;
         if (searchQuery) {
           const haystack = [
             s.customerName,
@@ -249,7 +249,7 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
                 <StatusDot tone={sale.totals.paymentStatus === "paid" ? "good" : "warn"}>
                   {sale.totals.paymentStatus === "paid" ? "Paid" : sale.totals.paymentStatus === "part-paid" ? "Part paid" : "Unpaid"}
                 </StatusDot>
-                <StatusDot tone={sale.data.shipping.status === "not-sent" ? "warn" : "good"}>
+                <StatusDot tone={sale.data.shipping.status !== "not-sent" ? "good" : isToSend(sale.data) ? "warn" : "muted"}>
                   {{ "not-sent": "Not sent", sent: "Sent", delivered: "Delivered", collected: "Collected" }[sale.data.shipping.status]}
                 </StatusDot>
               </div>

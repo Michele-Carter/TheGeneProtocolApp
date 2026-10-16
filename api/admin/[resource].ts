@@ -26,7 +26,7 @@ import {
     toPaymentDetails,
     type ShopOrderLine,
 } from "../../shared/shop.js";
-import { toAddress } from "../../shared/customers.js";
+import { toAddress, type ShippingAddress } from "../../shared/customers.js";
 import { linkCustomerByEmail } from "../_lib/customers.js";
 import { availableStock, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import {
@@ -786,6 +786,39 @@ function saleDto(row: typeof sales.$inferSelect) {
     };
 }
 
+// Where each order goes: the address the customer gave with their shop order, or else the one on their customer
+// record. Missing when there is none (e.g. an order entered by hand for someone without an address).
+async function sendToAddresses(db: Db, rows: (typeof sales.$inferSelect)[]): Promise<Map<string, ShippingAddress>> {
+    const found = new Map<string, ShippingAddress>();
+    if (rows.length === 0) return found;
+    const fromShop = await db
+        .select({ saleId: shopOrders.saleId, address: shopOrders.shippingAddress })
+        .from(shopOrders)
+        .where(inArray(shopOrders.saleId, rows.map((r) => r.id)));
+    for (const order of fromShop) {
+        const address = toAddress(order.address);
+        if (order.saleId && address.line1.trim()) found.set(order.saleId, address);
+    }
+    const customerIds = [...new Set(rows.filter((r) => !found.has(r.id) && r.customerId).map((r) => r.customerId!))];
+    if (customerIds.length > 0) {
+        const onFile = await db
+            .select({ id: customers.id, address: customers.shippingAddress })
+            .from(customers)
+            .where(inArray(customers.id, customerIds));
+        const byCustomer = new Map(onFile.map((c) => [c.id, toAddress(c.address)]));
+        for (const row of rows) {
+            const address = row.customerId ? byCustomer.get(row.customerId) : undefined;
+            if (!found.has(row.id) && address?.line1.trim()) found.set(row.id, address);
+        }
+    }
+    return found;
+}
+
+async function saleDtos(db: Db, rows: (typeof sales.$inferSelect)[]) {
+    const sendTo = await sendToAddresses(db, rows);
+    return rows.map((row) => ({ ...saleDto(row), sendTo: sendTo.get(row.id) ?? null }));
+}
+
 async function handleSales(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
     const action = typeof req.query?.action === "string" ? req.query.action : null;
@@ -794,10 +827,10 @@ async function handleSales(req: any, res: any, db: Db) {
         if (id) {
             const [row] = await db.select().from(sales).where(eq(sales.id, id));
             if (!row) return sendJson(res, 404, { error: "Customer order not found" });
-            return sendJson(res, 200, saleDto(row));
+            return sendJson(res, 200, (await saleDtos(db, [row]))[0]);
         }
         const rows = await db.select().from(sales).orderBy(desc(sales.orderDate), desc(sales.createdAt));
-        return sendJson(res, 200, rows.map(saleDto));
+        return sendJson(res, 200, await saleDtos(db, rows));
     }
 
     if (req.method === "DELETE" && id) {
@@ -874,7 +907,7 @@ async function handleSales(req: any, res: any, db: Db) {
                     .returning();
                 return updated;
             });
-            return sendJson(res, 200, saleDto(row));
+            return sendJson(res, 200, (await saleDtos(db, [row]))[0]);
         } catch (error) {
             if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
             throw error;
@@ -900,7 +933,7 @@ async function handleSales(req: any, res: any, db: Db) {
                     data,
                 })
                 .returning();
-            return sendJson(res, 201, saleDto(row));
+            return sendJson(res, 201, (await saleDtos(db, [row]))[0]);
         }
 
         const [existing] = await db.select().from(sales).where(eq(sales.id, id!));
@@ -918,7 +951,7 @@ async function handleSales(req: any, res: any, db: Db) {
             .returning();
         await notifyIfShipped(db, row.id, existing.data as SaleInput, data);
         await notifyIfPaid(db, row.id, existing.data as SaleInput, data);
-        return sendJson(res, 200, saleDto(row));
+        return sendJson(res, 200, (await saleDtos(db, [row]))[0]);
     }
 
     res.setHeader("Allow", "GET, POST, PATCH, DELETE");
@@ -1059,7 +1092,7 @@ async function handleCustomers(req: any, res: any, db: Db) {
                 .from(sales)
                 .where(eq(sales.customerId, id))
                 .orderBy(desc(sales.orderDate), desc(sales.createdAt));
-            return sendJson(res, 200, { ...customerDto(row), stats: customerStats(orders), orders: orders.map(saleDto) });
+            return sendJson(res, 200, { ...customerDto(row), stats: customerStats(orders), orders: await saleDtos(db, orders) });
         }
         const [rows, allSales] = await Promise.all([
             db.select().from(customers).orderBy(asc(customers.name)),

@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Package, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Copy, Package, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { fifoEstimate, saleProfit, saleTotals, type SaleInput, type SaleLine, type ShippingStatus } from "../../../shared/sales";
+import { addressLines, type ShippingAddress } from "../../../shared/customers";
 import { adminApi, nzd, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
 import {
   Card,
@@ -25,6 +26,40 @@ const SHIPPING_STATUSES: { id: ShippingStatus; label: string }[] = [
   { id: "delivered", label: "Delivered" },
   { id: "collected", label: "Collected" },
 ];
+
+// The customer's address, ready to copy onto a courier booking or label.
+function SendTo({ name, address }: { name: string; address: ShippingAddress | null }) {
+  const [copied, setCopied] = useState(false);
+  const lines = address ? [name.trim(), ...addressLines(address)].filter(Boolean) : [];
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard blocked: the address is on screen to select by hand.
+    }
+  };
+  return (
+    <div>
+      <span className="block text-[11px] font-bold text-white mb-1">Send to</span>
+      {address ? (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+          <div className="text-xs text-slate-400 leading-relaxed select-text">
+            {lines.map((line, i) => (
+              <div key={i}>{line}</div>
+            ))}
+          </div>
+          <button type="button" className={secondaryButton} onClick={() => void copy()}>
+            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">No address on file for this customer - you can add one on their Customers page.</p>
+      )}
+    </div>
+  );
+}
 
 function blankLine(): SaleLine {
   return { id: newId(), itemId: "", kind: "peptide", name: "", variant: "", unit: "vial", qty: 1, unitPriceNzd: 0 };
@@ -773,6 +808,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
 
               <Card title="Shipping">
                 <div className="space-y-3">
+                  <SendTo name={data.customerName} address={current?.sendTo ?? null} />
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {SHIPPING_STATUSES.map((s) => (
                       <button

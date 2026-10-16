@@ -1,6 +1,7 @@
 import type { CustomerDetails, ShippingAddress } from "../../shared/customers";
 import type { CartLine, CustomerNotification, ShopOrder, ShopProduct } from "../../shared/shop";
 import { businessHeaders } from "./business";
+import { signedInFetch } from "./signedInFetch";
 import type { PushSubscriptionData } from "./orderAlerts";
 
 // Calls made by signed-in customers (api/shop). The server only ever returns the caller's own data.
@@ -12,18 +13,18 @@ export interface MyDetails extends CustomerDetails {
 }
 
 async function shopFetch<T>(path: string, init: RequestInit, getToken: GetToken): Promise<T> {
-  const token = await getToken();
-  if (!token) throw new Error("You're signed out - please sign in again.");
-
-  const response = await fetch(`/api/shop/${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...businessHeaders(),
-      ...(init.headers ?? {}),
-    },
-  });
+  const response = await signedInFetch(getToken, (token) =>
+    fetch(`/api/shop/${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...businessHeaders(),
+        ...(init.headers ?? {}),
+      },
+    })
+  );
+  if (!response) throw new Error("You're signed out - please sign in again.");
 
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;

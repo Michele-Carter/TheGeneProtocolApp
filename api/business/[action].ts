@@ -4,7 +4,7 @@ import { createClerkClient } from "@clerk/backend";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
 import { ownedBusiness } from "../_lib/business.js";
-import { appUrl, billingInfo, billingPortalUrl, changeRegion, checkoutUrl, completeCheckout, syncFromStripe } from "../_lib/billing.js";
+import { appUrl, billingInfo, billingPortalUrl, changeRegion, checkoutUrl, completeCheckout, resumeSubscription, syncFromStripe } from "../_lib/billing.js";
 import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { businesses, businessMembers } from "../_lib/schema.js";
@@ -16,7 +16,9 @@ import { MAX_IMAGE_BYTES } from "../../shared/shop.js";
 //   GET    /api/business/slug?slug=     is this shop link free?  { available, problem }
 //   POST   /api/business/create         { name, slug, region }   sign up a new business (the caller becomes its owner)
 //   POST   /api/business/checkout       Stripe page to save a card and start the subscription         { url }
-//   POST   /api/business/portal         Stripe billing page: change card, invoices, cancel           { url }
+//   POST   /api/business/portal         { flow? } Stripe billing page: change card, invoices, cancel  { url }
+//                                        (flow "cancel" opens straight on its cancel screen)
+//   POST   /api/business/resume         undo a cancellation before the subscription ends             { billing }
 //   POST   /api/business/sync           { sessionId? } after returning from Stripe: start the subscription with the
 //                                        card just saved (if it's allowed), then re-read it   { billing, problem }
 //   PATCH  /api/business/region         { region }  NZ or overseas price, while no subscription is running
@@ -173,7 +175,14 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
 
     if (action === "portal" && req.method === "POST") {
         if (!business.stripeCustomerId) return sendJson(res, 409, { error: "You haven't started a subscription yet." });
-        return sendJson(res, 200, { url: await billingPortalUrl(business, appUrl(req)) });
+        const body = (await parseJsonBody(req)) as { flow?: unknown };
+        const flow = body?.flow === "cancel" ? "cancel" : undefined;
+        return sendJson(res, 200, { url: await billingPortalUrl(business, appUrl(req), flow) });
+    }
+
+    if (action === "resume" && req.method === "POST") {
+        if (!business.cancelAtPeriodEnd) return sendJson(res, 409, { error: "Your subscription isn't cancelled." });
+        return sendJson(res, 200, { billing: billingInfo(await resumeSubscription(business)) });
     }
 
     if (action === "sync" && req.method === "POST") {

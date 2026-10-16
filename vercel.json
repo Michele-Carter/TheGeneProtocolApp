@@ -3,6 +3,7 @@
     "devCommand": "npm run dev:vite",
     "buildCommand": "npm run build",
     "outputDirectory": "dist",
+    "regions": ["syd1"],
     "rewrites": [
         { "source": "/start", "destination": "/index.html" },
         { "source": "/shop/:slug", "destination": "/index.html" }
