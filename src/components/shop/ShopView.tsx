@@ -234,7 +234,12 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                 className="text-left cursor-pointer space-y-4"
                 aria-label={`View ${product.name}`}
               >
-                <ProductImage src={product.images[0]} alt={product.name} className="aspect-square" />
+                <ProductImage
+                  src={product.images[0]}
+                  alt={product.name}
+                  className="aspect-square"
+                  ribbon={stock === "soon" ? "Coming soon" : undefined}
+                />
                 <div className="space-y-1">
                   {product.categories[0] && (
                     <div className="text-[10px] font-black uppercase tracking-widest text-gold-400">{product.categories[0]}</div>
@@ -248,7 +253,8 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
               <div className="mt-auto flex items-end justify-between gap-1.5">
                 <div className="space-y-1.5">
                   <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">{priceRange(product.variants)}</div>
-                  <StockBadge stock={stock} />
+                  {/* Coming soon is shown as a ribbon on the photo instead. */}
+                  {stock !== "soon" && <StockBadge stock={stock} />}
                 </div>
                 <div className="flex-shrink-0">
                   {single && stock === "soon" ? null : single ? (
