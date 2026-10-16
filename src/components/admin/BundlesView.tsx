@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { ChevronRight, Package, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { emptyBundle, type BundleInput } from "../../../shared/bundles";
-import { adminApi, nzd, type BundleRecord, type InventorySummaryRow } from "../../lib/adminApi";
+import { adminApi, cash, type BundleRecord, type InventorySummaryRow } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, dangerButton, inputClass, primaryButton, secondaryButton } from "./ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import CategoryPicker from "./CategoryPicker";
 import ProductImages from "./ProductImages";
+import { homeCurrency } from "../../lib/locale";
 
 type Editing = { id: string | null; data: BundleInput; images: string[] } | null;
 
@@ -164,7 +165,7 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
               onChange={(e) => setEditing((ed) => (ed ? { ...ed, data: { ...ed.data, name: e.target.value } } : ed))}
             />
           </Field>
-          <Field label="Package price (NZD)" hint="Leave blank to charge each item's normal price with no bundle discount.">
+          <Field label={`Package price (${homeCurrency()})`} hint="Leave blank to charge each item's normal price with no bundle discount.">
             <NumberField
               placeholder="0.00"
               value={editing.data.priceNzd}
@@ -354,7 +355,7 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white truncate">{row.name}</span>
-                  {row.priceNzd != null && <span className="text-xs tabular-nums text-gold-400 font-semibold">{nzd(row.priceNzd)}</span>}
+                  {row.priceNzd != null && <span className="text-xs tabular-nums text-gold-400 font-semibold">{cash(row.priceNzd)}</span>}
                   {row.shopVisible && <span className="text-[10px] font-bold text-emerald-400">In shop</span>}
                 </div>
                 <div className="text-[11px] text-slate-500 truncate">

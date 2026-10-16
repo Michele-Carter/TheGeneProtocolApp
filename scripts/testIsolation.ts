@@ -250,15 +250,27 @@ try {
   check("A shop link that's taken is refused", taken.body?.available === false, taken.body);
   const reserved = await business(OWNER_C, "GET", "slug", undefined, { slug: "admin" });
   check("A reserved shop link is refused", reserved.body?.available === false, reserved.body);
-  const created = await business(OWNER_C, "POST", "create", { name: "Signup Test Co", slug: SIGNUP_SLUG, region: "INTL" });
+  const unknownCountry = await business(OWNER_C, "POST", "create", { ownerName: "Signup Tester", name: "Nowhere Co", slug: SIGNUP_SLUG, country: "XX" });
+  check("A country PepBiz doesn't cover is refused", unknownCountry.status === 400, unknownCountry.status);
+  const created = await business(OWNER_C, "POST", "create", {
+    ownerName: "Signup Tester",
+    name: "Signup Test Co",
+    slug: SIGNUP_SLUG,
+    country: "AU",
+    timeZone: "Australia/Perth",
+  });
   check("A new owner signs up a business", created.status === 201, created);
   const [newBiz] = await sql`select * from businesses where slug = ${SIGNUP_SLUG}`;
   const copied = newBiz ? (await sql`select count(*)::int n from peptide_library where business_id = ${newBiz.id}`)[0].n : 0;
   check(`It starts with a copy of your ${tgpLibCount} library records`, copied === tgpLibCount, copied);
   const newPrices = newBiz ? (await sql`select count(*)::int n from supplier_catalog where business_id = ${newBiz.id}`)[0].n : -1;
   check("...but not your price list", newPrices === 0, newPrices);
-  check("It pays in US dollars (outside NZ)", newBiz?.country === "INTL", newBiz?.country);
-  const second = await business(OWNER_C, "POST", "create", { name: "Second Co", slug: "isolation-signup-two", region: "NZ" });
+  check(
+    "An Australian business works in Australian dollars and its own time zone",
+    newBiz?.country === "AU" && newBiz?.currency === "AUD" && newBiz?.time_zone === "Australia/Perth",
+    newBiz && { country: newBiz.country, currency: newBiz.currency, timeZone: newBiz.time_zone }
+  );
+  const second = await business(OWNER_C, "POST", "create", { ownerName: "Signup Tester", name: "Second Co", slug: "isolation-signup-two", country: "NZ" });
   check("An owner can't sign up a second business", second.status === 409, second.status);
   const meC = await admin(OWNER_C, "GET", { resource: "me" });
   check("Before the free trial starts, the app asks them to start it", meC.body?.access === "needs-checkout" && meC.body?.isAdmin === true, meC.body);

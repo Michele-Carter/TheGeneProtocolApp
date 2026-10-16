@@ -8,6 +8,8 @@ import type { PushSubscriptionData } from "./orderAlerts";
 import type { SupplierProduct } from "../../shared/library";
 import { ApiError, businessHeaders, type BusinessContext } from "./business";
 import { signedInFetch } from "./signedInFetch";
+import { appLocale, businessToday, homeCurrency } from "./locale";
+import { moneyPrefix } from "../../shared/countries";
 
 export interface SupplierProductRecord extends SupplierProduct {
   sort: number;
@@ -400,21 +402,20 @@ export const adminApi = {
     adminFetch<{ images: string[] }>(`images?target=${target}&id=${q(id)}&url=${q(url)}`, { method: "DELETE" }, t),
 };
 
-export const money = (value: number | null | undefined, currency: "USD" | "NZD", digits = 2) => {
+// An amount in a given currency, labelled so currencies are never confused, e.g. "US$12.50" or "A$12.50".
+export const money = (value: number | null | undefined, currency: string, digits = 2) => {
   if (value == null || !Number.isFinite(value)) return "—";
   // Avoid "-NZ$0.00" from tiny rounding leftovers.
   const rounded = Math.abs(value) < 0.5 / 10 ** digits ? 0 : value;
-  const formatted = Math.abs(rounded).toLocaleString("en-NZ", {
+  const formatted = Math.abs(rounded).toLocaleString(appLocale(), {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
-  return `${rounded < 0 ? "−" : ""}${currency === "USD" ? "US$" : "NZ$"}${formatted}`;
+  return `${rounded < 0 ? "−" : ""}${moneyPrefix(currency)}${formatted}`;
 };
 
-export const nzd = (value: number | null | undefined, digits = 2) => money(value, "NZD", digits);
+// An amount in the business's own currency (what its prices, costs and reports are in).
+export const cash = (value: number | null | undefined, digits = 2) => money(value, homeCurrency(), digits);
 
-export const todayIso = () => {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-};
+// Today where the business is (yyyy-mm-dd).
+export const todayIso = () => businessToday();

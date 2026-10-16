@@ -5,12 +5,13 @@ import type { BillingInfo } from "../../../shared/billing";
 import { businessApi } from "../../lib/business";
 import { Spinner } from "../LoadingSpinner";
 import { primaryButton } from "./ui";
+import { formatDate } from "../../lib/locale";
 
 // Shown to the owner on every page once they've cancelled, until the subscription actually ends: when it
 // ends, what that means, any orders still waiting, and a one-click way to change their mind.
 
 const date = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" }) : "soon";
+  iso ? formatDate(iso, { day: "numeric", month: "long", year: "numeric" }) : "soon";
 
 export default function SubscriptionEndingBanner({
   billing,

@@ -7,25 +7,30 @@ import { Card, ErrorNote, Field, inputClass, primaryButton, secondaryButton } fr
 import { prepareImage } from "./ProductImages";
 import { Spinner } from "../LoadingSpinner";
 import OrderAlertsCard from "./OrderAlertsCard";
+import { formatDate } from "../../lib/locale";
+import { COUNTRIES, countryInfo, defaultTimeZone } from "../../../shared/countries";
 
 // The business itself: its name and logo (shown to customers), its shop link, and its PepBiz subscription.
 
 const LOGO_EDGE = 512;
 
 const date = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" }) : "";
+  iso ? formatDate(iso, { day: "numeric", month: "long", year: "numeric" }) : "";
 
 export default function BusinessSettingsView({ context, onChanged }: { context: BusinessContext; onChanged: () => void }) {
   const { getToken } = useAuth();
   const [name, setName] = useState(context.business.name);
-  const [busy, setBusy] = useState<null | "name" | "logo" | "billing" | "cancel" | "resume">(null);
+  const [busy, setBusy] = useState<null | "name" | "logo" | "billing" | "cancel" | "resume" | "timezone" | "country">(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const shopLink = `${window.location.origin}/shop/${context.business.slug}`;
+  const country = countryInfo(context.business.country);
+  // The country (and its currency) can be changed until the business records stock, orders, sales or expenses.
+  const countryLocked = context.billing?.countryLocked ?? true;
 
-  const run = async (what: "name" | "logo" | "resume", fn: () => Promise<unknown>) => {
+  const run = async (what: "name" | "logo" | "resume" | "timezone" | "country", fn: () => Promise<unknown>) => {
     setBusy(what);
     setError(null);
     try {
@@ -117,6 +122,79 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
             <span className="block text-[11px] text-slate-500 mt-1">A square image works best.</span>
           </div>
         </div>
+      </Card>
+
+      <Card title="Where you are">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {countryLocked ? (
+            <div>
+              <span className="block text-[11px] font-bold text-white mb-1">Country</span>
+              <span className="text-sm text-slate-400">{country.name}</span>
+            </div>
+          ) : (
+            <div className="sm:col-span-2">
+              <span className="block text-[11px] font-bold text-white mb-1">Country</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5" role="radiogroup" aria-label="Country">
+                {COUNTRIES.map((c) => {
+                  const selected = c.code === country.code;
+                  return (
+                    <button
+                      key={c.code}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={busy != null}
+                      onClick={() => {
+                        if (!selected) void run("country", () => businessApi.setCountry(c.code, defaultTimeZone(c), getToken));
+                      }}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition cursor-pointer disabled:cursor-not-allowed ${
+                        selected ? "border-gold-500/60 text-gold-400 bg-gold-500/10" : "border-slate-800 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <div>
+            <span className="block text-[11px] font-bold text-white mb-1">Currency</span>
+            <span className="text-sm text-slate-400 inline-flex items-center gap-2">
+              {context.business.currency}
+              {busy === "country" && <Spinner size={13} />}
+            </span>
+          </div>
+          {country.timeZones.length > 1 && (
+            <div className="sm:col-span-2">
+              <Field label="Time zone" hint="Which day your orders and stock changes fall on.">
+                <div className="flex items-center gap-2">
+                  <select
+                    className={inputClass}
+                    value={context.business.timeZone}
+                    disabled={busy != null}
+                    onChange={(e) => {
+                      const zone = e.target.value;
+                      void run("timezone", () => businessApi.setTimeZone(zone, getToken));
+                    }}
+                  >
+                    {country.timeZones.map((z) => (
+                      <option key={z.id} value={z.id}>
+                        {z.label} time
+                      </option>
+                    ))}
+                  </select>
+                  {busy === "timezone" && <Spinner size={13} />}
+                </div>
+              </Field>
+            </div>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-500 mt-3">
+          {countryLocked
+            ? `Your prices, costs and reports are all in ${context.business.currency}. Now that you've recorded stock, orders, sales or expenses, the country and currency can't be changed.`
+            : `Your prices, costs and reports will be in ${context.business.currency}. You can change your country until you start recording stock, orders, sales or expenses.`}
+        </p>
       </Card>
 
       <Card title="Your shop link">

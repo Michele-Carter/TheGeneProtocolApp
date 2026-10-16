@@ -1,8 +1,17 @@
-import React, { useEffect, useState } from "react";
-import { SignOutButton, useAuth } from "@clerk/react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { SignOutButton, useAuth, useClerk, useUser } from "@clerk/react";
 import { AlertTriangle, CheckCircle2, CreditCard, Link2, Store } from "lucide-react";
-import { PLANS, REGIONS, TRIAL_DAYS, guessRegion, planFor, slugProblem, toSlug, type RegionCode } from "../../../shared/billing";
-import { businessApi, setWantsToStartBusiness, type BusinessContext } from "../../lib/business";
+import { PLANS, TRIAL_DAYS, planFor, slugProblem, toSlug } from "../../../shared/billing";
+import { COUNTRIES, countryInfo, defaultTimeZone } from "../../../shared/countries";
+import {
+  businessApi,
+  saveRegistration,
+  savedRegistration,
+  setWantsToStartBusiness,
+  type BusinessContext,
+  type RegistrationDraft,
+} from "../../lib/business";
+import { PEPBIZ_ICON, setTabBranding } from "../../lib/tabBranding";
 import { Spinner } from "../LoadingSpinner";
 
 // Full-page screens shown instead of the app when there's something to do first: set up a new business,
@@ -91,6 +100,86 @@ export function ShopUnavailableScreen({ context }: { context: BusinessContext })
   );
 }
 
+const fieldClass =
+  "w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-gold-500/70";
+
+const currencyName = (code: string) => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "currency" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+};
+
+// Where the business is: sets its currency, how dates are written and its time zone. Only the chosen country's
+// subscription price is shown. country "" = not chosen yet (nothing is picked for the owner).
+function CountryChoice({
+  country,
+  timeZone,
+  onChange,
+  disabled,
+}: {
+  country: string;
+  timeZone: string;
+  onChange: (country: string, timeZone: string) => void;
+  disabled?: boolean;
+}) {
+  const info = country ? countryInfo(country) : null;
+  return (
+    <div className="space-y-1.5">
+      <span className="block text-xs font-bold text-white">Where is your business?</span>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Where is your business?">
+        {COUNTRIES.map((c) => {
+          const selected = c.code === info?.code;
+          return (
+            <button
+              key={c.code}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={disabled}
+              onClick={() => {
+                if (!selected) onChange(c.code, defaultTimeZone(c));
+              }}
+              className={`rounded-xl border px-3 py-2.5 text-left text-sm font-bold transition ${
+                selected
+                  ? "border-gold-500/70 bg-gold-500/10 text-white"
+                  : "border-zinc-800 text-zinc-300 hover:border-zinc-600 hover:text-white cursor-pointer"
+              }`}
+            >
+              {c.name}
+            </button>
+          );
+        })}
+      </div>
+      {info && info.timeZones.length > 1 && (
+        <label className="block space-y-1 pt-1">
+          <span className="block text-xs font-bold text-white">Time zone</span>
+          <select className={fieldClass} value={timeZone} disabled={disabled} onChange={(e) => onChange(info.code, e.target.value)}>
+            {info.timeZones.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.label} time
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {info && (
+        <div className="pt-1 space-y-1">
+          <span className="block text-xs font-bold text-white">Currency</span>
+          <div className={`${fieldClass} text-zinc-400`}>
+            {currencyName(info.currency)} ({info.currency})
+          </div>
+          <p className="text-xs text-zinc-500">
+            Your prices, costs and reports will be in {info.currency}. It follows your country, and you can change it until
+            you start recording stock, orders or sales.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // The owner's subscription isn't running: start the trial, restart, or fix the payment.
 export function BillingScreen({ context, onChanged }: { context: BusinessContext; onChanged: () => void }) {
   const { getToken } = useAuth();
@@ -100,11 +189,11 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
   const plan = PLANS[billing.plan];
   const status = billing.subscriptionStatus;
 
-  const switchRegion = async (region: RegionCode) => {
+  const switchCountry = async (country: string, timeZone: string) => {
     setBusy(true);
     setError(null);
     try {
-      await businessApi.setRegion(region, getToken);
+      await businessApi.setCountry(country, timeZone, getToken);
       onChanged();
     } catch (e) {
       setError((e as Error).message);
@@ -168,29 +257,17 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
       </Heading>
       <div className="mt-6 space-y-3">
         <ErrorLine message={error} />
-        {billing.state === "needs-checkout" && billing.plan === "nzd" && (
+        {billing.state === "needs-checkout" && !billing.hadSubscription && (
           <div className="space-y-1.5">
-            <span className="text-xs font-bold text-white">Where is your business?</span>
-            <div className="grid grid-cols-2 gap-2">
-              {REGIONS.map((r) => {
-                const selected = planFor(r.code) === billing.plan;
-                return (
-                  <button
-                    key={r.code}
-                    type="button"
-                    disabled={busy || selected}
-                    onClick={() => void switchRegion(r.code)}
-                    className={`rounded-xl border px-3 py-2.5 text-left transition ${
-                      selected ? "border-gold-500/70 bg-gold-500/10" : "border-zinc-800 hover:border-zinc-600 cursor-pointer"
-                    }`}
-                  >
-                    <div className="text-sm font-bold text-white">{r.label}</div>
-                    <div className="text-xs text-zinc-400">{r.price}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-zinc-500">The New Zealand price needs a card issued in New Zealand.</p>
+            <CountryChoice
+              country={context.business.country}
+              timeZone={context.business.timeZone}
+              disabled={busy}
+              onChange={(country, timeZone) => void switchCountry(country, timeZone)}
+            />
+            {context.business.country === "NZ" && (
+              <p className="text-xs text-zinc-500">The New Zealand price needs a card issued in New Zealand.</p>
+            )}
           </div>
         )}
         {action && (
@@ -213,18 +290,44 @@ export function BillingScreen({ context, onChanged }: { context: BusinessContext
   );
 }
 
-// Signing up a new business: name, shop link and where it is, then on to Stripe for the free trial.
-export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => void; onCreated: () => void }) {
+// Registering a business. Signed out (/start), the form comes first: Continue keeps the details for this tab and
+// opens "Create your account" with the email and name already filled in (or Sign in, for an existing login).
+// Once signed in, the business is set up from those details straight away, then it's on to Stripe for the free
+// trial. Signed in without saved details (e.g. a different tab), the same form sets it up directly.
+export function StartBusinessScreen({
+  signedIn,
+  onCancel,
+  onCreated,
+}: {
+  signedIn: boolean;
+  onCancel: () => void;
+  onCreated: () => void;
+}) {
   const { getToken } = useAuth();
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [slugEdited, setSlugEdited] = useState(false);
-  const [region, setRegion] = useState<RegionCode>(guessRegion);
-  const [choosingRegion, setChoosingRegion] = useState(false);
-  const regionInfo = REGIONS.find((r) => r.code === region)!;
+  const { user } = useUser();
+  const clerk = useClerk();
+  const draft = useMemo(() => savedRegistration(), []);
+  // About you: when signed in, the name from their login if it has one, and the email they sign in with.
+  const [ownerName, setOwnerName] = useState(draft?.ownerName ?? "");
+  const [ownerNameEdited, setOwnerNameEdited] = useState(Boolean(draft?.ownerName));
+  const effectiveOwnerName = ownerNameEdited ? ownerName : user?.fullName ?? "";
+  const [email, setEmail] = useState(draft?.email ?? "");
+  const loginEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+  // Your business.
+  const [name, setName] = useState(draft?.name ?? "");
+  const [slug, setSlug] = useState(draft?.slug ?? "");
+  const [slugEdited, setSlugEdited] = useState(Boolean(draft?.slug));
+  const [country, setCountry] = useState(draft?.country ?? "");
+  const [timeZone, setTimeZone] = useState(draft?.timeZone ?? "");
   const [slugCheck, setSlugCheck] = useState<{ slug: string; problem: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Setting the business up from details given before signing in.
+  const [settingUp, setSettingUp] = useState(signedIn && draft != null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!signedIn) setTabBranding("PepBiz", PEPBIZ_ICON);
+  }, [signedIn]);
 
   const effectiveSlug = slugEdited ? slug : toSlug(name);
   const localProblem = effectiveSlug ? slugProblem(effectiveSlug) : null;
@@ -234,22 +337,39 @@ export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => v
     if (!effectiveSlug || localProblem) return;
     const timer = window.setTimeout(() => {
       businessApi
-        .checkSlug(effectiveSlug, getToken)
+        .checkSlug(effectiveSlug)
         .then((r) => setSlugCheck({ slug: effectiveSlug, problem: r.problem }))
         .catch(() => undefined);
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [effectiveSlug, localProblem, getToken]);
+  }, [effectiveSlug, localProblem]);
 
   const slugMessage = localProblem ?? (slugCheck?.slug === effectiveSlug ? slugCheck.problem : null);
   const slugOk = Boolean(effectiveSlug) && !localProblem && slugCheck?.slug === effectiveSlug && slugCheck.problem == null;
+  const emailOk = signedIn || /^\S+@\S+\.\S+$/.test(email.trim());
+  const ready = effectiveOwnerName.trim().length >= 2 && emailOk && name.trim().length >= 2 && slugOk && Boolean(country);
 
-  const submit = async () => {
+  const details = (): RegistrationDraft => ({
+    ownerName: effectiveOwnerName.trim(),
+    email: email.trim(),
+    name: name.trim(),
+    slug: effectiveSlug,
+    country,
+    timeZone,
+  });
+
+  const create = async (d: RegistrationDraft) => {
     setBusy(true);
     setError(null);
     try {
-      await businessApi.create({ name: name.trim(), slug: effectiveSlug, region }, getToken);
+      await businessApi.create({ ownerName: d.ownerName, name: d.name, slug: d.slug, country: d.country, timeZone: d.timeZone }, getToken);
+      saveRegistration(null);
       setWantsToStartBusiness(false);
+      // Their login gets the name too (shown in Manage account) - if the sign-in settings allow names.
+      if (user && d.ownerName !== (user.fullName ?? "")) {
+        const [firstName, ...rest] = d.ownerName.split(/\s+/);
+        await user.update({ firstName, lastName: rest.join(" ") }).catch(() => undefined);
+      }
       try {
         const { url } = await businessApi.checkout(getToken);
         window.location.assign(url);
@@ -258,21 +378,89 @@ export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => v
         onCreated();
       }
     } catch (e) {
+      // e.g. the shop link was taken meanwhile: back to the form, filled in, to fix it.
       setError((e as Error).message);
       setBusy(false);
+      setSettingUp(false);
     }
   };
 
-  const input =
-    "w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-gold-500/70";
+  // Just signed in with details from before they had a login: set the business up straight away.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!signedIn || !draft || !user || autoStarted.current) return;
+    autoStarted.current = true;
+    void create(draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn, draft, user]);
+
+  // Signed out: keep the details for this tab, then create the login (or sign in to an existing one).
+  const toAccount = (mode: "signUp" | "signIn") => {
+    if (ready) saveRegistration(details());
+    const [firstName, ...rest] = effectiveOwnerName.trim().split(/\s+/);
+    if (mode === "signUp") {
+      clerk.openSignUp({ initialValues: { emailAddress: email.trim(), firstName, lastName: rest.join(" ") } });
+    } else {
+      clerk.openSignIn({ initialValues: { emailAddress: email.trim() } });
+    }
+  };
+
+  if (settingUp) {
+    return (
+      <ScreenFrame footer={false}>
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <Spinner size={20} />
+          <p className="text-sm text-zinc-300">Setting up {draft?.name ?? "your business"}...</p>
+        </div>
+      </ScreenFrame>
+    );
+  }
+
+  const input = fieldClass;
 
   return (
-    <ScreenFrame>
-      <Heading eyebrow="PepBiz for business" title="Set up your business">
+    <ScreenFrame footer={signedIn}>
+      <Heading eyebrow="PepBiz for business" title="Register your business">
         <p>Your own shop, customers, stock and peptide library - kept completely separate from anyone else's.</p>
       </Heading>
 
       <div className="mt-6 space-y-4">
+        <SectionTitle>About you</SectionTitle>
+        <label className="block space-y-1.5">
+          <span className="text-xs font-bold text-white">Your name</span>
+          <input
+            className={input}
+            value={effectiveOwnerName}
+            autoComplete="name"
+            placeholder="e.g. Sam Smith"
+            onChange={(e) => {
+              setOwnerNameEdited(true);
+              setOwnerName(e.target.value);
+            }}
+          />
+        </label>
+        {signedIn ? (
+          <div className="space-y-1.5">
+            <span className="block text-xs font-bold text-white">Email</span>
+            <div className={`${input} text-zinc-400 truncate`}>{loginEmail || "—"}</div>
+            <span className="block text-xs text-zinc-500">The email you sign in with. You can change it later in Manage account.</span>
+          </div>
+        ) : (
+          <label className="block space-y-1.5">
+            <span className="text-xs font-bold text-white">Email</span>
+            <input
+              className={input}
+              type="email"
+              value={email}
+              autoComplete="email"
+              placeholder="you@example.com"
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <span className="block text-xs text-zinc-500">You'll sign in with this.</span>
+          </label>
+        )}
+
+        <SectionTitle>Your business</SectionTitle>
         <label className="block space-y-1.5">
           <span className="text-xs font-bold text-white">Business name</span>
           <input className={input} value={name} placeholder="e.g. Peak Peptides" onChange={(e) => setName(e.target.value)} />
@@ -297,55 +485,56 @@ export function StartBusinessScreen({ onCancel, onCreated }: { onCancel: () => v
           </span>
         </label>
 
-        <div className="space-y-1.5">
-          <span className="text-xs font-bold text-white">Where is your business?</span>
-          {choosingRegion ? (
-            <div className="grid grid-cols-2 gap-2">
-              {REGIONS.map((r) => (
-                <button
-                  key={r.code}
-                  type="button"
-                  onClick={() => setRegion(r.code)}
-                  className={`rounded-xl border px-3 py-2.5 text-left cursor-pointer transition ${
-                    region === r.code ? "border-gold-500/70 bg-gold-500/10" : "border-zinc-800 hover:border-zinc-600"
-                  }`}
-                >
-                  <div className="text-sm font-bold text-white">{r.label}</div>
-                  <div className="text-xs text-zinc-400">{r.price}</div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-gold-500/70 bg-gold-500/10 px-3 py-2.5">
-              <div>
-                <div className="text-sm font-bold text-white">{regionInfo.label}</div>
-                <div className="text-xs text-zinc-400">{regionInfo.price}</div>
-              </div>
-              <button type="button" className="text-xs font-bold text-gold-400 hover:text-gold-300 cursor-pointer" onClick={() => setChoosingRegion(true)}>
-                Change
-              </button>
-            </div>
-          )}
-        </div>
+        <CountryChoice
+          country={country}
+          timeZone={timeZone}
+          disabled={busy}
+          onChange={(nextCountry, nextZone) => {
+            setCountry(nextCountry);
+            setTimeZone(nextZone);
+          }}
+        />
 
         <div className="rounded-2xl bg-zinc-950/80 border border-zinc-800 p-3.5 text-xs text-zinc-400 space-y-1">
           <p className="text-zinc-200 font-semibold">
-            {TRIAL_DAYS} days free, then {PLANS[planFor(region)].label}
+            {country ? `${TRIAL_DAYS} days free, then ${PLANS[planFor(country)].label}` : `${TRIAL_DAYS} days free`}
           </p>
-          <p>Next you'll enter a card on Stripe's secure page. Cancel before the trial ends and you won't be charged.</p>
-          {region === "NZ" && <p>The New Zealand price needs a card issued in New Zealand.</p>}
+          <p>
+            {signedIn
+              ? "Next you'll enter a card on Stripe's secure page. Cancel before the trial ends and you won't be charged."
+              : "Next you'll create your login, then enter a card on Stripe's secure page. Cancel before the trial ends and you won't be charged."}
+          </p>
+          {country === "NZ" && <p>The New Zealand price needs a card issued in New Zealand.</p>}
         </div>
 
         <ErrorLine message={error} />
-        <button className={bigButton} disabled={busy || name.trim().length < 2 || !slugOk} onClick={() => void submit()}>
-          {busy ? <Spinner size={14} /> : <Link2 size={14} />} Continue to free trial
-        </button>
+        {signedIn ? (
+          <button className={bigButton} disabled={busy || !ready} onClick={() => void create(details())}>
+            {busy ? <Spinner size={14} /> : <Link2 size={14} />} Continue to free trial
+          </button>
+        ) : (
+          <>
+            <button className={bigButton} disabled={!ready} onClick={() => toAccount("signUp")}>
+              <Link2 size={14} /> Continue - create your login
+            </button>
+            <p className="text-center text-xs text-zinc-400">
+              Already have a PepBiz login?{" "}
+              <button className="font-bold text-gold-400 hover:text-gold-300 cursor-pointer" onClick={() => toAccount("signIn")}>
+                Sign in
+              </button>
+            </p>
+          </>
+        )}
         <button className="w-full text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer" onClick={onCancel} disabled={busy}>
           Cancel
         </button>
       </div>
     </ScreenFrame>
   );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <div className="pt-2 text-[11px] font-black uppercase tracking-widest text-gold-400">{children}</div>;
 }
 
 // Something went wrong finding out which business to show.

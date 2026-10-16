@@ -4,6 +4,7 @@ import webpush from "web-push";
 import { z } from "zod";
 import { runAsBusiness, type Business, type Db } from "./business.js";
 import { pushSubscriptions } from "./schema.js";
+import { customerPrice } from "../../shared/countries.js";
 
 // Phone/computer notifications (web push - they arrive even when the app is closed), on the devices people
 // turned them on for: the business owner's get new-order alerts, a customer's get their order updates.
@@ -77,8 +78,6 @@ export async function sendAlert(db: Db, business: Business, alert: Alert, onlyDe
     await sendTo(db, targets, { ...alert, icon: alert.icon ?? business.logoUrl ?? "/favicon.png" });
 }
 
-const money = (n: number) => `$${n.toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 // Called once a customer's order has been saved.
 export async function alertNewOrder(
     business: Business,
@@ -87,7 +86,7 @@ export async function alertNewOrder(
     const items = `${order.itemCount} item${order.itemCount === 1 ? "" : "s"}`;
     const alert: Alert = {
         title: `New order #${order.orderNumber}`,
-        body: `${order.customerName || "A customer"} - ${items}, ${money(order.subtotalNzd)}. Tap to confirm it.`,
+        body: `${order.customerName || "A customer"} - ${items}, ${customerPrice(order.subtotalNzd, business)}. Tap to confirm it.`,
         url: "/?open=new-orders",
         tag: `order-${order.orderNumber}`,
     };

@@ -5,8 +5,9 @@ export interface ShippingAddress {
   line2: string; // apartment, unit, RD number... (optional)
   suburb: string;
   city: string;
+  region: string; // state / province / county - not asked in New Zealand (missing on older addresses)
   postcode: string;
-  country: string;
+  country: string; // blank on older or new addresses until saved: the shop's own country
 }
 
 export interface CustomerDetails {
@@ -16,7 +17,7 @@ export interface CustomerDetails {
 }
 
 export function emptyAddress(): ShippingAddress {
-  return { line1: "", line2: "", suburb: "", city: "", postcode: "", country: "New Zealand" };
+  return { line1: "", line2: "", suburb: "", city: "", region: "", postcode: "", country: "" };
 }
 
 // Fills any missing fields, e.g. on a customer created before an address was entered.
@@ -28,8 +29,9 @@ export function toAddress(value: unknown): ShippingAddress {
     line2: text(v.line2),
     suburb: text(v.suburb),
     city: text(v.city),
+    region: text(v.region),
     postcode: text(v.postcode),
-    country: text(v.country, "New Zealand") || "New Zealand",
+    country: text(v.country),
   };
 }
 
@@ -38,13 +40,15 @@ export function isAddressComplete(address: ShippingAddress): boolean {
   return Boolean(address.line1.trim() && address.city.trim() && address.postcode.trim());
 }
 
-export function addressLines(address: ShippingAddress): string[] {
+// The address as lines for a label. The country is only added when it isn't the shop's own (homeCountry).
+export function addressLines(address: ShippingAddress, homeCountry = "New Zealand"): string[] {
+  const place = [address.city, address.region].map((s) => s.trim()).filter(Boolean).join(", ");
   return [
     address.line1,
     address.line2,
     address.suburb,
-    [address.city, address.postcode].filter((s) => s.trim()).join(" "),
-    address.country && address.country !== "New Zealand" ? address.country : "",
+    [place, address.postcode.trim()].filter(Boolean).join(" "),
+    address.country && address.country !== homeCountry ? address.country : "",
   ]
     .map((s) => s.trim())
     .filter(Boolean);

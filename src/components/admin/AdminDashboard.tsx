@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { ChevronRight, Clock, Inbox, PiggyBank, Receipt, ShoppingBag, Truck, Wallet } from "lucide-react";
-import { adminApi, nzd, type ExpenseRecord, type SaleRecord } from "../../lib/adminApi";
+import { adminApi, cash, type ExpenseRecord, type SaleRecord } from "../../lib/adminApi";
 import { isToSend } from "../../../shared/sales";
 import { Card, ErrorNote } from "./ui";
 import LoadingSpinner from "../LoadingSpinner";
@@ -172,10 +172,10 @@ function SalesExpensesChart({ months, sales, expenses }: { months: string[]; sal
                   {shortMonth(m)} {m.split("-")[0]}
                 </div>
                 <div className="text-gold-400 font-semibold">
-                  {nzd(sales[i])} <span className="text-slate-500 font-normal">sales</span>
+                  {cash(sales[i])} <span className="text-slate-500 font-normal">sales</span>
                 </div>
                 <div className="text-slate-300 font-semibold">
-                  {nzd(expenses[i])} <span className="text-slate-500 font-normal">expenses</span>
+                  {cash(expenses[i])} <span className="text-slate-500 font-normal">expenses</span>
                 </div>
               </div>
             )}
@@ -247,7 +247,7 @@ function ProfitChart({ months, values }: { months: string[]; values: number[] })
                     {shortMonth(m)} {m.split("-")[0]}
                   </div>
                   <div className={`font-semibold ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
-                    {nzd(v)} {isPositive ? "profit" : "loss"}
+                    {cash(v)} {isPositive ? "profit" : "loss"}
                   </div>
                 </div>
               )}
@@ -366,7 +366,7 @@ export default function AdminDashboard({
         <StatTile
           label="Sales — all time"
           value={stats.totalSales}
-          format={nzd}
+          format={cash}
           icon={<ShoppingBag size={14} />}
           tone="gold"
           trend={stats.salesByMonth}
@@ -375,7 +375,7 @@ export default function AdminDashboard({
         <StatTile
           label="Profit — all time"
           value={stats.netProfit}
-          format={nzd}
+          format={cash}
           icon={<PiggyBank size={14} />}
           tone={stats.netProfit >= 0 ? "good" : "bad"}
           trend={stats.profitByMonth}
@@ -383,7 +383,7 @@ export default function AdminDashboard({
         <StatTile
           label="Expenses — all time"
           value={stats.totalExpenses}
-          format={nzd}
+          format={cash}
           icon={<Receipt size={14} />}
           tone="slate"
           trend={stats.expensesByMonth}
@@ -404,7 +404,7 @@ export default function AdminDashboard({
         <StatTile
           label="Money owing"
           value={stats.moneyOwing}
-          format={nzd}
+          format={cash}
           icon={<Wallet size={14} />}
           tone={stats.moneyOwing > 0.004 ? "warn" : "good"}
           onClick={() => onNavigate("sales")}

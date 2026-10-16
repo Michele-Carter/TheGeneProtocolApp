@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
-import { serveAsBusiness, type BusinessRequest, type Db } from "../_lib/business.js";
+import { businessCountryName, serveAsBusiness, type BusinessRequest, type Db } from "../_lib/business.js";
 import { alertNewOrder, pushKey, removeDevice, saveDevice, subscribeSchema } from "../_lib/orderAlerts.js";
 import { customerForUser } from "../_lib/customers.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
@@ -38,14 +38,18 @@ type CustomerRow = typeof customers.$inferSelect;
 const detailsSchema = z.object({
     name: z.string().trim().min(1, "Please enter your name"),
     email: z.string().trim().toLowerCase().email("Please enter a valid email address"),
-    shippingAddress: z.object({
-        line1: z.string().trim().default(""),
-        line2: z.string().trim().default(""),
-        suburb: z.string().trim().default(""),
-        city: z.string().trim().default(""),
-        postcode: z.string().trim().default(""),
-        country: z.string().trim().default("New Zealand"),
-    }),
+    shippingAddress: z
+        .object({
+            line1: z.string().trim().default(""),
+            line2: z.string().trim().default(""),
+            suburb: z.string().trim().default(""),
+            city: z.string().trim().default(""),
+            region: z.string().trim().default(""),
+            postcode: z.string().trim().default(""),
+            country: z.string().trim().default(""),
+        })
+        // No country given: the shop's own.
+        .transform((a) => ({ ...a, country: a.country || businessCountryName() })),
 });
 
 function meDto(row: CustomerRow) {

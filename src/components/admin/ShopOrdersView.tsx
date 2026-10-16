@@ -13,9 +13,10 @@ import {
 } from "lucide-react";
 import { addressLines } from "../../../shared/customers";
 import { hasPaymentDetails, type ShopOrderStatus } from "../../../shared/shop";
-import { adminApi, nzd, type ShopOrderDetail, type ShopOrderSummary } from "../../lib/adminApi";
+import { adminApi, cash, type ShopOrderDetail, type ShopOrderSummary } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, StatRow, StatusDot, dangerButton, inputClass, primaryButton, secondaryButton } from "./ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
+import { formatDateTime, homeCountry, homeCurrency } from "../../lib/locale";
 
 type Tab = "submitted" | "payments" | "confirmed" | "declined" | "all";
 
@@ -46,7 +47,7 @@ function rowStatus(order: ShopOrderSummary): { label: string; tone: "good" | "wa
 }
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString("en-NZ", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  formatDateTime(iso, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 export default function ShopOrdersView({
   onOpenSale,
@@ -166,7 +167,7 @@ export default function ShopOrdersView({
                   {order.units} units
                   {order.preorder && <span className="block text-[10px] font-bold uppercase tracking-wide text-sky-300">Pre-order</span>}
                 </span>
-                <span className="text-xs tabular-nums text-slate-200 font-semibold">{nzd(order.subtotalNzd)}</span>
+                <span className="text-xs tabular-nums text-slate-200 font-semibold">{cash(order.subtotalNzd)}</span>
                 <StatusDot tone={rowStatus(order).tone}>{rowStatus(order).label}</StatusDot>
               </div>
               <ChevronRight size={15} className="text-slate-600 flex-shrink-0" />
@@ -359,14 +360,14 @@ function OrderReview({
                                   placeholder="0.00"
                                 />
                                 {p !== line.unitPriceNzd && (
-                                  <div className="text-[10px] text-amber-400 mt-0.5">Customer saw {nzd(line.unitPriceNzd)}</div>
+                                  <div className="text-[10px] text-amber-400 mt-0.5">Customer saw {cash(line.unitPriceNzd)}</div>
                                 )}
                                 {line.currentPriceNzd != null && line.currentPriceNzd !== p && (
-                                  <div className="text-[10px] text-slate-500 mt-0.5">Shop price now {nzd(line.currentPriceNzd)}</div>
+                                  <div className="text-[10px] text-slate-500 mt-0.5">Shop price now {cash(line.currentPriceNzd)}</div>
                                 )}
                               </>
                             ) : (
-                              nzd(line.unitPriceNzd)
+                              cash(line.unitPriceNzd)
                             )}
                           </td>
                           <td className={`py-2 pr-3 text-right tabular-nums font-bold ${over ? "text-red-400" : "text-slate-400"}`}>
@@ -385,7 +386,7 @@ function OrderReview({
                               <span className="tabular-nums text-slate-200 font-semibold">{line.qty}</span>
                             )}
                           </td>
-                          <td className="py-2 text-right tabular-nums text-slate-100 font-bold">{nzd(q * (editable ? p : line.unitPriceNzd))}</td>
+                          <td className="py-2 text-right tabular-nums text-slate-100 font-bold">{cash(q * (editable ? p : line.unitPriceNzd))}</td>
                         </tr>
                       );
                     })}
@@ -429,7 +430,7 @@ function OrderReview({
                 <div className="font-bold text-white">{order.customerName}</div>
                 {order.customerEmail && <div className="text-slate-400">{order.customerEmail}</div>}
                 <div className="mt-2 text-[10px] uppercase tracking-wider font-bold text-slate-500">Ship to</div>
-                {addressLines(order.shippingAddress).map((l) => (
+                {addressLines(order.shippingAddress, homeCountry().name).map((l) => (
                   <div key={l}>{l}</div>
                 ))}
               </div>
@@ -438,7 +439,7 @@ function OrderReview({
             {editable ? (
               <Card title="Confirm">
                 <div className="space-y-3">
-                  <Field label="Shipping charge (NZD)" hint="What the customer pays for shipping. Enter 0 if none.">
+                  <Field label={`Shipping charge (${homeCurrency()})`} hint="What the customer pays for shipping. Enter 0 if none.">
                     <NumberField value={shipping} onChange={setShipping} placeholder="0.00" />
                   </Field>
                   <Field label="Message to customer (optional)" hint="Shown to the customer with the confirmation or decline.">
@@ -456,9 +457,9 @@ function OrderReview({
                     />
                   </Field>
                   <div>
-                    <StatRow label="Items" value={nzd(subtotal)} />
-                    <StatRow label="Shipping" value={shipping == null ? "—" : nzd(shipping)} />
-                    <StatRow label="Total" value={nzd(subtotal + (shipping ?? 0))} strong />
+                    <StatRow label="Items" value={cash(subtotal)} />
+                    <StatRow label="Shipping" value={shipping == null ? "—" : cash(shipping)} />
+                    <StatRow label="Total" value={cash(subtotal + (shipping ?? 0))} strong />
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -485,10 +486,10 @@ function OrderReview({
               </Card>
             ) : (
               <Card title={STATUS[order.status].label}>
-                <StatRow label="Items" value={nzd(order.subtotalNzd)} />
-                {order.shippingNzd != null && <StatRow label="Shipping" value={nzd(order.shippingNzd)} />}
+                <StatRow label="Items" value={cash(order.subtotalNzd)} />
+                {order.shippingNzd != null && <StatRow label="Shipping" value={cash(order.shippingNzd)} />}
                 {order.status === "confirmed" && (
-                  <StatRow label="Total" value={nzd(order.subtotalNzd + (order.shippingNzd ?? 0))} strong />
+                  <StatRow label="Total" value={cash(order.subtotalNzd + (order.shippingNzd ?? 0))} strong />
                 )}
                 {order.status === "confirmed" && (
                   <StatRow

@@ -5,13 +5,17 @@
 // so it must stay free of Node- or browser-only imports.
 //
 // Rules:
-// - Product cost is each line's own price (after the order discount %), converted to NZD.
+// - Product cost is each line's own price (after the order discount %), converted to the business's own
+//   currency (its "home" currency - NZD for New Zealand businesses). Fields named ...Nzd hold amounts in the
+//   home currency; they're named from when every business was in New Zealand.
 // - Every other cost on the order (supplier-side freight/adjustments, payment fees,
 //   customs, GST, courier...) is spread EQUALLY across every individual unit received
 //   (e.g. each vial in a 10-vial kit counts as one unit).
-// - The exchange rate is the effective one: NZD actually converted / supplier total.
+// - The exchange rate is the effective one: home currency actually converted / supplier total.
 
-export type SupplierCurrency = "USD" | "NZD";
+import { moneyPrefix } from "./countries.js";
+
+export type SupplierCurrency = string; // ISO code, e.g. "USD"
 export type ItemKind = "peptide" | "supply";
 export type OrderType = "peptides" | "supplies";
 
@@ -48,6 +52,9 @@ export interface OrderInput {
   supplier: string;
   orderDate: string; // yyyy-mm-dd
   currency: SupplierCurrency;
+  // The business's own currency, which costs are worked out in (missing on orders made before businesses
+  // outside New Zealand: NZD).
+  homeCurrency?: string;
   lines: OrderLineInput[];
   orderDiscountPct: number;
   // Supplier-side charges in the supplier's currency (freight, rounding adjustments...). May be negative.
@@ -57,13 +64,13 @@ export interface OrderInput {
   supplierDiscounts?: CostEntry[];
   // What the supplier actually billed, in their currency. Only used as a check.
   supplierBilledTotal: number | null;
-  // Total that left your account for the supplier payment, in NZD (incl. the fees below).
+  // Total that left your account for the supplier payment, in the home currency (incl. the fees below).
   totalPaidNzd: number | null;
   // Fees already included in totalPaidNzd (e.g. Wise fee, card/bank fee).
   paymentFeesNzd: CostEntry[];
-  // Costs paid separately in NZD (customs, GST, courier clearance...).
+  // Costs paid separately in the home currency (customs, GST, courier clearance...).
   extraCostsNzd: CostEntry[];
-  // Fallback when nothing has been paid yet: 1 NZD = x USD (as Wise displays it).
+  // Fallback when nothing has been paid yet: 1 home currency = x supplier currency (as Wise displays it).
   manualRateUsdPerNzd: number | null;
   orderNumber?: string; // supplier order / invoice number
   tracking: string;
@@ -159,7 +166,8 @@ export function calculateOrder(order: OrderInput): OrderResult {
   let rateSource: OrderResult["rateSource"] = null;
   let paymentDiffNzd: number | null = null;
 
-  if (order.currency === "NZD") {
+  const home = homeCurrencyOf(order);
+  if (order.currency === home) {
     rateNzdPerSupplier = 1;
     rateSource = "fixed";
     if (convertedNzd != null) {
@@ -176,19 +184,19 @@ export function calculateOrder(order: OrderInput): OrderResult {
   if (order.lines.length === 0) problems.push("Add at least one item.");
   if (base.some((b) => b.units <= 0)) problems.push("Every item needs a quantity and units per kit/pack.");
   if (rateNzdPerSupplier == null) {
-    problems.push("Enter the total paid in NZD (or an exchange rate) to work out NZD costs.");
+    problems.push(`Enter the total paid in ${home} (or an exchange rate) to work out your costs in ${home}.`);
   } else if (rateSource === "manual") {
-    problems.push("Costs are using an estimated exchange rate — enter the total paid (NZD) to get the exact cost.");
+    problems.push(`Costs are using an estimated exchange rate — enter the total paid (${home}) to get the exact cost.`);
   }
   if (supplierBilledDiff != null && Math.abs(supplierBilledDiff) >= TOLERANCE) {
-    const symbol = order.currency === "USD" ? "US$" : "NZ$";
+    const symbol = moneyPrefix(order.currency);
     problems.push(
       `The supplier billed ${symbol}${Math.abs(supplierBilledDiff).toFixed(2)} ${supplierBilledDiff < 0 ? "less" : "more"} than the items and charges add up to. If that's right, add it as an adjustment.`
     );
   }
   if (paymentDiffNzd != null && Math.abs(paymentDiffNzd) >= TOLERANCE) {
     problems.push(
-      `You paid NZ${Math.abs(paymentDiffNzd).toFixed(2)} ${paymentDiffNzd < 0 ? "less" : "more"} than the items and charges add up to. If that's right, add it as an adjustment.`
+      `You paid ${moneyPrefix(home)}${Math.abs(paymentDiffNzd).toFixed(2)} ${paymentDiffNzd < 0 ? "less" : "more"} than the items and charges add up to. If that's right, add it as an adjustment.`
     );
   }
   if (convertedNzd != null && convertedNzd <= 0) {
@@ -258,12 +266,16 @@ export function orderTypeOf(order: Pick<OrderInput, "orderType" | "lines">): Ord
   return order.lines.length > 0 && order.lines.every((line) => line.kind === "supply") ? "supplies" : "peptides";
 }
 
-export function emptyOrder(today: string): OrderInput {
+// The currency an order's costs are worked out in.
+export const homeCurrencyOf = (order: Pick<OrderInput, "homeCurrency">) => order.homeCurrency ?? "NZD";
+
+export function emptyOrder(today: string, homeCurrency = "NZD"): OrderInput {
   return {
     orderType: "peptides",
     supplier: "",
     orderDate: today,
     currency: "USD",
+    homeCurrency,
     lines: [],
     orderDiscountPct: 0,
     supplierCharges: [],

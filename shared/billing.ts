@@ -28,11 +28,18 @@ export function accessState(b: { status: string; billingExempt: boolean; subscri
   return PAYING.has(b.subscriptionStatus) ? "ok" : "paused";
 }
 
-// What the app is told about the business it's being used as.
+// What a shop link shows before sign-in.
 export interface BusinessInfo {
   name: string;
   slug: string;
   logoUrl: string | null;
+}
+
+// What the app is told about the business it's being used as (see shared/countries.ts).
+export interface BusinessSettings extends BusinessInfo {
+  country: string;
+  currency: string;
+  timeZone: string;
 }
 
 export interface BillingInfo {
@@ -44,6 +51,8 @@ export interface BillingInfo {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   hadSubscription: boolean; // the free trial is only for a business's first subscription
+  // The country (and so currency) can't change any more: the business has recorded money (/api/admin/me only).
+  countryLocked?: boolean;
 }
 
 // ---- Shop links: /shop/<slug> ----
@@ -65,20 +74,3 @@ export const toSlug = (name: string) =>
     .slice(0, 40)
     .replace(/-$/, "");
 
-// Where a business is, as chosen at sign-up: only whether it's in New Zealand matters (the price and currency).
-export const REGIONS = [
-  { code: "NZ", label: "New Zealand", price: PLANS.nzd.label },
-  { code: "INTL", label: "International", price: PLANS.usd.label },
-] as const;
-export type RegionCode = (typeof REGIONS)[number]["code"];
-
-// A first guess at where a new business is, from the computer's time zone (the owner can change it). Only
-// the matching price is shown unless they do, so businesses overseas don't see the NZ price.
-export function guessRegion(): RegionCode {
-  try {
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return zone === "Pacific/Auckland" || zone === "Pacific/Chatham" || zone === "NZ" ? "NZ" : "INTL";
-  } catch {
-    return "INTL";
-  }
-}

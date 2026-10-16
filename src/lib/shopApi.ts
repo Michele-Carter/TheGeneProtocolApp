@@ -2,6 +2,7 @@ import type { CustomerDetails, ShippingAddress } from "../../shared/customers";
 import type { CartLine, CustomerNotification, ShopOrder, ShopProduct } from "../../shared/shop";
 import { businessHeaders } from "./business";
 import { signedInFetch } from "./signedInFetch";
+import { appLocale, homeCurrency } from "./locale";
 import type { PushSubscriptionData } from "./orderAlerts";
 
 // Calls made by signed-in customers (api/shop). The server only ever returns the caller's own data.
@@ -70,5 +71,6 @@ export interface PushInfo {
   endpoints: string[]; // the customer's devices that get notifications
 }
 
+// Prices as customers see them: the shop's currency with its local symbol, e.g. "$90.00" or "£90.00".
 export const money = (value: number) =>
-  `$${value.toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  value.toLocaleString(appLocale(), { style: "currency", currency: homeCurrency(), currencyDisplay: "narrowSymbol" });

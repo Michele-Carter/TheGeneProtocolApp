@@ -2,7 +2,8 @@ import { and, asc, desc, eq, gt, inArray, isNotNull, ne, or, sql } from "drizzle
 import { del, put } from "@vercel/blob";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
-import { serveAsBusiness, type BusinessAccess, type Db } from "../_lib/business.js";
+import { businessDate, businessDateString } from "../_lib/dates.js";
+import { businessCountryName, currentBusiness, hasMoneyRecords, serveAsBusiness, type BusinessAccess, type Db } from "../_lib/business.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import {
     addAdjustmentLot,
@@ -51,7 +52,7 @@ import {
     stockMovements,
     supplierCatalog,
 } from "../_lib/schema.js";
-import { accessState, type BusinessInfo } from "../../shared/billing.js";
+import { accessState, type BusinessSettings } from "../../shared/billing.js";
 import { billingInfo } from "../_lib/billing.js";
 import { ownerDevices, pushKey, removeDevice, saveDevice, sendAlert, subscribeSchema } from "../_lib/orderAlerts.js";
 import type { OrderAlertsInfo } from "../../shared/shop.js";
@@ -95,7 +96,7 @@ const orderInputSchema = z.object({
     orderType: z.enum(["peptides", "supplies"]).optional(),
     supplier: z.string().trim().min(1, "Supplier is required"),
     orderDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Order date is required"),
-    currency: z.enum(["USD", "NZD"]),
+    currency: z.string().regex(/^[A-Z]{3}$/, "Choose the supplier's currency"),
     lines: z.array(
         z.object({
             id: z.string().min(1),
@@ -254,11 +255,6 @@ const bundleSchema = z.object({
 
 class NotFoundError extends Error {}
 
-// Midnight UTC is midday in NZ, so the date reads correctly in NZ time.
-function nzDate(date?: string): Date {
-    return date ? new Date(`${date}T00:00:00Z`) : new Date();
-}
-
 function orderDto(row: typeof purchaseOrders.$inferSelect) {
     const data = row.data as OrderInput;
     const calc = calculateOrder(data);
@@ -401,7 +397,7 @@ async function handleOrders(req: any, res: any, db: Db) {
     if (req.method === "POST" && id && action === "receive") {
         const parsed = receiveSchema.safeParse(read.body);
         if (!parsed.success) return validationError(res, parsed.error);
-        const receivedAt = nzDate(parsed.data.receivedDate);
+        const receivedAt = businessDate(parsed.data.receivedDate);
 
         try {
             const row = await db.transaction(async (tx) => {
@@ -528,7 +524,7 @@ async function handleOrders(req: any, res: any, db: Db) {
                         .filter((lot) => lot.orderLineId)
                         .map((lot) => [lot.orderLineId!, { lotNumber: lot.lotNumber, expiryDate: lot.expiryDate }])
                 );
-                const previousReceivedDate = order.receivedAt ? order.receivedAt.toISOString().slice(0, 10) : null;
+                const previousReceivedDate = order.receivedAt ? businessDateString(order.receivedAt) : null;
                 const lotIds = lots.map((lot) => lot.id);
                 if (lotIds.length > 0) {
                     await tx.delete(stockMovements).where(inArray(stockMovements.lotId, lotIds));
@@ -556,7 +552,8 @@ async function handleOrders(req: any, res: any, db: Db) {
     if (req.method === "POST" && !id) {
         const parsed = orderInputSchema.safeParse((read.body as any)?.data);
         if (!parsed.success) return validationError(res, parsed.error);
-        const data = parsed.data as OrderInput;
+        // Costs are always worked out in the business's own currency.
+        const data: OrderInput = { ...(parsed.data as OrderInput), homeCurrency: currentBusiness()!.currency };
         await ensureItems(db, lineSnapshots(data));
         const [row] = await db
             .insert(purchaseOrders)
@@ -574,7 +571,7 @@ async function handleOrders(req: any, res: any, db: Db) {
     if (req.method === "PATCH" && id) {
         const parsed = orderInputSchema.safeParse((read.body as any)?.data);
         if (!parsed.success) return validationError(res, parsed.error);
-        const data = parsed.data as OrderInput;
+        const data: OrderInput = { ...(parsed.data as OrderInput), homeCurrency: currentBusiness()!.currency };
 
         const [existing] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
         if (!existing) return sendJson(res, 404, { error: "Order not found" });
@@ -654,11 +651,6 @@ async function handleInventory(req: any, res: any, db: Db) {
     return sendJson(res, 200, summary);
 }
 
-// The yyyy-mm-dd a timestamp falls on in NZ.
-function nzDateString(date: Date): string {
-    return date.toLocaleDateString("en-CA", { timeZone: "Pacific/Auckland" });
-}
-
 async function applyAdjustment(
     tx: Tx,
     adjustmentId: string,
@@ -692,7 +684,7 @@ async function handleAdjust(req: any, res: any, db: Db) {
                 await applyAdjustment(tx, crypto.randomUUID(), itemId, qty, unitCostNzd ?? null, {
                     reason,
                     note,
-                    occurredAt: nzDate(date),
+                    occurredAt: businessDate(date),
                 });
             });
         } catch (error) {
@@ -731,7 +723,7 @@ async function handleAdjust(req: any, res: any, db: Db) {
 
                 const first = movements[0];
                 const oldQty = movements.reduce((total, m) => total + m.qty, 0);
-                const oldDate = nzDateString(first.occurredAt);
+                const oldDate = businessDateString(first.occurredAt);
                 const dateChanged = date != null && date !== oldDate;
                 // Blank cost on an added batch keeps the cost it already has.
                 const cost = unitCostNzd ?? (oldQty > 0 ? first.unitCostNzd : null);
@@ -743,7 +735,7 @@ async function handleAdjust(req: any, res: any, db: Db) {
                 if (!stockChanged) {
                     await tx
                         .update(stockMovements)
-                        .set({ reason, note, ...(dateChanged ? { occurredAt: nzDate(date) } : {}) })
+                        .set({ reason, note, ...(dateChanged ? { occurredAt: businessDate(date) } : {}) })
                         .where(inArray(stockMovements.id, movements.map((m) => m.id)));
                     return;
                 }
@@ -752,7 +744,7 @@ async function handleAdjust(req: any, res: any, db: Db) {
                 await applyAdjustment(tx, id, first.itemId, qty, cost, {
                     reason,
                     note,
-                    occurredAt: dateChanged ? nzDate(date) : first.occurredAt,
+                    occurredAt: dateChanged ? businessDate(date) : first.occurredAt,
                 });
             });
         } catch (error) {
@@ -872,7 +864,7 @@ async function handleSales(req: any, res: any, db: Db) {
                 if (sale.status === "completed") throw new InventoryError("This order is already completed.");
                 if (data.lines.length === 0) throw new InventoryError("Add at least one item before completing.");
 
-                const occurredAt = nzDate(
+                const occurredAt = businessDate(
                     typeof completedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(completedDate) ? completedDate : undefined
                 );
                 const costDetail: Record<string, number> = {};
@@ -977,14 +969,18 @@ async function resolveSaleCustomer(db: Db, name: string, currentId: string | nul
     return created;
 }
 
-const addressSchema = z.object({
-    line1: z.string().trim().default(""),
-    line2: z.string().trim().default(""),
-    suburb: z.string().trim().default(""),
-    city: z.string().trim().default(""),
-    postcode: z.string().trim().default(""),
-    country: z.string().trim().default("New Zealand"),
-});
+const addressSchema = z
+    .object({
+        line1: z.string().trim().default(""),
+        line2: z.string().trim().default(""),
+        suburb: z.string().trim().default(""),
+        city: z.string().trim().default(""),
+        region: z.string().trim().default(""),
+        postcode: z.string().trim().default(""),
+        country: z.string().trim().default(""),
+    })
+    // No country given: the business's own.
+    .transform((a) => ({ ...a, country: a.country || businessCountryName() }));
 
 const customerSchema = z.object({
     name: z.string().trim().min(1, "Name is required"),
@@ -1203,7 +1199,6 @@ const confirmSchema = z.object({
 });
 const declineSchema = z.object({ message: z.string().max(2000).default("") });
 
-const nzToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Pacific/Auckland" });
 
 // Stock free for this order: what's available to new orders, plus what this order is itself holding back.
 async function stockFreeFor(db: Db | Tx, order: typeof shopOrders.$inferSelect) {
@@ -1389,7 +1384,7 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             payment: {
                 method: before.payment.method || "Bank transfer",
                 amountPaidNzd: Math.round(saleTotals(before).total * 100) / 100,
-                paidDate: before.payment.paidDate ?? nzToday(),
+                paidDate: before.payment.paidDate ?? businessDateString(new Date()),
             },
         };
         await db.update(sales).set({ data: after, updatedAt: new Date() }).where(eq(sales.id, sale.id));
@@ -1456,7 +1451,7 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             if (!customer) throw new NotFoundError("This order's customer no longer exists.");
 
             const data: SaleInput = {
-                ...emptySale(nzToday()),
+                ...emptySale(businessDateString(new Date())),
                 customerName: customer.name,
                 customerContact: customer.email,
                 orderNumber: `Shop #${order.orderNumber}`,
@@ -1503,21 +1498,25 @@ async function handleShopOrders(req: any, res: any, db: Db) {
     }
 }
 
-const paymentDetailsSchema = z.object({
-    bankName: z.string().trim().max(100).default(""),
-    accountName: z.string().trim().min(1, "Enter the account name").max(100),
-    accountNumber: z
-        .string()
-        .transform((v, ctx) => {
-            const formatted = formatNzAccountNumber(v);
-            if (!formatted) {
-                ctx.addIssue({ code: "custom", message: "NZ account numbers look like 12-3456-7890123-00" });
-                return z.NEVER;
-            }
-            return formatted;
-        }),
-    instructions: z.string().trim().max(2000).default(""),
-});
+// A New Zealand account number is checked and written the standard way. Elsewhere it's whatever customers need
+// to pay (BSB and account, sort code, Zelle, Interac...), as the business writes it.
+const paymentDetailsSchema = (country: string) =>
+    z.object({
+        bankName: z.string().trim().max(100).default(""),
+        accountName: z.string().trim().min(1, "Enter the account name").max(100),
+        accountNumber:
+            country === "NZ"
+                ? z.string().transform((v, ctx) => {
+                      const formatted = formatNzAccountNumber(v);
+                      if (!formatted) {
+                          ctx.addIssue({ code: "custom", message: "NZ account numbers look like 12-3456-7890123-00" });
+                          return z.NEVER;
+                      }
+                      return formatted;
+                  })
+                : z.string().trim().min(1, "Enter how customers can pay you").max(300),
+        instructions: z.string().trim().max(2000).default(""),
+    });
 
 // GET / PUT /api/admin/settings - the owner's payment details (bank account customers pay into).
 async function handleSettings(req: any, res: any, db: Db) {
@@ -1528,7 +1527,7 @@ async function handleSettings(req: any, res: any, db: Db) {
     if (req.method === "PUT") {
         const read = await readBody(req, res);
         if (!read.ok) return;
-        const parsed = paymentDetailsSchema.safeParse((read.body as any)?.paymentDetails);
+        const parsed = paymentDetailsSchema(currentBusiness()!.country).safeParse((read.body as any)?.paymentDetails);
         if (!parsed.success) return validationError(res, parsed.error);
         const value = parsed.data;
         await db
@@ -1953,8 +1952,15 @@ export default async function handler(req: any, res: any) {
     return handleAdminRequest(req, res, userId);
 }
 
-function businessDto({ business }: BusinessAccess): BusinessInfo {
-    return { name: business.name, slug: business.slug, logoUrl: business.logoUrl };
+function businessDto({ business }: BusinessAccess): BusinessSettings {
+    return {
+        name: business.name,
+        slug: business.slug,
+        logoUrl: business.logoUrl,
+        country: business.country,
+        currency: business.currency,
+        timeZone: business.timeZone,
+    };
 }
 
 export async function handleAdminRequest(req: any, res: any, userId: string) {
@@ -1964,13 +1970,13 @@ export async function handleAdminRequest(req: any, res: any, userId: string) {
     // Admin tab, and (for its owner) the subscription - answered even when the subscription isn't running, so
     // the app can show what to do about it.
     if (resource === "me") {
-        return serveAsBusiness(req, res, userId, { ownersOnly: false, evenWithoutAccess: true }, async ({ access, res }) => {
+        return serveAsBusiness(req, res, userId, { ownersOnly: false, evenWithoutAccess: true }, async ({ db, access, res }) => {
             const isAdmin = access.role === "owner";
             return sendJson(res, 200, {
                 isAdmin,
                 business: businessDto(access),
                 access: accessState(access.business),
-                billing: isAdmin ? billingInfo(access.business) : null,
+                billing: isAdmin ? { ...billingInfo(access.business), countryLocked: await hasMoneyRecords(db) } : null,
             });
         });
     }

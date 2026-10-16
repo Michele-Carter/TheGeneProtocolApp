@@ -35,7 +35,7 @@ export default function TrackingManager() {
   // --- STATE 1: WEIGHT ENTRY STATE ---
   const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([]);
   const [newWeight, setNewWeight] = useState("");
-  const [newWeightDate, setNewWeightDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newWeightDate, setNewWeightDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [weightGoal, setWeightGoal] = useState(80.0);
   const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg");
 
@@ -45,7 +45,7 @@ export default function TrackingManager() {
   const [logDose, setLogDose] = useState("");
   const [logSite, setLogSite] = useState("Abdomen Left Flank");
   const [logNotes, setLogNotes] = useState("");
-  const [logDate, setLogDate] = useState(new Date().toISOString().split("T")[0]);
+  const [logDate, setLogDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [showWeightDatePicker, setShowWeightDatePicker] = useState(false);
   const [weightPickerYear, setWeightPickerYear] = useState<number>(new Date().getFullYear());
   const [weightPickerMonth, setWeightPickerMonth] = useState<number>(new Date().getMonth());
@@ -123,7 +123,7 @@ export default function TrackingManager() {
 
         setWeightEntries(Array.isArray(parsed.weightEntries) ? parsed.weightEntries : []);
         setNewWeight(typeof parsed.newWeight === "string" ? parsed.newWeight : "");
-        setNewWeightDate(new Date().toISOString().split("T")[0]);
+        setNewWeightDate(new Date().toLocaleDateString("en-CA"));
         setWeightGoal(typeof parsed.weightGoal === "number" && Number.isFinite(parsed.weightGoal) ? parsed.weightGoal : 80);
         setWeightUnit(parsed.weightUnit === "lbs" ? "lbs" : "kg");
         setShotEntries(Array.isArray(parsed.shotEntries) ? parsed.shotEntries : []);
@@ -131,7 +131,7 @@ export default function TrackingManager() {
         setLogDose(typeof parsed.logDose === "string" ? parsed.logDose : "");
         setLogSite(typeof parsed.logSite === "string" && parsed.logSite ? parsed.logSite : "Abdomen Left Flank");
         setLogNotes(typeof parsed.logNotes === "string" ? parsed.logNotes : "");
-        setLogDate(new Date().toISOString().split("T")[0]);
+        setLogDate(new Date().toLocaleDateString("en-CA"));
 
         if (parsed.macros && typeof parsed.macros === "object") {
           setMacros({

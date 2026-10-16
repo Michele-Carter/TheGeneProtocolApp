@@ -10,7 +10,7 @@ import {
 } from "../../../shared/landedCost";
 import { isExpenseLine } from "../../../shared/landedCost";
 import { EXPENSE_CATEGORIES } from "../../../shared/sales";
-import { adminApi, money, nzd, todayIso, type InvItem, type PurchaseOrderRecord, type SupplierProductRecord } from "../../lib/adminApi";
+import { adminApi, money, cash, todayIso, type InvItem, type PurchaseOrderRecord, type SupplierProductRecord } from "../../lib/adminApi";
 import {
   Card,
   CostEntryList,
@@ -27,6 +27,8 @@ import {
 } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
 import { Spinner } from "../LoadingSpinner";
+import { formatDate, homeCurrency } from "../../lib/locale";
+import { moneyPrefix } from "../../../shared/countries";
 
 // Each size on the business's supplier price list (Admin -> Vendor Price List) that has a code.
 const catalogOptionsOf = (products: SupplierProductRecord[]) => products.flatMap((product) =>
@@ -54,6 +56,10 @@ interface Props {
   onDeleted: (id: string) => void;
 }
 
+// What tax paid on imported goods is usually called where the business is.
+const importTaxLabel = (currency: string) =>
+  currency === "NZD" || currency === "AUD" ? "GST on import" : currency === "GBP" ? "Import VAT" : "Import duty & tax";
+
 export default function OrderEditor({ record, initialData, items, onBack, onSaved, onDeleted }: Props) {
   const { getToken } = useAuth();
   const [data, setData] = useState<OrderInput>(initialData);
@@ -70,7 +76,9 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
 
   const received = current?.status === "received";
   const dirty = JSON.stringify(data) !== savedJson;
-  const calc = useMemo(() => calculateOrder(data), [data]);
+  // Costs are worked out in the business's own currency (the server records it on the order when saved).
+  const home = homeCurrency();
+  const calc = useMemo(() => calculateOrder({ ...data, homeCurrency: home }), [data, home]);
   const ccy = data.currency;
 
   const [priceList, setPriceList] = useState<SupplierProductRecord[]>([]);
@@ -235,7 +243,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   const draftResult = (() => {
     if (!(draft.packs >= 1 && draft.unitsPerPack >= 1)) return null;
     const lines = editingLineId ? data.lines.map((l) => (l.id === editingLineId ? draft : l)) : [...data.lines, draft];
-    return calculateOrder({ ...data, lines }).lines.find((l) => l.lineId === draft.id) ?? null;
+    return calculateOrder({ ...data, homeCurrency: home, lines }).lines.find((l) => l.lineId === draft.id) ?? null;
   })();
 
   const quantityText = (line: OrderLineInput, units: number) => {
@@ -364,7 +372,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
     onBack();
   };
 
-  // Amount that would make the order add up to what was billed (or paid, for NZD orders).
+  // Amount that would make the order add up to what was billed (or paid, for orders in your own currency).
   const mismatch = calc.supplierBilledDiff ?? calc.paymentDiffNzd;
   const adjustmentNeeded =
     mismatch != null && Math.abs(mismatch) >= 0.005 ? Math.round(mismatch * 100) / 100 : null;
@@ -372,9 +380,9 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
   const rateLabel =
     calc.rateNzdPerSupplier == null
       ? "—"
-      : ccy === "NZD"
-        ? "NZD order"
-        : `1 NZD = ${(1 / calc.rateNzdPerSupplier).toFixed(6)} USD`;
+      : ccy === home
+        ? `${home} order`
+        : `1 ${home} = ${(1 / calc.rateNzdPerSupplier).toFixed(6)} ${ccy}`;
 
   return (
     <div className="space-y-5">
@@ -393,7 +401,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
             </h3>
             <p className="text-[11px] text-slate-500">
               {received
-                ? `Received ${current?.receivedAt ? new Date(current.receivedAt).toLocaleDateString("en-NZ") : ""} — stock and costs are locked. Order number, tracking and notes can still be edited.`
+                ? `Received ${current?.receivedAt ? formatDate(current.receivedAt) : ""} — stock and costs are locked. Order number, tracking and notes can still be edited.`
                 : reReceiving
                   ? "Editing a received order — its stock is out of inventory until you click “Save & receive”."
                   : "Costs update as you type. Save, then mark as received when it arrives to add it to inventory."}
@@ -479,7 +487,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                       <span className="text-slate-500">{line.variant}</span>
                       <span className="text-sky-300/90">
                         {" "}
-                        → Expenses ({line.expenseCategory ?? "Packaging"}) · {nzd(result?.landedLineNzd)}
+                        → Expenses ({line.expenseCategory ?? "Packaging"}) · {cash(result?.landedLineNzd)}
                       </span>
                     </div>
                   );
@@ -491,7 +499,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                       <span className="text-slate-500">{line.variant}</span>
                       <span className="text-slate-500">
                         {" "}
-                        · {result?.units ?? 0} {line.unit}s at {nzd(result?.landedPerUnitNzd, 3)} each
+                        · {result?.units ?? 0} {line.unit}s at {cash(result?.landedPerUnitNzd)} each
                       </span>
                     </div>
                     <input
@@ -555,7 +563,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
               </Field>
               <Field label="Supplier charges in">
                 <div className="flex gap-2">
-                  {(["USD", "NZD"] as SupplierCurrency[]).map((c) => (
+                  {[...new Set<SupplierCurrency>(["USD", home, data.currency])].map((c) => (
                     <button
                       key={c}
                       type="button"
@@ -765,7 +773,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                           <>
                             {" "}
                             · landed{" "}
-                            <span className="text-gold-400 font-bold">{nzd(draftResult.landedPerUnitNzd, 3)}</span> per{" "}
+                            <span className="text-gold-400 font-bold">{cash(draftResult.landedPerUnitNzd)}</span> per{" "}
                             {draft.unit || "unit"}
                           </>
                         )}
@@ -856,23 +864,23 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                               />
                               <Metric
                                 label="Share of shipping & fees"
-                                value={nzd(result?.sharedNzd)}
+                                value={cash(result?.sharedNzd)}
                                 note={
                                   result?.sharedNzd != null && result.units > 0
                                     ? [
                                         // The shipping/tax were charged in the supplier's currency - show that too.
-                                        ccy !== "NZD" && calc.rateNzdPerSupplier
+                                        ccy !== home && calc.rateNzdPerSupplier
                                           ? `= ${money(result.sharedNzd / calc.rateNzdPerSupplier, ccy)}`
                                           : "",
-                                        `${nzd(result.sharedNzd / result.units, 3)} per ${unit} × ${result.units}`,
+                                        `${cash(result.sharedNzd / result.units)} per ${unit} × ${result.units}`,
                                       ]
                                         .filter(Boolean)
                                         .join(" · ")
                                     : undefined
                                 }
                               />
-                              <Metric label={`Landed per ${packWord}`} value={nzd(result?.landedPerPackNzd)} />
-                              <Metric label={`Landed per ${unit}`} value={nzd(result?.landedPerUnitNzd, 3)} highlight />
+                              <Metric label={`Landed per ${packWord}`} value={cash(result?.landedPerPackNzd)} />
+                              <Metric label={`Landed per ${unit}`} value={cash(result?.landedPerUnitNzd)} highlight />
                             </div>
                             {line.kind === "supply" && (
                               <p className="text-[11px] text-slate-500">
@@ -925,7 +933,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                     entries={data.supplierDiscounts ?? []}
                     onChange={(v) => set("supplierDiscounts", v)}
                     suggestions={["Store coupon", "AliExpress coupon", "Discount code", "Credit", "Promotion"]}
-                    prefix={ccy === "USD" ? "US$" : "NZ$"}
+                    prefix={moneyPrefix(ccy)}
                     disabled={received}
                     addLabel="Add coupon / discount"
                   />
@@ -938,7 +946,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                     entries={data.supplierCharges}
                     onChange={(v) => set("supplierCharges", v)}
                     suggestions={["Shipping", "Freight", "Tax", "GST", "Rounding adjustment", "Supplier fee", "Insurance"]}
-                    prefix={ccy === "USD" ? "US$" : "NZ$"}
+                    prefix={moneyPrefix(ccy)}
                     disabled={received}
                     addLabel="Add charge"
                   />
@@ -953,11 +961,11 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
               </div>
             </Card>
 
-            <Card title="Your costs (NZD)">
+            <Card title={`Your costs (${home})`}>
               <div className="space-y-3">
                 <Field
-                  label="Total paid (NZD)"
-                  hint={ccy === "USD" ? "Everything that left your account for this payment, fees included." : "The invoice total you paid."}
+                  label={`Total paid (${home})`}
+                  hint={ccy !== home ? "Everything that left your account for this payment, fees included." : "The invoice total you paid."}
                 >
                   <NumberField
                     value={data.totalPaidNzd}
@@ -970,7 +978,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                     entries={data.paymentFeesNzd}
                     onChange={(v) => set("paymentFeesNzd", v)}
                     suggestions={["Wise fee", "Card fee", "Bank fee", "Merchant fee"]}
-                    prefix="NZ$"
+                    prefix={moneyPrefix(home)}
                     disabled={received}
                     addLabel="Add fee"
                   />
@@ -979,14 +987,14 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                   <CostEntryList
                     entries={data.extraCostsNzd}
                     onChange={(v) => set("extraCostsNzd", v)}
-                    suggestions={["Customs", "GST on import", "Courier clearance fee", "Local courier"]}
-                    prefix="NZ$"
+                    suggestions={["Customs", importTaxLabel(home), "Courier clearance fee", "Local courier"]}
+                    prefix={moneyPrefix(home)}
                     disabled={received}
                     addLabel="Add cost"
                   />
                 </Field>
-                {ccy === "USD" && data.totalPaidNzd == null && (
-                  <Field label="Exchange rate for now (1 NZD = ? USD)" hint="Only used until you enter the total paid.">
+                {ccy !== home && data.totalPaidNzd == null && (
+                  <Field label={`Exchange rate for now (1 ${home} = ? ${ccy})`} hint="Only used until you enter the total paid.">
                     <NumberField
                       value={data.manualRateUsdPerNzd}
                       disabled={received}
@@ -1029,30 +1037,30 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                   tone={Math.abs(calc.supplierBilledDiff) < 0.005 ? "good" : "bad"}
                 />
               )}
-              <StatRow label="Total paid" value={nzd(data.totalPaidNzd)} />
-              <StatRow label="Payment fees" value={nzd(calc.paymentFeesTotalNzd)} />
-              {ccy === "USD" && <StatRow label="Converted to pay supplier" value={nzd(calc.convertedNzd)} />}
+              <StatRow label="Total paid" value={cash(data.totalPaidNzd)} />
+              <StatRow label="Payment fees" value={cash(calc.paymentFeesTotalNzd)} />
+              {ccy !== home && <StatRow label="Converted to pay supplier" value={cash(calc.convertedNzd)} />}
               {calc.paymentDiffNzd != null && (
                 <StatRow
                   label="Difference from amount paid"
-                  value={nzd(calc.paymentDiffNzd)}
+                  value={cash(calc.paymentDiffNzd)}
                   tone={Math.abs(calc.paymentDiffNzd) < 0.005 ? "good" : "bad"}
                 />
               )}
-              <StatRow label="Other costs" value={nzd(calc.extraCostsTotalNzd)} />
+              <StatRow label="Other costs" value={cash(calc.extraCostsTotalNzd)} />
               <StatRow
                 label={calc.rateSource === "manual" ? "Exchange rate (estimate)" : "Effective exchange rate"}
                 value={rateLabel}
                 tone={calc.rateSource === "manual" ? "muted" : undefined}
               />
-              <StatRow label="Shared costs (NZD)" value={nzd(calc.sharedCostsNzd)} />
-              <StatRow label="Shared cost per unit" value={nzd(calc.sharedPerUnitNzd, 4)} />
-              <StatRow label="Total landed cost" value={nzd(calc.totalLandedNzd)} strong />
+              <StatRow label={`Shared costs (${home})`} value={cash(calc.sharedCostsNzd)} />
+              <StatRow label="Shared cost per unit" value={cash(calc.sharedPerUnitNzd)} />
+              <StatRow label="Total landed cost" value={cash(calc.totalLandedNzd)} strong />
               {data.lines.some(isExpenseLine) && (
                 <>
                   <StatRow
                     label="…into stock"
-                    value={nzd(
+                    value={cash(
                       calc.lines
                         .filter((l) => !isExpenseLine(data.lines.find((d) => d.id === l.lineId) ?? {}))
                         .reduce((t, l) => (t == null || l.landedLineNzd == null ? null : t + l.landedLineNzd), 0 as number | null)
@@ -1060,7 +1068,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                   />
                   <StatRow
                     label="…to expenses"
-                    value={nzd(
+                    value={cash(
                       calc.lines
                         .filter((l) => isExpenseLine(data.lines.find((d) => d.id === l.lineId) ?? {}))
                         .reduce((t, l) => (t == null || l.landedLineNzd == null ? null : t + l.landedLineNzd), 0 as number | null)
@@ -1068,7 +1076,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                   />
                 </>
               )}
-              <StatRow label="Average per unit" value={nzd(calc.averagePerUnitNzd, 3)} strong />
+              <StatRow label="Average per unit" value={cash(calc.averagePerUnitNzd)} strong />
             </div>
 
             <div className="mt-3">

@@ -3,10 +3,11 @@ import { useAuth } from "@clerk/react";
 import { Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { EXPENSE_CATEGORIES } from "../../../shared/sales";
 import { detailFromLegacy, expenseTotals, type ExpenseDetail, type ExpenseItem } from "../../../shared/expenses";
-import { adminApi, nzd, todayIso, type ExpenseCategory, type ExpenseInput, type ExpenseRecord } from "../../lib/adminApi";
+import { adminApi, cash, todayIso, type ExpenseCategory, type ExpenseInput, type ExpenseRecord } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, dangerButton, dateButtonClass, inputClass, newId, primaryButton, secondaryButton } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
+import { formatDate, homeCurrency } from "../../lib/locale";
 
 const blankItem = (): ExpenseItem => ({ id: newId(), name: "", qty: 1, unitCostNzd: 0 });
 
@@ -137,8 +138,8 @@ export default function ExpensesView() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Tile label="This month" value={nzd(totals.month)} />
-        <Tile label={`${year} total`} value={nzd(totals.year)} />
+        <Tile label="This month" value={cash(totals.month)} />
+        <Tile label={`${year} total`} value={cash(totals.year)} />
         <div className="col-span-2 lg:col-span-1 bg-slate-900/40 border border-slate-800 rounded-2xl px-4 py-3">
           <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">{year} by category</div>
           {totals.byCategory.length === 0 ? (
@@ -147,7 +148,7 @@ export default function ExpensesView() {
             totals.byCategory.map((c) => (
               <div key={c.category} className="flex justify-between text-xs py-0.5">
                 <span className="text-slate-400">{c.category}</span>
-                <span className="tabular-nums text-slate-200 font-semibold">{nzd(c.total)}</span>
+                <span className="tabular-nums text-slate-200 font-semibold">{cash(c.total)}</span>
               </div>
             ))
           )}
@@ -219,7 +220,7 @@ export default function ExpensesView() {
             <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_5rem_8rem_7rem_2rem] gap-2 text-[11px] font-bold text-white">
               <span>Item</span>
               <span className="text-right">Qty</span>
-              <span className="text-right">Cost each (NZD)</span>
+              <span className="text-right">Cost each ({homeCurrency()})</span>
               <span className="text-right">Total</span>
               <span />
             </div>
@@ -252,7 +253,7 @@ export default function ExpensesView() {
                     onChange={(v) => updateItem(item.id, { unitCostNzd: v ?? 0 })}
                   />
                   <span className="text-sm tabular-nums text-slate-300 text-right self-center">
-                    {nzd(item.qty * item.unitCostNzd)}
+                    {cash(item.qty * item.unitCostNzd)}
                   </span>
                 </div>
               </div>
@@ -278,7 +279,7 @@ export default function ExpensesView() {
             </Field>
             <div className="bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 flex items-baseline justify-between gap-3">
               <span className="text-[11px] font-bold text-white">Total paid</span>
-              <span className="text-base font-black tabular-nums text-gold-400">{nzd(formTotals?.total)}</span>
+              <span className="text-base font-black tabular-nums text-gold-400">{cash(formTotals?.total)}</span>
             </div>
           </div>
 
@@ -385,7 +386,7 @@ export default function ExpensesView() {
               className="w-full text-left px-4 py-3 bg-slate-900/30 hover:bg-slate-900/70 transition cursor-pointer grid grid-cols-2 sm:grid-cols-[6.5rem_minmax(0,1fr)_9rem_7rem] gap-x-4 gap-y-1 items-center"
             >
               <span className="text-xs text-slate-400 tabular-nums">
-                {new Date(`${row.expenseDate}T00:00:00`).toLocaleDateString("en-NZ")}
+                {formatDate(row.expenseDate)}
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-bold text-white truncate">{row.description}</span>
@@ -396,7 +397,7 @@ export default function ExpensesView() {
                 </span>
               </span>
               <span className="text-xs text-slate-400">{row.category}</span>
-              <span className="text-sm tabular-nums font-bold text-slate-100 sm:text-right">{nzd(row.amountNzd)}</span>
+              <span className="text-sm tabular-nums font-bold text-slate-100 sm:text-right">{cash(row.amountNzd)}</span>
             </button>
           ))}
         </div>

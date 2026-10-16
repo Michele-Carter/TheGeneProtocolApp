@@ -14,8 +14,9 @@ import {
 } from "../../lib/orderAlerts";
 import { Card, ErrorNote, primaryButton, secondaryButton } from "./ui";
 import { Spinner } from "../LoadingSpinner";
+import { formatDate } from "../../lib/locale";
 
-const date = (iso: string) => new Date(iso).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" });
+const date = (iso: string) => formatDate(iso, { day: "numeric", month: "short", year: "numeric" });
 
 // Admin -> Business: a notification on the owner's phone or computer for every new shop order (turned on per
 // device; arrives even when the app is closed).

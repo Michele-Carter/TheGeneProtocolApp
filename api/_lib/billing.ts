@@ -93,7 +93,7 @@ export async function checkoutUrl(business: Business, returnTo: string): Promise
 
 // The NZ price is for New Zealand businesses, so it needs a card issued in New Zealand.
 export const WRONG_REGION_MESSAGE =
-    "That card is from outside New Zealand, so it can't be used for the New Zealand price. Choose \"International\" below (US$20 a month) and try again.";
+    "That card is from outside New Zealand, so it can't be used for the New Zealand price. If your business isn't in New Zealand, choose its country below and try again.";
 
 // Step 2, once the owner has saved their card (when they come back from Stripe, or when Stripe's webhook
 // says so - whichever is first; both are safe to run). Checks the card, then starts the subscription with
@@ -137,12 +137,16 @@ export async function startWithCard(business: Business, card: Stripe.PaymentMeth
     return { problem: null };
 }
 
-// Switching between the NZ and overseas price, before a subscription is running. The business gets a fresh
-// Stripe customer, as a Stripe customer can only ever pay in one currency.
-export async function changeRegion(business: Business, region: string): Promise<void> {
+// Changing the business's country before its subscription has ever started. A change between the NZ and
+// overseas price gives it a fresh Stripe customer, as a Stripe customer can only ever pay in one currency.
+export async function changeCountry(
+    business: Business,
+    where: { country: string; currency: string; timeZone: string }
+): Promise<void> {
+    const newPrice = planFor(where.country) !== planFor(business.country);
     await getDb()
         .update(businesses)
-        .set({ country: region, ...(region !== business.country ? { stripeCustomerId: null } : {}), updatedAt: new Date() })
+        .set({ ...where, ...(newPrice ? { stripeCustomerId: null } : {}), updatedAt: new Date() })
         .where(eq(businesses.id, business.id));
 }
 
