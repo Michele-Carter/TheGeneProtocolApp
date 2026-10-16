@@ -33,6 +33,7 @@ export function billingInfo(b: Business): BillingInfo {
         currentPeriodEnd: b.currentPeriodEnd?.toISOString() ?? null,
         cancelAtPeriodEnd: b.cancelAtPeriodEnd,
         hadSubscription: b.stripeSubscriptionId != null,
+        trialDays: b.trialDays ?? TRIAL_DAYS,
     };
 }
 
@@ -127,7 +128,7 @@ export async function startWithCard(business: Business, card: Stripe.PaymentMeth
                 items: [{ price: await priceId(planFor(business.country)) }],
                 default_payment_method: card.id,
                 off_session: true,
-                ...(business.stripeSubscriptionId ? {} : { trial_period_days: TRIAL_DAYS }),
+                ...(business.stripeSubscriptionId ? {} : { trial_period_days: business.trialDays ?? TRIAL_DAYS }),
                 metadata: { business_id: business.id },
             },
             { idempotencyKey }

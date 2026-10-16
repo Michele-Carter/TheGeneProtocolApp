@@ -27,7 +27,26 @@ export function BrandedClerkProvider({
     ...props
 }: React.ComponentProps<typeof ClerkProvider>) {
     const [brandName, setBrandName] = useState<string | null>(null);
-    const localization = useMemo(() => withName(enUS, brandName ?? "PepBiz") as Localization, [brandName]);
+    const localization = useMemo(() => {
+        const named = withName(enUS, brandName ?? "PepBiz") as Localization;
+        // Manage account -> "Connected accounts" doesn't say what it's for: it links a Google account, so the person
+        // can sign in with Google instead of an emailed code.
+        const start = named.userProfile?.start;
+        return {
+            ...named,
+            userProfile: {
+                ...named.userProfile,
+                start: {
+                    ...start,
+                    connectedAccountsSection: {
+                        ...start?.connectedAccountsSection,
+                        title: "Sign in with Google",
+                        primaryButton: "Link your Google account",
+                    },
+                },
+            },
+        } as Localization;
+    }, [brandName]);
 
     return (
         <ClerkProvider {...props} localization={localization}>
