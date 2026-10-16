@@ -70,7 +70,12 @@ export default function ProductPage({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12 items-start">
         <div className="space-y-3">
           <div className="relative">
-            <ProductImage src={gallery[imageIndex] ?? gallery[0]} alt={product.name} className="aspect-square border border-slate-800" />
+            <ProductImage
+              src={gallery[imageIndex] ?? gallery[0]}
+              alt={product.name}
+              className="aspect-square border border-slate-800"
+              ribbon={(variant ? variant.stock : productStock(product)) === "soon" ? "Coming soon" : undefined}
+            />
             {coaUrl && <CoaButton url={coaUrl} className="top-3 left-3" />}
           </div>
           {gallery.length > 1 && (
@@ -130,7 +135,7 @@ export default function ProductPage({
                   {product.variants.map((v) => (
                     <option key={v.key} value={v.key}>
                       {v.label}
-                      {v.stock === "preorder" ? " - pre-order" : v.stock === "soon" ? " - coming soon" : ""}
+                      {v.stock === "preorder" ? " - pre-order" : ""}
                     </option>
                   ))}
                 </select>
@@ -138,7 +143,10 @@ export default function ProductPage({
             )}
 
             <div>
-              <StockBadge stock={variant ? variant.stock : productStock(product)} />
+              {/* Coming soon is shown as a ribbon on the photo instead. */}
+              {(variant ? variant.stock : productStock(product)) !== "soon" && (
+                <StockBadge stock={variant ? variant.stock : productStock(product)} />
+              )}
               {variant && inCart > 0 && (
                 <span className="ml-2 text-xs text-slate-400">{inCart} already in your cart</span>
               )}

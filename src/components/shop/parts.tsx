@@ -64,13 +64,29 @@ export const productCoas = (product: ShopProduct) =>
   Array.from(new Set(product.variants.map((v) => v.coaUrl).filter((u): u is string => Boolean(u))));
 
 // Product photos have white backgrounds, so they sit on a white panel.
-export function ProductImage({ src, alt, className = "" }: { src: string | undefined; alt: string; className?: string }) {
+// ribbon: a banner across the photo's top-right corner, e.g. "Coming soon".
+export function ProductImage({
+  src,
+  alt,
+  className = "",
+  ribbon,
+}: {
+  src: string | undefined;
+  alt: string;
+  className?: string;
+  ribbon?: string;
+}) {
   return (
-    <div className={`theme-keep-bg bg-white rounded-xl overflow-hidden flex items-center justify-center ${className}`}>
+    <div className={`theme-keep-bg relative bg-white rounded-xl overflow-hidden flex items-center justify-center ${className}`}>
       {src ? (
         <img src={src} alt={alt} loading="lazy" className="w-full h-full object-contain" />
       ) : (
         <Package size={32} className="text-slate-300" aria-hidden />
+      )}
+      {ribbon && (
+        <div className="pointer-events-none absolute top-[45px] -right-[44px] w-[200px] rotate-45 bg-violet-600 py-1 text-center text-[10px] font-black uppercase tracking-widest text-white shadow-md">
+          {ribbon}
+        </div>
       )}
     </div>
   );
