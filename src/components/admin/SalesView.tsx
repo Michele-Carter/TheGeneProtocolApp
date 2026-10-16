@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { ChevronRight, Plus, RefreshCw, Search, X } from "lucide-react";
 import { emptySale, isToPay, isToSend, type SaleInput } from "../../../shared/sales";
-import { adminApi, nzd, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
+import { adminApi, cash, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
 import SaleEditor from "./SaleEditor";
 import { ErrorNote, formatMonth, inputClass, MonthFilter, primaryButton, secondaryButton, StatusDot } from "./ui";
 import LoadingSpinner from "../LoadingSpinner";
+import { formatDate } from "../../lib/locale";
 
 type Filter = "all" | "open" | "to-pay" | "to-send";
 
@@ -84,6 +85,7 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
       periodProfit: completed.reduce((t, s) => t + (s.profit ?? 0), 0),
       owed: all.reduce((t, s) => t + Math.max(0, s.totals.balance), 0),
       toSend: all.filter((s) => isToSend(s.data)).length,
+      toPay: all.filter((s) => isToPay(s.data)).length,
     };
   }, [sales, month]);
 
@@ -107,7 +109,7 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
             s.data.shipping.tracking,
             s.data.shipping.courier,
             s.data.payment.method,
-            nzd(s.totals.total),
+            cash(s.totals.total),
             ...s.data.lines.flatMap((l) => [l.name, l.variant]),
           ]
             .filter(Boolean)
@@ -155,9 +157,9 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile label={`Sales — ${periodLabel}`} value={nzd(stats.periodSales)} />
-        <Tile label={`Profit — ${periodLabel}`} value={nzd(stats.periodProfit)} />
-        <Tile label="Owed to you" value={nzd(stats.owed)} warn={stats.owed > 0.004} />
+        <Tile label={`Sales — ${periodLabel}`} value={cash(stats.periodSales)} />
+        <Tile label={`Profit — ${periodLabel}`} value={cash(stats.periodProfit)} />
+        <Tile label="Owed to you" value={cash(stats.owed)} warn={stats.owed > 0.004} />
         <Tile label="Waiting to send" value={String(stats.toSend)} warn={stats.toSend > 0} />
       </div>
 
@@ -166,11 +168,17 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
           <button
             key={f.id}
             onClick={() => setFilter(f.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
               filter === f.id ? "border-gold-500/60 text-gold-400 bg-gold-500/10" : "border-slate-800 text-slate-400 hover:text-white"
             }`}
           >
             {f.label}
+            {/* How many orders are waiting on each of these. */}
+            {(f.id === "to-pay" || f.id === "to-send") && (f.id === "to-pay" ? stats.toPay : stats.toSend) > 0 && (
+              <span className="min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
+                {f.id === "to-pay" ? stats.toPay : stats.toSend}
+              </span>
+            )}
           </button>
         ))}
         <MonthFilter value={month} onChange={setMonth} />
@@ -225,7 +233,7 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
             >
               <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-[6.5rem_minmax(0,1fr)_6rem_5.5rem_6rem_6.5rem_7rem] gap-x-4 gap-y-1 items-center">
                 <span className="text-xs text-slate-400 tabular-nums">
-                  {new Date(`${sale.orderDate}T00:00:00`).toLocaleDateString("en-NZ")}
+                  {formatDate(sale.orderDate)}
                 </span>
                 <span className="min-w-0">
                   <span className="block text-sm font-bold text-white truncate">{sale.customerName}</span>
@@ -234,10 +242,10 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
                     {sale.data.orderNumber ? ` · #${sale.data.orderNumber}` : ""}
                   </span>
                 </span>
-                <span className="text-xs tabular-nums text-slate-200 font-semibold">{nzd(sale.totals.total)}</span>
+                <span className="text-xs tabular-nums text-slate-200 font-semibold">{cash(sale.totals.total)}</span>
                 <span className="text-xs tabular-nums">
                   {sale.profit != null ? (
-                    <span className={sale.profit >= 0 ? "text-emerald-400" : "text-red-400"}>{nzd(sale.profit)}</span>
+                    <span className={sale.profit >= 0 ? "text-emerald-400" : "text-red-400"}>{cash(sale.profit)}</span>
                   ) : (
                     <span className="text-slate-600">—</span>
                   )}

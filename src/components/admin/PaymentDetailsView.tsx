@@ -5,6 +5,8 @@ import { formatNzAccountNumber, type PaymentDetails } from "../../../shared/shop
 import { adminApi } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, inputClass, primaryButton } from "./ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
+import { homeCountry } from "../../lib/locale";
+import { money } from "../../lib/shopApi";
 
 // The bank account customers pay into. Customers only see this on an order you've confirmed, until it's paid.
 export default function PaymentDetailsView() {
@@ -30,7 +32,11 @@ export default function PaymentDetailsView() {
   const set = <K extends keyof PaymentDetails>(key: K, value: PaymentDetails[K]) =>
     setForm((f) => (f ? { ...f, [key]: value } : f));
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
-  const accountOk = form.accountNumber.trim() === "" || formatNzAccountNumber(form.accountNumber) != null;
+  // New Zealand account numbers are checked; elsewhere it's whatever customers need to pay.
+  const country = homeCountry();
+  const nz = country.code === "NZ";
+  const accountOk = !nz || form.accountNumber.trim() === "" || formatNzAccountNumber(form.accountNumber) != null;
+  const shownAccount = (nz ? formatNzAccountNumber(form.accountNumber) : null) ?? (form.accountNumber || "—");
 
   const save = async () => {
     setBusy(true);
@@ -59,26 +65,35 @@ export default function PaymentDetailsView() {
             <input
               className={inputClass}
               value={form.bankName}
-              placeholder="e.g. ANZ"
+              placeholder={country.bank.bankPlaceholder}
               onChange={(e) => set("bankName", e.target.value)}
             />
           </Field>
           <div className="sm:col-span-2">
             <Field
-              label="Account number"
-              hint={accountOk ? "e.g. 12-3456-7890123-00 - spaces or dashes are fine." : "NZ account numbers look like 12-3456-7890123-00."}
+              label={country.bank.accountLabel}
+              hint={accountOk ? country.bank.accountHint : "NZ account numbers look like 12-3456-7890123-00."}
             >
-              <input
-                className={`${inputClass} font-mono ${accountOk ? "" : "border-red-500/70"}`}
-                value={form.accountNumber}
-                inputMode="numeric"
-                placeholder="12-3456-7890123-00"
-                onChange={(e) => set("accountNumber", e.target.value)}
-                onBlur={() => {
-                  const formatted = formatNzAccountNumber(form.accountNumber);
-                  if (formatted) set("accountNumber", formatted);
-                }}
-              />
+              {nz ? (
+                <input
+                  className={`${inputClass} font-mono ${accountOk ? "" : "border-red-500/70"}`}
+                  value={form.accountNumber}
+                  inputMode="numeric"
+                  placeholder={country.bank.accountPlaceholder}
+                  onChange={(e) => set("accountNumber", e.target.value)}
+                  onBlur={() => {
+                    const formatted = formatNzAccountNumber(form.accountNumber);
+                    if (formatted) set("accountNumber", formatted);
+                  }}
+                />
+              ) : (
+                <textarea
+                  className={`${inputClass} font-mono min-h-[4.5rem] resize-y`}
+                  value={form.accountNumber}
+                  placeholder={country.bank.accountPlaceholder}
+                  onChange={(e) => set("accountNumber", e.target.value)}
+                />
+              )}
             </Field>
           </div>
           <div className="sm:col-span-2">
@@ -113,11 +128,11 @@ export default function PaymentDetailsView() {
         <div className="flex gap-2.5 text-sm text-slate-300 border border-slate-800 rounded-2xl p-4">
           <Landmark size={15} className="text-gold-400 flex-shrink-0 mt-0.5" />
           <div className="space-y-0.5">
-            <div className="font-bold text-white">How to pay: $72.50</div>
+            <div className="font-bold text-white">How to pay: {money(72.5)}</div>
             {form.bankName && <div>Bank: {form.bankName}</div>}
             <div>Account name: {form.accountName || "—"}</div>
             <div>
-              Account number: <span className="font-mono">{formatNzAccountNumber(form.accountNumber) ?? (form.accountNumber || "—")}</span>
+              {country.bank.payToLabel}: <span className="font-mono whitespace-pre-line">{shownAccount}</span>
             </div>
             <div>
               Reference: <span className="font-bold text-white">#1001</span>

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BadgeCheck, Ban, Bell, CheckCircle2, Truck, XCircle } from "lucide-react";
 import type { CustomerNotification, NotificationKind } from "../../shared/shop";
+import { formatDateTime } from "../lib/locale";
 
 const ICONS: Record<NotificationKind, React.ReactNode> = {
   confirmed: <CheckCircle2 size={14} className="text-emerald-400" />,
@@ -11,7 +12,7 @@ const ICONS: Record<NotificationKind, React.ReactNode> = {
 };
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString("en-NZ", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  formatDateTime(iso, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 // Bell with an unread count. Opening it marks everything read; clicking a notification opens My Orders.
 export default function NotificationBell({

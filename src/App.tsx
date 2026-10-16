@@ -18,7 +18,14 @@ import PeptideDatabase from "./components/PeptideDatabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useBusiness } from "./hooks/useBusiness";
-import { forgetShopSlug, setWantsToStartBusiness, shopSlug, showShopInAddress, wantsToStartBusiness } from "./lib/business";
+import {
+  forgetShopSlug,
+  saveRegistration,
+  setWantsToStartBusiness,
+  shopSlug,
+  showShopInAddress,
+  wantsToStartBusiness,
+} from "./lib/business";
 import {
   BillingScreen,
   BusinessErrorScreen,
@@ -165,6 +172,7 @@ export default function App() {
     if (startingBusiness && context?.isAdmin) {
       setWantsToStartBusiness(false);
       setStartingBusiness(false);
+      saveRegistration(null);
     }
   }, [startingBusiness, context]);
   const appReady = context != null && context.access === "ok" && !startingBusiness;
@@ -172,12 +180,18 @@ export default function App() {
   // Owners have no Dashboard Hub: their home is the business Overview.
   const currentTab: ActiveTab = isAdmin && activeTab === "dashboard" ? "admin" : activeTab;
   const businessName = context?.business.name ?? "PepBiz";
-  // Customers only ever see their shop's name and logo; with no logo they get none, never the PepBiz badge.
-  const businessLogo = context?.business.logoUrl ?? (context?.isAdmin ? PEPBIZ_ICON : null);
+  // The business's own logo, if it has uploaded one - never the PepBiz badge in its place, for owners or
+  // customers (a business without a logo just shows its name).
+  const businessLogo = context?.business.logoUrl ?? null;
   const setClerkBrandName = useSetClerkBrandName();
   useEffect(() => {
     if (!context) return;
-    setTabBranding(context.business.name, businessLogo, context.isAdmin ? null : context.business.slug);
+    // The browser tab: owners without a logo of their own see PepBiz's icon there, customers never do.
+    setTabBranding(
+      context.business.name,
+      businessLogo ?? (context.isAdmin ? PEPBIZ_ICON : null),
+      context.isAdmin ? null : context.business.slug
+    );
     // Clerk's account windows: the shop's name for customers, PepBiz for owners.
     setClerkBrandName(context.isAdmin ? null : context.business.name);
   }, [context, businessLogo, setClerkBrandName]);
@@ -399,9 +413,11 @@ export default function App() {
     if (startingBusiness && businessState.status !== "loading" && !context?.isAdmin) {
       return (
         <StartBusinessScreen
+          signedIn
           onCancel={() => {
             setWantsToStartBusiness(false);
             setStartingBusiness(false);
+            saveRegistration(null);
           }}
           onCreated={() => {
             setStartingBusiness(false);
@@ -444,10 +460,10 @@ export default function App() {
           <aside className="hidden md:flex flex-col w-72 bg-slate-950/90 border-r border-slate-900/80 sticky top-0 h-dvh px-4 py-5 gap-4 flex-shrink-0 z-30">
             <div className="app-side-scroller flex-1 min-h-0 overflow-y-auto -mr-3 pr-3 space-y-8">
               {/* Brand Logo & Name */}
-              <div className="flex items-center px-1">
+              <div className="flex items-center px-1 min-h-9">
                 <div className="flex items-center gap-1">
-                  <div className="h-9 w-6 flex items-center justify-center">
-                    {businessLogo && (
+                  {businessLogo && (
+                    <div className="h-9 w-6 flex items-center justify-center">
                       <img
                         src={businessLogo}
                         alt=""
@@ -456,8 +472,8 @@ export default function App() {
                           (e.currentTarget as HTMLImageElement).style.display = "none";
                         }}
                       />
-                    )}
-                  </div>
+                    </div>
+                  )}
                   <div className="flex items-center gap-1.5 -ml-0.5">
                     <span className="text-lg font-black text-white tracking-tight leading-tight">{businessName}</span>
                   </div>
@@ -485,9 +501,9 @@ export default function App() {
           {/* MOBILE HEADER BAR */}
           <header className="md:hidden sticky top-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-900 w-full">
             <div className="px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <div className="h-8 w-5 flex items-center justify-center">
-                  {businessLogo && (
+              <div className="flex items-center gap-1.5 min-h-8">
+                {businessLogo && (
+                  <div className="h-8 w-5 flex items-center justify-center">
                     <img
                       src={businessLogo}
                       alt=""
@@ -496,8 +512,8 @@ export default function App() {
                         (e.currentTarget as HTMLImageElement).style.display = "none";
                       }}
                     />
-                  )}
-                </div>
+                  </div>
+                )}
                 <span className="text-base font-black text-white tracking-tight truncate">{businessName}</span>
               </div>
 
@@ -559,9 +575,21 @@ export default function App() {
           </div>
         </div>
       )}
-      {isLoaded && sessionChecked && !hasValidSession && (
-        <AuthPage />
-      )}
+      {/* Registering a business (/start): the details come first, then creating the login. */}
+      {isLoaded && sessionChecked && !hasValidSession &&
+        (startingBusiness ? (
+          <StartBusinessScreen
+            signedIn={false}
+            onCancel={() => {
+              setWantsToStartBusiness(false);
+              setStartingBusiness(false);
+              saveRegistration(null);
+            }}
+            onCreated={() => {}}
+          />
+        ) : (
+          <AuthPage />
+        ))}
     </>
   );
 }

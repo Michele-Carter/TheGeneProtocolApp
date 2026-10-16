@@ -3,37 +3,40 @@ import { del, put } from "@vercel/blob";
 import { createClerkClient } from "@clerk/backend";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
-import { ownedBusiness } from "../_lib/business.js";
-import { appUrl, billingInfo, billingPortalUrl, changeRegion, checkoutUrl, completeCheckout, resumeSubscription, syncFromStripe } from "../_lib/billing.js";
+import { hasMoneyRecords, ownedBusiness, runAsBusiness } from "../_lib/business.js";
+import { appUrl, billingInfo, billingPortalUrl, changeCountry, checkoutUrl, completeCheckout, resumeSubscription, syncFromStripe } from "../_lib/billing.js";
 import { getDb } from "../_lib/db.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { businesses, businessMembers } from "../_lib/schema.js";
-import { accessState, slugProblem } from "../../shared/billing.js";
+import { accessState, planFor, slugProblem } from "../../shared/billing.js";
 import { MAX_IMAGE_BYTES } from "../../shared/shop.js";
+import { businessCountrySettings, countryInfo, isKnownTimeZone } from "../../shared/countries.js";
 
 // Setting up and running a business on PepBiz (the business's own data is in api/admin):
 //   GET    /api/business/shop?slug=     a shop link's name and logo, for its sign-in page (no sign-in needed)
-//   GET    /api/business/slug?slug=     is this shop link free?  { available, problem }
-//   POST   /api/business/create         { name, slug, region }   sign up a new business (the caller becomes its owner)
+//   GET    /api/business/slug?slug=     is this shop link free? (no sign-in needed)  { available, problem }
+//   POST   /api/business/create         { ownerName, name, slug, country, timeZone? }   register a business (caller owns it)
 //   POST   /api/business/checkout       Stripe page to save a card and start the subscription         { url }
 //   POST   /api/business/portal         { flow? } Stripe billing page: change card, invoices, cancel  { url }
 //                                        (flow "cancel" opens straight on its cancel screen)
 //   POST   /api/business/resume         undo a cancellation before the subscription ends             { billing }
 //   POST   /api/business/sync           { sessionId? } after returning from Stripe: start the subscription with the
 //                                        card just saved (if it's allowed), then re-read it   { billing, problem }
-//   PATCH  /api/business/region         { region }  NZ or overseas price, while no subscription is running
-//   PATCH  /api/business/details        { name }
+//   PATCH  /api/business/country        { country, timeZone? }  until the business records any money
+//   PATCH  /api/business/details        { name?, timeZone? }
 //   POST   /api/business/logo           { dataUrl }      DELETE /api/business/logo
-// Everything except shop, slug and create is for the business's owner, and works even when the subscription has
+// Everything except shop, manifest, slug and create is for the business's owner, and works even when the subscription has
 // stopped (that's how they restart it).
 
 // New businesses start with a copy of this business's peptide library (not its price list or anything else).
 const TEMPLATE_BUSINESS_ID = "tgp";
 
 const createSchema = z.object({
+    ownerName: z.string().trim().min(2, "Enter your name").max(80),
     name: z.string().trim().min(2, "Enter your business name").max(80),
     slug: z.string().trim().toLowerCase(),
-    region: z.enum(["NZ", "INTL"]),
+    country: z.string().trim().toUpperCase(),
+    timeZone: z.string().trim().optional(),
 });
 
 const IMAGE_DATA_URL = /^data:image\/(webp|jpeg|png);base64,([A-Za-z0-9+/=]+)$/;
@@ -107,8 +110,16 @@ async function webAppManifest(req: any, res: any) {
     );
 }
 
+// Is a shop link free? Asked while someone fills in the registration form, before they have a login.
+async function slugCheck(req: any, res: any) {
+    const slug = String(req.query?.slug ?? "").trim().toLowerCase();
+    const problem = slugProblem(slug) ?? ((await slugTaken(slug)) ? "That link is already taken - please choose another." : null);
+    return sendJson(res, 200, { available: problem == null, problem });
+}
+
 export default async function handler(req: any, res: any) {
     if (req.query?.action === "shop" && req.method === "GET") return publicShop(req, res);
+    if (req.query?.action === "slug" && req.method === "GET") return slugCheck(req, res);
     if (req.query?.action === "manifest" && req.method === "GET") return webAppManifest(req, res);
     const userId = await requireAuthUserId(req);
     if (!userId) return sendJson(res, 401, { error: "Unauthenticated" });
@@ -126,19 +137,17 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
 
     if (action === "shop" && req.method === "GET") return publicShop(req, res);
 
-    if (action === "slug" && req.method === "GET") {
-        const slug = String(req.query?.slug ?? "").trim().toLowerCase();
-        const problem = slugProblem(slug) ?? ((await slugTaken(slug)) ? "That link is already taken - please choose another." : null);
-        return sendJson(res, 200, { available: problem == null, problem });
-    }
+    if (action === "slug" && req.method === "GET") return slugCheck(req, res);
 
     if (action === "create" && req.method === "POST") {
         if (await ownedBusiness(userId)) return sendJson(res, 409, { error: "You already have a business on PepBiz." });
         const parsed = createSchema.safeParse(await parseJsonBody(req));
         if (!parsed.success) return sendJson(res, 400, { error: parsed.error.issues[0]?.message ?? "Please check your details" });
-        const { name, slug, region } = parsed.data;
+        const { name, slug, ownerName } = parsed.data;
         const problem = slugProblem(slug);
         if (problem) return sendJson(res, 400, { error: problem });
+        const where = businessCountrySettings(parsed.data.country, parsed.data.timeZone);
+        if (!where) return sendJson(res, 400, { error: "Choose the country your business is in" });
 
         const id = crypto.randomUUID();
         const ownerEmail = await loginEmail(userId);
@@ -146,7 +155,7 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
             await db.transaction(async (tx) => {
                 const [created] = await tx
                     .insert(businesses)
-                    .values({ id, slug, name, country: region, ownerEmail })
+                    .values({ id, slug, name, ...where, ownerName, ownerEmail })
                     .onConflictDoNothing()
                     .returning();
                 if (!created) throw new SlugTaken();
@@ -193,21 +202,47 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
         return sendJson(res, 200, { billing: billingInfo(synced ?? business), problem });
     }
 
-    if (action === "region" && req.method === "PATCH") {
-        const parsed = z.object({ region: z.enum(["NZ", "INTL"]) }).safeParse(await parseJsonBody(req));
-        if (!parsed.success) return sendJson(res, 400, { error: "Choose New Zealand or outside New Zealand" });
-        if (accessState(business) === "ok" && business.subscriptionStatus) {
-            return sendJson(res, 409, { error: "Your subscription is running - cancel it first to change where you pay from." });
+    // The country (and so the currency) can only change before the subscription starts, so a business's sales
+    // and costs are always in one currency.
+    if (action === "country" && req.method === "PATCH") {
+        const parsed = z
+            .object({ country: z.string().trim().toUpperCase(), timeZone: z.string().trim().optional() })
+            .safeParse(await parseJsonBody(req));
+        const where = parsed.success ? businessCountrySettings(parsed.data.country, parsed.data.timeZone) : null;
+        if (!where) return sendJson(res, 400, { error: "Choose the country your business is in" });
+        if (await runAsBusiness(business.id, hasMoneyRecords)) {
+            return sendJson(res, 409, {
+                error: "Your country and currency can't be changed once you've recorded stock, orders, sales or expenses.",
+            });
         }
-        await changeRegion(business, parsed.data.region);
-        return sendJson(res, 200, { region: parsed.data.region });
+        // A running subscription can't switch between the NZ price (NZ$) and the overseas one (US$).
+        if (business.stripeSubscriptionId && planFor(where.country) !== planFor(business.country)) {
+            return sendJson(res, 409, {
+                error: "Your subscription is already running in another currency, so this change needs PepBiz support - please get in touch.",
+            });
+        }
+        await changeCountry(business, where);
+        return sendJson(res, 200, where);
     }
 
     if (action === "details" && req.method === "PATCH") {
-        const parsed = z.object({ name: z.string().trim().min(2, "Enter your business name").max(80) }).safeParse(await parseJsonBody(req));
+        const parsed = z
+            .object({
+                name: z.string().trim().min(2, "Enter your business name").max(80).optional(),
+                timeZone: z.string().trim().optional(),
+            })
+            .safeParse(await parseJsonBody(req));
         if (!parsed.success) return sendJson(res, 400, { error: parsed.error.issues[0]?.message ?? "Please check your details" });
-        await db.update(businesses).set({ name: parsed.data.name, updatedAt: new Date() }).where(eq(businesses.id, business.id));
-        return sendJson(res, 200, { name: parsed.data.name });
+        const { name, timeZone } = parsed.data;
+        if (timeZone !== undefined && !isKnownTimeZone(countryInfo(business.country), timeZone)) {
+            return sendJson(res, 400, { error: "Choose one of your country's time zones" });
+        }
+        const [updated] = await db
+            .update(businesses)
+            .set({ ...(name !== undefined ? { name } : {}), ...(timeZone !== undefined ? { timeZone } : {}), updatedAt: new Date() })
+            .where(eq(businesses.id, business.id))
+            .returning();
+        return sendJson(res, 200, { name: updated.name, timeZone: updated.timeZone });
     }
 
     if (action === "logo" && (req.method === "POST" || req.method === "DELETE")) {

@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/react";
 import { AlertTriangle, ArrowLeft, PackagePlus, Pencil, RefreshCw, Search, Trash2 } from "lucide-react";
 import {
   adminApi,
-  nzd,
+  cash,
   todayIso,
   type InventoryDetail,
   type InventorySummaryRow,
@@ -19,6 +19,7 @@ import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import BundlesView from "./BundlesView";
 import AddStockPanel from "./AddStockPanel";
 import CoaSection from "./CoaSection";
+import { businessDay, formatDate, homeCurrency } from "../../lib/locale";
 
 type KindFilter = "all" | "peptide" | "supply";
 type View = "items" | "bundles";
@@ -68,7 +69,7 @@ function historyEntries(movements: StockMovement[]): HistoryEntry[] {
 
 // The yyyy-mm-dd a timestamp falls on in NZ (matches how the server stores adjustment dates).
 function nzDateString(iso: string) {
-  return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Pacific/Auckland" });
+  return businessDay(iso);
 }
 
 export default function InventoryView() {
@@ -149,9 +150,9 @@ export default function InventoryView() {
       ) : (
         <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile label="Stock value (at cost)" value={nzd(totals.value)} />
-        <Tile label="Peptides" value={nzd(totals.peptideValue)} />
-        <Tile label="Supplies" value={nzd(totals.supplyValue)} />
+        <Tile label="Stock value (at cost)" value={cash(totals.value)} />
+        <Tile label="Peptides" value={cash(totals.peptideValue)} />
+        <Tile label="Supplies" value={cash(totals.supplyValue)} />
         <Tile label="Low on stock" value={String(totals.low)} warn={totals.low > 0} />
       </div>
 
@@ -246,18 +247,18 @@ export default function InventoryView() {
                     {isLowStock(row) && <div className="text-[10px] text-amber-400">Low stock</div>}
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
-                    <span className="text-slate-200 font-semibold">{nzd(row.item.sellPriceNzd)}</span>
+                    <span className="text-slate-200 font-semibold">{cash(row.item.sellPriceNzd)}</span>
                     {row.item.shopVisible && (
                       <div className="text-[10px] text-emerald-400">
                         In shop · {itemSection(row.item) === "supplies" ? "Supplies" : "Peptides"}
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-gold-400 font-bold">{nzd(row.nextCostNzd, 3)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{nzd(row.averageCostNzd, 3)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-200 font-semibold">{nzd(row.valueNzd)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-gold-400 font-bold">{cash(row.nextCostNzd)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{cash(row.averageCostNzd)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-200 font-semibold">{cash(row.valueNzd)}</td>
                   <td className="px-4 py-2.5 text-slate-400 tabular-nums">
-                    {row.nextExpiry ? new Date(`${row.nextExpiry}T00:00:00`).toLocaleDateString("en-NZ") : "—"}
+                    {row.nextExpiry ? formatDate(row.nextExpiry) : "—"}
                   </td>
                 </tr>
               ))}
@@ -353,7 +354,7 @@ function ShopCard({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2 items-end">
-            <Field label={`Sell price per ${item.unit} (NZD)`}>
+            <Field label={`Sell price per ${item.unit} (${homeCurrency()})`}>
               <NumberField value={price} onChange={setPrice} placeholder="0.00" />
             </Field>
             <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pb-2">
@@ -619,21 +620,21 @@ function ItemDetail({
                       {detail.lots.map((lot) => (
                         <tr key={lot.id} className={lot.qtyRemaining === 0 ? "opacity-40" : ""}>
                           <td className="py-2 pr-3 tabular-nums text-slate-300">
-                            {new Date(lot.receivedAt).toLocaleDateString("en-NZ")}
+                            {formatDate(lot.receivedAt)}
                           </td>
                           <td className="py-2 pr-3 text-slate-400">{lot.orderId ? "Supply order" : "Adjustment"}</td>
                           <td className="py-2 pr-3 text-slate-400">
                             {lot.lotNumber || "—"}
                             {lot.expiryDate && (
                               <span className="block text-[10px] text-slate-500">
-                                exp {new Date(`${lot.expiryDate}T00:00:00`).toLocaleDateString("en-NZ")}
+                                exp {formatDate(lot.expiryDate)}
                               </span>
                             )}
                           </td>
                           <td className="py-2 pr-3 text-right tabular-nums text-slate-100 font-bold">
                             {lot.qtyRemaining} <span className="text-slate-500 font-normal">/ {lot.qtyReceived}</span>
                           </td>
-                          <td className="py-2 text-right tabular-nums text-gold-400 font-bold">{nzd(lot.unitCostNzd, 3)}</td>
+                          <td className="py-2 text-right tabular-nums text-gold-400 font-bold">{cash(lot.unitCostNzd)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -660,7 +661,7 @@ function ItemDetail({
                           {m.reason ? <span className="text-slate-400 font-normal"> — {m.reason}</span> : null}
                         </div>
                         <div className="text-[10px] text-slate-500">
-                          {new Date(m.occurredAt).toLocaleDateString("en-NZ")}
+                          {formatDate(m.occurredAt)}
                           {m.note ? ` · ${m.note}` : ""}
                         </div>
                       </div>
@@ -669,7 +670,7 @@ function ItemDetail({
                           <div className={`font-black ${m.qty > 0 ? "text-emerald-400" : "text-red-400"}`}>
                             {m.qty > 0 ? `+${m.qty}` : m.qty}
                           </div>
-                          <div className="text-[10px] text-slate-500">@ {nzd(m.unitCostNzd, 3)}</div>
+                          <div className="text-[10px] text-slate-500">@ {cash(m.unitCostNzd)}</div>
                         </div>
                         {m.adjustmentId ? (
                           <div className="flex gap-1">
@@ -707,8 +708,8 @@ function ItemDetail({
           <div className="space-y-5">
             <Card title="Stock">
               <StatRow label="On hand" value={`${onHand} ${item?.unit}s`} strong />
-              <StatRow label="Value at cost" value={nzd(value)} />
-              <StatRow label="Average cost" value={nzd(onHand > 0 ? value / onHand : null, 3)} />
+              <StatRow label="Value at cost" value={cash(value)} />
+              <StatRow label="Average cost" value={cash(onHand > 0 ? value / onHand : null)} />
               <div className="flex items-end gap-2 mt-3">
                 <div className="flex-1">
                   <Field label="Warn me when stock is at or below">
@@ -768,7 +769,7 @@ function ItemDetail({
                 </Field>
                 {direction === "in" && (
                   <Field
-                    label="Cost per unit (NZD)"
+                    label={`Cost per unit (${homeCurrency()})`}
                     hint={editingId ? "Leave blank to keep the current cost." : "Leave blank to use the most recent batch cost."}
                   >
                     <NumberField value={unitCost} onChange={setUnitCost} />

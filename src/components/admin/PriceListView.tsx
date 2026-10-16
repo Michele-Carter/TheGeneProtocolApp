@@ -5,6 +5,7 @@ import type { SupplierOption } from "../../../shared/library";
 import { adminApi, type SupplierProductInput, type SupplierProductRecord } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, dangerButton, inputClass, primaryButton, secondaryButton } from "./ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
+import { appLocale } from "../../lib/locale";
 
 // The supplier's products and prices. Each size with a code can be picked on a peptide order, which stocks
 // inventory item "cat:<code>" - so a code stays tied to the same product once it's been ordered.
@@ -82,7 +83,7 @@ export default function PriceListView() {
                 <div className="text-sm font-bold text-white">{product.name}</div>
                 <div className="text-xs text-slate-400 mt-0.5">
                   {product.options
-                    .map((o) => `${o.vialSize}${o.code ? ` (${o.code})` : ""} $${o.priceUsd.toLocaleString("en-NZ")}`)
+                    .map((o) => `${o.vialSize}${o.code ? ` (${o.code})` : ""} $${o.priceUsd.toLocaleString(appLocale())}`)
                     .join(" · ")}
                 </div>
                 {product.note && <div className="text-[11px] text-slate-500 mt-0.5">{product.note}</div>}

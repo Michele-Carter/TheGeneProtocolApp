@@ -4,8 +4,9 @@ import { asc, eq, sql } from "drizzle-orm";
 import { customerForUser } from "./customers.js";
 import { getDb } from "./db.js";
 import { sendJson } from "./http.js";
-import { businesses, businessMembers, customers } from "./schema.js";
+import { businesses, businessMembers, customers, expenses, inventoryLots, purchaseOrders, sales, shopOrders } from "./schema.js";
 import { accessState } from "../../shared/billing.js";
+import { countryInfo } from "../../shared/countries.js";
 
 // Every business's data is kept apart by the database (scripts/multi-business-2.sql). Each API request:
 //   1. works out which business it's for and whether the caller owns it or is a customer (resolveBusiness),
@@ -110,6 +111,19 @@ export function afterSave(task: () => Promise<void>) {
 
 // The business the current request is for, if any.
 export const currentBusiness = () => current.getStore()?.business ?? null;
+
+// Whether a business has recorded any money yet - stock, supplier orders, sales, expenses or shop orders. From
+// then on its currency (and so its country) is fixed, so its history stays in one currency. db: as the business.
+export async function hasMoneyRecords(db: Db): Promise<boolean> {
+    for (const table of [inventoryLots, purchaseOrders, sales, expenses, shopOrders]) {
+        const [row] = await db.select({ id: table.id }).from(table).limit(1);
+        if (row) return true;
+    }
+    return false;
+}
+
+// The current business's country name: the country on its customers' addresses unless they say otherwise.
+export const businessCountryName = () => countryInfo(currentBusiness()?.country).name;
 
 export interface BusinessRequest {
     db: Db;

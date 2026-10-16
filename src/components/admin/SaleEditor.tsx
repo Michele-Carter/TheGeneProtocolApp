@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/react";
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Copy, Package, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { fifoEstimate, saleProfit, saleTotals, type SaleInput, type SaleLine, type ShippingStatus } from "../../../shared/sales";
 import { addressLines, type ShippingAddress } from "../../../shared/customers";
-import { adminApi, nzd, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
+import { adminApi, cash, todayIso, type BundleRecord, type InventorySummaryRow, type SaleRecord } from "../../lib/adminApi";
 import {
   Card,
   ErrorNote,
@@ -19,6 +19,7 @@ import {
 } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
 import { Spinner } from "../LoadingSpinner";
+import { homeCountry, homeCurrency } from "../../lib/locale";
 
 const SHIPPING_STATUSES: { id: ShippingStatus; label: string }[] = [
   { id: "not-sent", label: "Not sent" },
@@ -30,7 +31,7 @@ const SHIPPING_STATUSES: { id: ShippingStatus; label: string }[] = [
 // The customer's address, ready to copy onto a courier booking or label.
 function SendTo({ name, address }: { name: string; address: ShippingAddress | null }) {
   const [copied, setCopied] = useState(false);
-  const lines = address ? [name.trim(), ...addressLines(address)].filter(Boolean) : [];
+  const lines = address ? [name.trim(), ...addressLines(address, homeCountry().name)].filter(Boolean) : [];
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
@@ -482,10 +483,10 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                     <NumberField integer value={draft.qty} onChange={(v) => setDraft((d) => ({ ...d, qty: v ?? 0 }))} />
                   </Field>
                   <Field
-                    label={`Price per ${draft.unit || "unit"} (NZD)`}
+                    label={`Price per ${draft.unit || "unit"} (${homeCurrency()})`}
                     hint={
                       draft.itemId && listPrice(draft.itemId) != null && listPrice(draft.itemId) !== draft.unitPriceNzd
-                        ? `Sell price: ${nzd(listPrice(draft.itemId))}`
+                        ? `Sell price: ${cash(listPrice(draft.itemId))}`
                         : draft.itemId && listPrice(draft.itemId) == null
                           ? "No sell price set — last price you charged."
                           : undefined
@@ -504,13 +505,13 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                     {draftEstimate ? (
                       <>
                         {draft.qty} {draft.unit || "unit"}
-                        {draft.qty === 1 ? "" : "s"} · {nzd(draft.qty * draft.unitPriceNzd)}
+                        {draft.qty === 1 ? "" : "s"} · {cash(draft.qty * draft.unitPriceNzd)}
                         {draftEstimate.cost != null && (
                           <>
                             {" "}
-                            · est. cost {nzd(draftEstimate.cost)} · profit{" "}
+                            · est. cost {cash(draftEstimate.cost)} · profit{" "}
                             <span className="text-gold-400 font-bold">
-                              {nzd(draft.qty * draft.unitPriceNzd - draftEstimate.cost)}
+                              {cash(draft.qty * draft.unitPriceNzd - draftEstimate.cost)}
                             </span>
                           </>
                         )}
@@ -554,7 +555,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                     {bundles.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name}
-                        {b.priceNzd != null ? ` — ${nzd(b.priceNzd)}` : ""}
+                        {b.priceNzd != null ? ` — ${cash(b.priceNzd)}` : ""}
                       </option>
                     ))}
                   </select>
@@ -608,14 +609,14 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                             <span className="text-xs text-slate-300 text-right tabular-nums whitespace-nowrap">
                               {group.lines.length} items
                             </span>
-                            <span className="text-sm text-slate-100 text-right tabular-nums font-semibold">{nzd(groupTotal)}</span>
+                            <span className="text-sm text-slate-100 text-right tabular-nums font-semibold">{cash(groupTotal)}</span>
                           </button>
                           {open && (
                             <div className="px-3 pb-3 pl-10 space-y-3">
                               <div className="grid grid-cols-3 gap-2 text-[11px]">
-                                <Metric label="Bundle value" value={nzd(groupTotal)} />
-                                <Metric label={completed ? "Cost of stock" : "Est. cost of stock"} value={nzd(groupCost)} />
-                                <Metric label="Gross profit" value={groupCost == null ? "—" : nzd(groupTotal - groupCost)} highlight />
+                                <Metric label="Bundle value" value={cash(groupTotal)} />
+                                <Metric label={completed ? "Cost of stock" : "Est. cost of stock"} value={cash(groupCost)} />
+                                <Metric label="Gross profit" value={groupCost == null ? "—" : cash(groupTotal - groupCost)} highlight />
                               </div>
                               <div className="space-y-1 border-t border-slate-800/60 pt-2">
                                 {group.lines.map((line) => {
@@ -635,7 +636,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                                         )}
                                       </span>
                                       <div className="flex items-center gap-2 flex-shrink-0">
-                                        <span className="tabular-nums text-slate-300">{nzd(line.qty * line.unitPriceNzd)}</span>
+                                        <span className="tabular-nums text-slate-300">{cash(line.qty * line.unitPriceNzd)}</span>
                                         {!completed && (
                                           <button
                                             type="button"
@@ -693,15 +694,15 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                             {line.qty} {unit}
                             {line.qty === 1 ? "" : "s"}
                           </span>
-                          <span className="text-sm text-slate-100 text-right tabular-nums font-semibold">{nzd(lineTotal)}</span>
+                          <span className="text-sm text-slate-100 text-right tabular-nums font-semibold">{cash(lineTotal)}</span>
                         </button>
                         {open && (
                           <div className="px-3 pb-3 pl-10 space-y-3">
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-                              <Metric label={`Price per ${unit}`} value={nzd(line.unitPriceNzd)} />
-                              <Metric label="Line total" value={nzd(lineTotal)} />
-                              <Metric label={completed ? "Cost of stock" : "Est. cost of stock"} value={nzd(cost)} />
-                              <Metric label="Gross profit" value={cost == null ? "—" : nzd(lineTotal - cost)} highlight />
+                              <Metric label={`Price per ${unit}`} value={cash(line.unitPriceNzd)} />
+                              <Metric label="Line total" value={cash(lineTotal)} />
+                              <Metric label={completed ? "Cost of stock" : "Est. cost of stock"} value={cash(cost)} />
+                              <Metric label="Gross profit" value={cost == null ? "—" : cash(lineTotal - cost)} highlight />
                             </div>
                             {short && (
                               <div className="flex items-center gap-1.5 text-[11px] text-red-400">
@@ -729,14 +730,14 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                   <span className="text-slate-400">
                     {data.lines.length} {data.lines.length === 1 ? "item" : "items"} · {totals.units} units
                   </span>
-                  <span className="font-bold tabular-nums text-slate-100">{nzd(totals.itemsSubtotal)}</span>
+                  <span className="font-bold tabular-nums text-slate-100">{cash(totals.itemsSubtotal)}</span>
                 </div>
               </div>
             )}
           </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Card title="Charges & costs (NZD)">
+            <Card title={`Charges & costs (${homeCurrency()})`}>
               <div className="space-y-3">
                 <Field label="Discount off the order">
                   <NumberField value={data.discountNzd} onChange={(v) => set("discountNzd", v ?? 0)} />
@@ -843,7 +844,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                         onChange={(e) => set("shipping", { ...data.shipping, courier: e.target.value })}
                       />
                       <datalist id="admin-couriers">
-                        {["NZ Post", "CourierPost", "Aramex", "NZ Couriers", "Pickup"].map((c) => (
+                        {homeCountry().couriers.map((c) => (
                           <option key={c} value={c} />
                         ))}
                       </datalist>
@@ -881,23 +882,23 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
 
         <div className="xl:sticky xl:top-4 space-y-5">
           <Card title="Order summary">
-            <StatRow label={`Items (${totals.units} units)`} value={nzd(totals.itemsSubtotal)} />
-            {data.discountNzd !== 0 && <StatRow label="Discount" value={nzd(-data.discountNzd)} />}
-            <StatRow label="Shipping charged" value={nzd(data.shippingChargedNzd)} />
-            <StatRow label="Order total" value={nzd(totals.total)} strong />
-            <StatRow label="Paid" value={nzd(data.payment.amountPaidNzd)} />
+            <StatRow label={`Items (${totals.units} units)`} value={cash(totals.itemsSubtotal)} />
+            {data.discountNzd !== 0 && <StatRow label="Discount" value={cash(-data.discountNzd)} />}
+            <StatRow label="Shipping charged" value={cash(data.shippingChargedNzd)} />
+            <StatRow label="Order total" value={cash(totals.total)} strong />
+            <StatRow label="Paid" value={cash(data.payment.amountPaidNzd)} />
             <StatRow
               label="Still to pay"
-              value={nzd(Math.max(0, totals.balance))}
+              value={cash(Math.max(0, totals.balance))}
               tone={totals.balance > 0.004 ? "bad" : "good"}
             />
             <div className="h-3" />
-            <StatRow label={completed ? "Cost of stock sold" : "Est. cost of stock"} value={nzd(cogs)} />
-            <StatRow label="Shipping cost" value={nzd(data.shippingCostNzd)} />
-            <StatRow label="Payment fees" value={nzd(data.paymentFeesNzd)} />
+            <StatRow label={completed ? "Cost of stock sold" : "Est. cost of stock"} value={cash(cogs)} />
+            <StatRow label="Shipping cost" value={cash(data.shippingCostNzd)} />
+            <StatRow label="Payment fees" value={cash(data.paymentFeesNzd)} />
             <StatRow
               label={completed ? "Profit" : "Est. profit"}
-              value={nzd(profit)}
+              value={cash(profit)}
               strong
               tone={profit == null ? "muted" : profit >= 0 ? "good" : "bad"}
             />

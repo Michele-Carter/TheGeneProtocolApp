@@ -11,7 +11,13 @@ export const businesses = pgTable("businesses", {
   name: text("name").notNull(),
   logoUrl: text("logo_url"),
   status: text("status").notNull().default("active"), // "active" | "suspended" (by the platform owner)
-  country: text("country").notNull().default("NZ"), // "NZ" pays in NZD, "INTL" (anywhere else) in USD
+  // Where the business is (shared/countries.ts): NZ pays its subscription in NZD, anywhere else in USD.
+  country: text("country").notNull().default("NZ"),
+  // Its own currency and time zone (scripts/international.sql): what its prices, costs and reports are in,
+  // and which day an order falls on.
+  currency: text("currency").notNull().default("NZD"),
+  timeZone: text("time_zone").notNull().default("Pacific/Auckland"),
+  ownerName: text("owner_name").notNull().default(""), // given when registering (scripts/international.sql)
   ownerEmail: text("owner_email").notNull().default(""),
   // Subscription (scripts/multi-business-4.sql), kept in step with Stripe by api/_lib/billing.ts.
   billingExempt: boolean("billing_exempt").notNull().default(false),

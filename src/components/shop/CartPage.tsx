@@ -10,6 +10,7 @@ import AddressFields from "../AddressFields";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import { PREORDER_NOTE, ProductImage, QtyStepper, shopPrimary, shopSecondary, variantName } from "./parts";
+import { homeCountry } from "../../lib/locale";
 
 interface LineView {
   key: string;
@@ -211,7 +212,7 @@ export default function CartPage({
             {me && !editingAddress && (
               <div className="text-sm text-slate-300 leading-relaxed">
                 <div className="font-bold text-white">{me.name}</div>
-                {addressLines(me.shippingAddress).map((l) => (
+                {addressLines(me.shippingAddress, homeCountry().name).map((l) => (
                   <div key={l}>{l}</div>
                 ))}
               </div>

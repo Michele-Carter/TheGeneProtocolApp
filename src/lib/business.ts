@@ -1,4 +1,4 @@
-import type { BillingInfo, BusinessInfo, AccessState, RegionCode } from "../../shared/billing";
+import type { BillingInfo, BusinessInfo, BusinessSettings, AccessState } from "../../shared/billing";
 import { signedInFetch } from "./signedInFetch";
 
 // Which business the app is being used as. Customers join a business by opening its shop link
@@ -80,6 +80,29 @@ export function setWantsToStartBusiness(value: boolean) {
   write(() => window.sessionStorage, START_KEY, value ? "1" : null);
 }
 
+// The registration form, filled in before the person has a login: kept for this tab (it survives signing up
+// with Google, which leaves the page) and used to set up the business once they're signed in.
+export interface RegistrationDraft {
+  ownerName: string;
+  email: string;
+  name: string;
+  slug: string;
+  country: string;
+  timeZone: string;
+}
+const DRAFT_KEY = "peppal.registration.v1";
+export function savedRegistration(): RegistrationDraft | null {
+  try {
+    const draft = JSON.parse(read(() => window.sessionStorage, DRAFT_KEY) || "null");
+    return draft && typeof draft.name === "string" && typeof draft.slug === "string" ? (draft as RegistrationDraft) : null;
+  } catch {
+    return null;
+  }
+}
+export function saveRegistration(draft: RegistrationDraft | null) {
+  write(() => window.sessionStorage, DRAFT_KEY, draft ? JSON.stringify(draft) : null);
+}
+
 // Added to every API request.
 export function businessHeaders(): Record<string, string> {
   return slug ? { "X-Business": slug } : {};
@@ -112,9 +135,10 @@ async function businessFetch<T>(path: string, init: RequestInit, getToken: GetTo
 export const businessApi = {
   // The name and logo behind a shop link, shown on the sign-in page (no sign-in needed).
   shop: (s: string) => businessFetch<BusinessInfo>(`shop?slug=${encodeURIComponent(s)}`, { method: "GET" }, null),
-  checkSlug: (s: string, t: GetToken) =>
-    businessFetch<{ available: boolean; problem: string | null }>(`slug?slug=${encodeURIComponent(s)}`, { method: "GET" }, t),
-  create: (data: { name: string; slug: string; region: RegionCode }, t: GetToken) =>
+  // Is a shop link free? (no sign-in needed - asked while filling in the registration form)
+  checkSlug: (s: string) =>
+    businessFetch<{ available: boolean; problem: string | null }>(`slug?slug=${encodeURIComponent(s)}`, { method: "GET" }, null),
+  create: (data: { ownerName: string; name: string; slug: string; country: string; timeZone: string }, t: GetToken) =>
     businessFetch<{ slug: string }>("create", { method: "POST", body: JSON.stringify(data) }, t),
   checkout: (t: GetToken) => businessFetch<{ url: string }>("checkout", { method: "POST", body: "{}" }, t),
   // Stripe's billing page; "cancel" opens straight on its cancel screen.
@@ -124,9 +148,12 @@ export const businessApi = {
   // After Stripe's page: starts the subscription with the card just saved, or says why it can't.
   sync: (sessionId: string | null, t: GetToken) =>
     businessFetch<{ billing: BillingInfo; problem: string | null }>("sync", { method: "POST", body: JSON.stringify({ sessionId }) }, t),
-  setRegion: (region: RegionCode, t: GetToken) =>
-    businessFetch<{ region: RegionCode }>("region", { method: "PATCH", body: JSON.stringify({ region }) }, t),
+  // Before the subscription first starts only (it sets the currency).
+  setCountry: (country: string, timeZone: string, t: GetToken) =>
+    businessFetch<{ country: string; currency: string; timeZone: string }>("country", { method: "PATCH", body: JSON.stringify({ country, timeZone }) }, t),
   rename: (name: string, t: GetToken) => businessFetch<{ name: string }>("details", { method: "PATCH", body: JSON.stringify({ name }) }, t),
+  setTimeZone: (timeZone: string, t: GetToken) =>
+    businessFetch<{ timeZone: string }>("details", { method: "PATCH", body: JSON.stringify({ timeZone }) }, t),
   uploadLogo: (dataUrl: string, t: GetToken) =>
     businessFetch<{ logoUrl: string | null }>("logo", { method: "POST", body: JSON.stringify({ dataUrl }) }, t),
   removeLogo: (t: GetToken) => businessFetch<{ logoUrl: string | null }>("logo", { method: "DELETE" }, t),
@@ -135,7 +162,7 @@ export const businessApi = {
 // What /api/admin/me says about the business the app is being used as.
 export interface BusinessContext {
   isAdmin: boolean;
-  business: BusinessInfo;
+  business: BusinessSettings;
   access: AccessState;
   billing: BillingInfo | null; // owners only
   notice?: string | null; // why the subscription didn't start, after coming back from Stripe

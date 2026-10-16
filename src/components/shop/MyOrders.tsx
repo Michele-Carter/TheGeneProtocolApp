@@ -6,6 +6,7 @@ import { money, shopApi } from "../../lib/shopApi";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import { shopPrimary, shopSecondary } from "./parts";
+import { formatDate, homeCountry } from "../../lib/locale";
 
 type Tone = "good" | "warn" | "muted" | "bad";
 
@@ -34,7 +35,7 @@ function statusOf(order: ShopOrder): { label: string; tone: Tone; detail: string
   return { label: "Confirmed", tone: "good", detail: "We're getting your order ready to send." };
 }
 
-const date = (iso: string) => new Date(iso).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" });
+const date = (iso: string) => formatDate(iso, { day: "numeric", month: "short", year: "numeric" });
 
 export default function MyOrders({ onShop }: { onShop: () => void }) {
   const { getToken } = useAuth();
@@ -235,7 +236,7 @@ function PaymentBox({ order, onReported }: { order: ShopOrder; onReported: () =>
               <div>Account name: {d.accountName}</div>
               <div className="flex flex-wrap items-center gap-2">
                 <span>
-                  Account number: <span className="font-mono text-white select-all">{d.accountNumber}</span>
+                  {homeCountry().bank.payToLabel}: <span className="font-mono text-white select-all">{d.accountNumber}</span>
                 </span>
                 <button
                   onClick={() => void copyAccount()}

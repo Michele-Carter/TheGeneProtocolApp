@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { ChevronRight, Plus, RefreshCw, Search, X } from "lucide-react";
 import { emptyOrder, orderTypeOf, type OrderInput, type OrderType } from "../../../shared/landedCost";
-import { adminApi, nzd, todayIso, type InvItem, type PurchaseOrderRecord } from "../../lib/adminApi";
+import { adminApi, cash, todayIso, type InvItem, type PurchaseOrderRecord } from "../../lib/adminApi";
 import OrderEditor from "./OrderEditor";
 import { ErrorNote, inputClass, MonthFilter, primaryButton, secondaryButton } from "./ui";
 import LoadingSpinner from "../LoadingSpinner";
+import { formatDate, homeCurrency } from "../../lib/locale";
 
 // What was ordered, for the list: "Retatrutide 5mg, Ara-290 10mg" or "V3 Injection Pen (Yellow, Purple)".
 function itemsSummary(order: OrderInput): string {
@@ -60,7 +61,7 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
             o.data.tracking,
             o.data.notes,
             itemsSummary(o.data),
-            nzd(o.summary.totalLandedNzd),
+            cash(o.summary.totalLandedNzd),
           ]
             .filter(Boolean)
             .join(" ")
@@ -101,7 +102,7 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
           <button className={secondaryButton} onClick={() => void load()} aria-label="Refresh">
             <RefreshCw size={13} />
           </button>
-          <button className={primaryButton} onClick={() => setEditing({ record: null, data: { ...emptyOrder(todayIso()), orderType } })}>
+          <button className={primaryButton} onClick={() => setEditing({ record: null, data: { ...emptyOrder(todayIso(), homeCurrency()), orderType } })}>
             <Plus size={13} /> {orderType === "peptides" ? "New peptide order" : "New supply order"}
           </button>
         </div>
@@ -155,7 +156,7 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
             >
               <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-[6.5rem_minmax(0,1fr)_7rem_8rem_7rem] gap-x-4 gap-y-1 items-center">
                 <span className="text-xs text-slate-400 tabular-nums">
-                  {new Date(`${order.orderDate}T00:00:00`).toLocaleDateString("en-NZ")}
+                  {formatDate(order.orderDate)}
                 </span>
                 <span className="min-w-0" title={itemsSummary(order.data)}>
                   <span className="block text-sm font-bold text-white truncate">
@@ -169,9 +170,9 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
                   {order.summary.totalUnits} units · {order.data.currency}
                 </span>
                 <span className="text-xs tabular-nums text-slate-200 font-semibold">
-                  {nzd(order.summary.totalLandedNzd)}
+                  {cash(order.summary.totalLandedNzd)}
                   <span className="block text-[10px] text-slate-500 font-normal">
-                    avg {nzd(order.summary.averagePerUnitNzd, 3)}/unit
+                    avg {cash(order.summary.averagePerUnitNzd)}/unit
                   </span>
                 </span>
                 <span>

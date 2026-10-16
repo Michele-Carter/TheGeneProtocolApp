@@ -5,6 +5,7 @@ import { adminApi, todayIso, type InventorySummaryRow } from "../../lib/adminApi
 import { Card, ErrorNote, Field, NumberField, dateButtonClass, inputClass, primaryButton, secondaryButton } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
 import { Spinner } from "../LoadingSpinner";
+import { homeCurrency } from "../../lib/locale";
 
 // Stock that didn't come from a supply order - e.g. a new business entering what it already has on hand.
 // Pick an existing product or type a new one; each entry becomes a batch at the cost given (used oldest first,
@@ -152,7 +153,7 @@ export default function AddStockPanel({
           <Field label={`How many (${unit}s)`}>
             <NumberField integer value={qty} onChange={setQty} placeholder="0" />
           </Field>
-          <Field label={`Cost per ${unit} (NZD)`} hint="What it cost you - used for profit and stock value.">
+          <Field label={`Cost per ${unit} (${homeCurrency()})`} hint="What it cost you - used for profit and stock value.">
             <NumberField price value={unitCost} onChange={setUnitCost} placeholder="0.00" />
           </Field>
           <Field label="Date">

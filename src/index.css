@@ -998,3 +998,23 @@ html.dark main .dashboard-tile.focus-within\:border-gold-500:focus-within {
 .cl-socialButtonsBlockButton {
   color: #f4f4f5 !important;
 }
+
+/* Manage account: Clerk's plain buttons (profile photo Upload / Remove, Cancel, "Update profile"...) come out
+   dark grey on the dark window - make them readable. */
+.cl-avatarImageActionsUpload,
+.cl-formButtonReset,
+.cl-profileSectionPrimaryButton {
+  color: #e4e4e7 !important;
+}
+.cl-avatarImageActionsUpload {
+  border: 1px solid #3f3f46 !important;
+}
+.cl-avatarImageActionsUpload:hover,
+.cl-formButtonReset:hover,
+.cl-profileSectionPrimaryButton:hover {
+  color: #ffffff !important;
+  background-color: #27272a !important;
+}
+.cl-avatarImageActionsRemove {
+  color: #f87171 !important;
+}

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import type { CostEntry } from "../../../shared/landedCost";
 import { MONTHS } from "../../lib/protocolBuilderUtils";
+import { formatDate } from "../../lib/locale";
 
 export const inputClass =
   "w-full bg-slate-950/70 border border-slate-800 rounded-lg px-2.5 py-1.5 text-sm text-slate-400 placeholder:text-slate-600 focus:outline-none focus:border-gold-500/60 transition";
@@ -217,7 +218,7 @@ export function StatRow({
 }
 
 export function formatMonth(month: string): string {
-  return new Date(`${month}-01T00:00:00`).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
+  return formatDate(`${month}-01`, { month: "long", year: "numeric" });
 }
 
 // Month picker styled as a button that reads "Select month" when empty (no separate

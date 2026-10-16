@@ -2,14 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { ArrowLeft, ChevronRight, Merge, Plus, RefreshCw, Save, Search, Trash2, UserCheck, X } from "lucide-react";
 import { addressLines, emptyAddress } from "../../../shared/customers";
-import { adminApi, nzd, type CustomerDetail, type CustomerInput, type CustomerSummary } from "../../lib/adminApi";
+import { adminApi, cash, type CustomerDetail, type CustomerInput, type CustomerSummary } from "../../lib/adminApi";
 import AddressFields from "../AddressFields";
 import { Card, ErrorNote, Field, StatRow, StatusDot, dangerButton, inputClass, primaryButton, secondaryButton } from "./ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
+import { formatDate as writeDate, homeCountry } from "../../lib/locale";
 
 type Selected = { id: string } | { id: null } | null;
 
-const formatDate = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("en-NZ") : "—");
+const formatDate = (iso: string | null) => (iso ? writeDate(iso) : "—");
 
 export default function CustomersView({ onOpenSale }: { onOpenSale: (saleId: string) => void }) {
   const { getToken } = useAuth();
@@ -35,7 +36,7 @@ export default function CustomersView({ onOpenSale }: { onOpenSale: (saleId: str
   const filtered = useMemo(
     () =>
       (rows ?? []).filter((c) =>
-        !q ? true : [c.name, c.email, ...addressLines(c.shippingAddress), c.notes].join(" ").toLowerCase().includes(q)
+        !q ? true : [c.name, c.email, ...addressLines(c.shippingAddress, homeCountry().name), c.notes].join(" ").toLowerCase().includes(q)
       ),
     [rows, q]
   );
@@ -75,7 +76,7 @@ export default function CustomersView({ onOpenSale }: { onOpenSale: (saleId: str
         <Tile label="Customers" value={String(totals.count)} />
         <Tile label="With an app login" value={String(totals.withLogin)} />
         <Tile label="Open orders" value={String(totals.openOrders)} />
-        <Tile label="Owed to you" value={nzd(totals.owed)} warn={totals.owed > 0.004} />
+        <Tile label="Owed to you" value={cash(totals.owed)} warn={totals.owed > 0.004} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -153,9 +154,9 @@ export default function CustomersView({ onOpenSale }: { onOpenSale: (saleId: str
                     <span className="text-slate-200 font-semibold">{c.stats.orders}</span>
                     {c.stats.openOrders > 0 && <div className="text-[10px] text-amber-400">{c.stats.openOrders} open</div>}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-200 font-semibold">{nzd(c.stats.spentNzd)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-200 font-semibold">{cash(c.stats.spentNzd)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
-                    <span className={c.stats.profitNzd >= 0 ? "text-emerald-400" : "text-red-400"}>{nzd(c.stats.profitNzd)}</span>
+                    <span className={c.stats.profitNzd >= 0 ? "text-emerald-400" : "text-red-400"}>{cash(c.stats.profitNzd)}</span>
                   </td>
                   <td className="px-3 py-2.5 text-slate-400 tabular-nums">{formatDate(c.stats.lastOrderDate)}</td>
                   <td className="pr-3 text-slate-600">
@@ -279,7 +280,7 @@ function CustomerPage({
           <h3 className="text-base font-black text-white">{id ? detail?.name ?? "Loading…" : "New customer"}</h3>
           {detail && (
             <p className="text-[11px] text-slate-500">
-              Customer since {new Date(detail.createdAt).toLocaleDateString("en-NZ")}
+              Customer since {formatDate(detail.createdAt)}
             </p>
           )}
         </div>
@@ -341,7 +342,7 @@ function CustomerPage({
                           <span className="text-xs text-slate-300 truncate">
                             {sale.data.lines.map((l) => `${l.qty}× ${l.name}`).join(", ") || "No items"}
                           </span>
-                          <span className="text-xs tabular-nums text-slate-200 font-semibold">{nzd(sale.totals.total)}</span>
+                          <span className="text-xs tabular-nums text-slate-200 font-semibold">{cash(sale.totals.total)}</span>
                           <StatusDot tone={sale.status === "completed" ? "good" : "muted"}>
                             {sale.status === "completed" ? "Completed" : "Open"}
                           </StatusDot>
@@ -363,13 +364,13 @@ function CustomerPage({
               <Card title="Summary">
                 <StatRow label="Orders" value={detail.stats.orders} strong />
                 <StatRow label="Open orders" value={detail.stats.openOrders} />
-                <StatRow label="Spent (completed)" value={nzd(detail.stats.spentNzd)} />
+                <StatRow label="Spent (completed)" value={cash(detail.stats.spentNzd)} />
                 <StatRow
                   label="Profit (completed)"
-                  value={nzd(detail.stats.profitNzd)}
+                  value={cash(detail.stats.profitNzd)}
                   tone={detail.stats.profitNzd >= 0 ? "good" : "bad"}
                 />
-                <StatRow label="Owed to you" value={nzd(detail.stats.owedNzd)} tone={detail.stats.owedNzd > 0.004 ? "bad" : "muted"} />
+                <StatRow label="Owed to you" value={cash(detail.stats.owedNzd)} tone={detail.stats.owedNzd > 0.004 ? "bad" : "muted"} />
                 <StatRow label="Last order" value={formatDate(detail.stats.lastOrderDate)} />
               </Card>
 

@@ -33,7 +33,7 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
   },
   sales: { title: "Customer Orders", description: "Every order a customer has placed, its payment and shipping status." },
   customers: { title: "Customers", description: "Everyone you sell to: contact details, shipping address and order history." },
-  "peptide-orders": { title: "Peptide Orders", description: "Every peptide order you've placed, with its landed cost per vial worked out in NZD." },
+  "peptide-orders": { title: "Peptide Orders", description: "Every peptide order you've placed, with its landed cost per vial worked out in your currency." },
   "supply-orders": {
     title: "Supply Orders",
     description: "Pens, needles, swabs and other stock — plus business items bought on the same invoice (mark those lines as Expense).",
