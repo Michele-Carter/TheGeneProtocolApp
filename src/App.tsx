@@ -461,7 +461,7 @@ export default function App() {
             <div className="app-side-scroller flex-1 min-h-0 overflow-y-auto -mr-3 pr-3 space-y-8">
               {/* Brand Logo & Name */}
               <div className="flex items-center px-1 min-h-9">
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2.5">
                   {businessLogo && (
                     <div className="h-9 w-6 flex items-center justify-center">
                       <img
@@ -474,7 +474,7 @@ export default function App() {
                       />
                     </div>
                   )}
-                  <div className="flex items-center gap-1.5 -ml-0.5">
+                  <div className="flex items-center gap-1.5">
                     <span className="text-lg font-black text-white tracking-tight leading-tight">{businessName}</span>
                   </div>
                 </div>
@@ -501,7 +501,7 @@ export default function App() {
           {/* MOBILE HEADER BAR */}
           <header className="md:hidden sticky top-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-900 w-full">
             <div className="px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 min-h-8">
+              <div className="flex items-center gap-2.5 min-h-8">
                 {businessLogo && (
                   <div className="h-8 w-5 flex items-center justify-center">
                     <img
@@ -644,7 +644,7 @@ function NavButton({
 // Count of shop orders waiting to be confirmed, shown on the admin menu.
 function WaitingBadge({ count }: { count: number }) {
   return (
-    <span className="ml-auto min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
+    <span className="ml-auto min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-gold-400 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
       {count}
     </span>
   );

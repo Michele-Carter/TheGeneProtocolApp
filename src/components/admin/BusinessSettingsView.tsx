@@ -7,10 +7,11 @@ import { Card, ErrorNote, Field, inputClass, primaryButton, secondaryButton } fr
 import { prepareImage } from "./ProductImages";
 import { Spinner } from "../LoadingSpinner";
 import OrderAlertsCard from "./OrderAlertsCard";
+import BrandColourCard from "./BrandColourCard";
 import { formatDate } from "../../lib/locale";
 import { COUNTRIES, countryInfo, defaultTimeZone } from "../../../shared/countries";
 
-// The business itself: its name and logo (shown to customers), its shop link, and its PepBiz subscription.
+// The business itself: its name, logo and colour (shown to customers), its shop link, and its PepBiz subscription.
 
 const LOGO_EDGE = 512;
 
@@ -146,6 +147,8 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
           </Field>
         </div>
       </Card>
+
+      <BrandColourCard context={context} onChanged={onChanged} />
 
       <Card title="Where you are">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

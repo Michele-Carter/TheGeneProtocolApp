@@ -21,6 +21,8 @@ export const businesses = pgTable("businesses", {
   ownerEmail: text("owner_email").notNull().default(""),
   // The email its customers can contact it on (its privacy notice); empty = ownerEmail (scripts/legal.sql).
   contactEmail: text("contact_email").notNull().default(""),
+  // Its own colour in place of the app's gold, e.g. "#e0457b"; empty = PepBiz gold (scripts/brand-colour.sql).
+  brandColor: text("brand_color").notNull().default(""),
   // Subscription (scripts/multi-business-4.sql), kept in step with Stripe by api/_lib/billing.ts.
   billingExempt: boolean("billing_exempt").notNull().default(false),
   trialDays: integer("trial_days"), // its own free-trial length, from an invite link (null = the usual 14 days)

@@ -175,7 +175,7 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
             {f.label}
             {/* How many orders are waiting on each of these. */}
             {(f.id === "to-pay" || f.id === "to-send") && (f.id === "to-pay" ? stats.toPay : stats.toSend) > 0 && (
-              <span className="min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
+              <span className="min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-gold-400 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
                 {f.id === "to-pay" ? stats.toPay : stats.toSend}
               </span>
             )}

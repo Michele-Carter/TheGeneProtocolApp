@@ -614,14 +614,14 @@ export default function TrackingManager() {
                     {/* Area Fill */}
                     <path
                       d={svgChartPath.areaPath}
-                      fill="rgba(194, 145, 31, 0.04)"
+                      fill="color-mix(in srgb, var(--color-gold-500) 4%, transparent)"
                     />
 
                     {/* Line Path */}
                     <path
                       d={svgChartPath.path}
                       fill="none"
-                      stroke="#c2911f"
+                      stroke="var(--color-gold-500)"
                       strokeWidth="2"
                     />
 
@@ -633,7 +633,7 @@ export default function TrackingManager() {
                           cy={pt.y}
                           r="4.5"
                           fill="#0f172a"
-                          stroke="#c2911f"
+                          stroke="var(--color-gold-500)"
                           strokeWidth="2.5"
                         />
                         {/* Weight text value */}

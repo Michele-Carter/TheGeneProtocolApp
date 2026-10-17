@@ -3,6 +3,7 @@ import { useAuth } from "@clerk/react";
 import { adminApi } from "../lib/adminApi";
 import { ApiError, businessApi, forgetShopSlug, type BusinessContext } from "../lib/business";
 import { setBusinessLocale } from "../lib/locale";
+import { applyBrandColour } from "../lib/brandColour";
 
 // Which business the signed-in user is using the app as, whether they own it (shows Admin), and whether it
 // can be used right now. The server re-checks all of this on every request; this decides what to show.
@@ -43,6 +44,8 @@ export function useBusiness(enabled: boolean) {
       });
       // Money and dates are written the business's way from its very first screen.
       setBusinessLocale(context.business);
+      // ...and in its own colour.
+      applyBrandColour(context.business.brandColor);
       setState({ status: "ready", context: { ...context, notice } });
     } catch (error) {
       if (error instanceof ApiError && error.code === "shop-not-found") {

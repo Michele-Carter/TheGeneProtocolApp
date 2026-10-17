@@ -93,6 +93,7 @@ async function publicShop(req: any, res: any) {
                   slug: businesses.slug,
                   logoUrl: businesses.logoUrl,
                   contactEmail: businesses.contactEmail,
+                  brandColor: businesses.brandColor,
                   ownerEmail: businesses.ownerEmail,
               })
               .from(businesses)
@@ -105,6 +106,7 @@ async function publicShop(req: any, res: any) {
         logoUrl: row.logoUrl,
         // For the shop's privacy notice: how its customers reach it.
         contactEmail: row.contactEmail || row.ownerEmail,
+        brandColor: row.brandColor,
     };
     // Public and rarely changes: Vercel's edge keeps a copy so the sign-in page shows the shop straight away
     // (a renamed shop or new logo shows within about 5 minutes).
@@ -289,10 +291,11 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
                 contactEmail: z
                     .union([z.string().trim().toLowerCase().email("That email address doesn't look right").max(200), z.literal("")])
                     .optional(),
+                brandColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/, "Choose a colour"), z.literal("")]).optional(),
             })
             .safeParse(await parseJsonBody(req));
         if (!parsed.success) return sendJson(res, 400, { error: parsed.error.issues[0]?.message ?? "Please check your details" });
-        const { name, timeZone, contactEmail } = parsed.data;
+        const { name, timeZone, contactEmail, brandColor } = parsed.data;
         if (timeZone !== undefined && !isKnownTimeZone(countryInfo(business.country), timeZone)) {
             return sendJson(res, 400, { error: "Choose one of your country's time zones" });
         }
@@ -302,11 +305,12 @@ export async function handleBusinessRequest(req: any, res: any, userId: string) 
                 ...(name !== undefined ? { name } : {}),
                 ...(timeZone !== undefined ? { timeZone } : {}),
                 ...(contactEmail !== undefined ? { contactEmail } : {}),
+                ...(brandColor !== undefined ? { brandColor: brandColor.toLowerCase() } : {}),
                 updatedAt: new Date(),
             })
             .where(eq(businesses.id, business.id))
             .returning();
-        return sendJson(res, 200, { name: updated.name, timeZone: updated.timeZone, contactEmail: updated.contactEmail });
+        return sendJson(res, 200, { name: updated.name, timeZone: updated.timeZone, contactEmail: updated.contactEmail, brandColor: updated.brandColor });
     }
 
     if (action === "logo" && (req.method === "POST" || req.method === "DELETE")) {

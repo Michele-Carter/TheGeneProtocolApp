@@ -55,6 +55,15 @@
   --spacing-fluid-xl: clamp(2rem, 1.6rem + 2vw, 4rem);
 }
 
+/* Text on solid "gold" - which is the business's own colour when it has chosen one (src/lib/brandColour.ts sets
+   the --color-gold-* shades and --gold-ink): near-black on light colours like PepBiz gold, white on dark ones. */
+.bg-gold-400,
+.bg-gold-500,
+.bg-gold-600,
+.hover\:bg-gold-400:hover {
+  color: var(--gold-ink, #0b0b0c);
+}
+
 /* Defensive Design: Global constraints to prevent layout overflows and broken components */
 *,
 ::before,

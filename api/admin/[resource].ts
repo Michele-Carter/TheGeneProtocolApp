@@ -1962,6 +1962,7 @@ function businessDto({ business }: BusinessAccess): BusinessSettings {
         timeZone: business.timeZone,
         contactEmail: business.contactEmail || business.ownerEmail,
         customContactEmail: business.contactEmail,
+        brandColor: business.brandColor,
     };
 }
 

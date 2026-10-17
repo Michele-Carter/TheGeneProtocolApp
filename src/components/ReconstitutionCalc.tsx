@@ -92,7 +92,7 @@ function PenIllustration({
 
       {/* Needle + hub */}
       <line x1={0} y1={centerY} x2={22} y2={centerY} stroke="#94a3b8" strokeWidth={2} />
-      <path d={`M 22 ${centerY - 6} L ${bodyX} ${centerY - 12} L ${bodyX} ${centerY + 12} L 22 ${centerY + 6} Z`} fill="#c2911f" />
+      <path d={`M 22 ${centerY - 6} L ${bodyX} ${centerY - 12} L ${bodyX} ${centerY + 12} L 22 ${centerY + 6} Z`} fill="var(--color-gold-500)" />
 
       {/* Dial sleeve + grip: drawn first so they slide out from behind the pen body */}
       <g style={slide}>
@@ -105,14 +105,14 @@ function PenIllustration({
         {Array.from({ length: 5 }, (_, i) => bodyEnd + 6 + i * 5).map((x) => (
           <line key={x} x1={x} y1={bodyY + 2} x2={x} y2={bodyY + bodyHeight - 2} stroke="#334155" strokeWidth={1.5} />
         ))}
-        <rect x={bodyEnd + 31} y={bodyY - 4} width={5} height={bodyHeight + 8} rx={2} fill="#c2911f" />
+        <rect x={bodyEnd + 31} y={bodyY - 4} width={5} height={bodyHeight + 8} rx={2} fill="var(--color-gold-500)" />
       </g>
 
       {/* Pen body */}
       <rect x={bodyX} y={bodyY} width={bodyEnd - bodyX} height={bodyHeight} rx={10} fill="#0b1220" stroke="#334155" strokeWidth={2} />
       {/* Cartridge holder: window onto the reconstituted solution, then the join to the dosing body */}
       <rect x={bodyX + 14} y={centerY - 11} width={92} height={22} rx={5} fill="#111827" stroke="#475569" strokeWidth={1.5} />
-      <rect x={bodyX + 16} y={centerY - 9} width={88} height={18} rx={4} fill="#c2911f" opacity={0.5} />
+      <rect x={bodyX + 16} y={centerY - 9} width={88} height={18} rx={4} fill="var(--color-gold-500)" opacity={0.5} />
       <line x1={bodyX + 124} y1={bodyY + 1} x2={bodyX + 124} y2={bodyY + bodyHeight - 1} stroke="#334155" strokeWidth={2} />
 
       {/* Dose window: the number to dial, with the drum's neighbouring numbers faded */}
@@ -123,7 +123,7 @@ function PenIllustration({
             {shown - 2}
           </text>
         ) : null}
-        <text x={windowCenter} y={centerY + 6} fontSize={18} fontWeight={700} fill="#dba931" fontFamily="monospace" textAnchor="middle">
+        <text x={windowCenter} y={centerY + 6} fontSize={18} fontWeight={700} fill="var(--color-gold-400)" fontFamily="monospace" textAnchor="middle">
           {shown}
         </text>
         <text x={windowCenter} y={windowY + windowHeight + 5} fontSize={11} fill="#64748b" fontFamily="monospace" textAnchor="middle">
@@ -131,7 +131,7 @@ function PenIllustration({
         </text>
       </g>
       {/* Pointer beside the window */}
-      <path d={`M ${windowX - 9} ${centerY - 5} L ${windowX - 3} ${centerY} L ${windowX - 9} ${centerY + 5} Z`} fill="#e8c05a" />
+      <path d={`M ${windowX - 9} ${centerY - 5} L ${windowX - 3} ${centerY} L ${windowX - 9} ${centerY + 5} Z`} fill="var(--color-gold-300)" />
 
       {/* Travel scale: where the grip sits for each click count, gold mark = your dose */}
       {ticks.map((t) => {
@@ -150,7 +150,7 @@ function PenIllustration({
         y1={bodyY + bodyHeight + 7}
         x2={bodyEnd}
         y2={bodyY + bodyHeight + 19}
-        stroke="#e8c05a"
+        stroke="var(--color-gold-300)"
         strokeWidth={2.5}
         style={slide}
       />
@@ -183,7 +183,7 @@ function SyringeIllustration({
       {/* Hub */}
       <path
         d={`M 30 ${barrelY + 6} L ${barrelX} ${barrelY} L ${barrelX} ${barrelY + barrelHeight} L 30 ${barrelY + barrelHeight - 6} Z`}
-        fill="#c2911f"
+        fill="var(--color-gold-500)"
       />
       {/* Barrel outline */}
       <rect x={barrelX} y={barrelY} width={barrelWidth} height={barrelHeight} rx={6} fill="#0b1220" stroke="#334155" strokeWidth={2} />
@@ -194,7 +194,7 @@ function SyringeIllustration({
         width={fillWidth}
         height={barrelHeight}
         rx={6}
-        fill="#c2911f"
+        fill="var(--color-gold-500)"
         opacity={0.85}
         style={{ transition: "width 300ms ease" }}
       />
@@ -204,7 +204,7 @@ function SyringeIllustration({
         y1={barrelY - 4}
         x2={barrelX + fillWidth}
         y2={barrelY + barrelHeight + 4}
-        stroke="#e8c05a"
+        stroke="var(--color-gold-300)"
         strokeWidth={2}
         style={{ transition: "x1 300ms ease, x2 300ms ease" }}
       />
@@ -840,7 +840,7 @@ export default function ReconstitutionCalc() {
                         checked={blendAnchorId === c.id}
                         onChange={() => setBlendAnchorId(c.id)}
                         aria-label={`Dose is for ${c.name || `peptide ${index + 1}`}`}
-                        className="h-4 w-4 accent-[#c2911f] cursor-pointer"
+                        className="h-4 w-4 accent-gold-500 cursor-pointer"
                       />
                     </label>
                     {blendCompounds.length > 2 ? (
@@ -1134,7 +1134,7 @@ export default function ReconstitutionCalc() {
         <div className="lg:col-span-5 space-y-4">
 
           {/* Big result card */}
-          <div className="relative rounded-2xl p-6 bg-slate-900/60 border border-gold-500/20 shadow-[0_0_30px_rgba(194,145,31,0.12)] space-y-5">
+          <div className="relative rounded-2xl p-6 bg-slate-900/60 border border-gold-500/20 shadow-[0_0_30px_color-mix(in_srgb,var(--color-gold-500)_12%,transparent)] space-y-5">
             <h2 className="text-[12px] font-mono font-bold tracking-widest text-white uppercase">
               Calculation results
             </h2>
@@ -1228,7 +1228,7 @@ export default function ReconstitutionCalc() {
                   type="button"
                   onClick={() => { if (isPenSelected) setSyringeType("100u"); }}
                   className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${!isPenSelected
-                    ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
+                    ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_color-mix(in_srgb,var(--color-gold-500)_15%,transparent)]"
                     : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
                     }`}
                 >
@@ -1238,7 +1238,7 @@ export default function ReconstitutionCalc() {
                   type="button"
                   onClick={() => { if (!isPenSelected) setSyringeType("60u-pen"); }}
                   className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${isPenSelected
-                    ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
+                    ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_color-mix(in_srgb,var(--color-gold-500)_15%,transparent)]"
                     : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
                     }`}
                 >
@@ -1253,7 +1253,7 @@ export default function ReconstitutionCalc() {
                       type="button"
                       onClick={() => setSyringeType(pen)}
                       className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${syringeType === pen
-                        ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
+                        ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_color-mix(in_srgb,var(--color-gold-500)_15%,transparent)]"
                         : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
                         }`}
                     >
@@ -1270,7 +1270,7 @@ export default function ReconstitutionCalc() {
                       type="button"
                       onClick={() => setSyringeType(s)}
                       className={`py-1.5 rounded-lg border text-[12px] font-mono font-bold text-center transition cursor-pointer ${syringeType === s
-                        ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_rgba(194,145,31,0.15)]"
+                        ? "bg-gold-500/10 border-gold-500 text-gold-400 shadow-[0_0_8px_color-mix(in_srgb,var(--color-gold-500)_15%,transparent)]"
                         : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300"
                         }`}
                     >
