@@ -167,7 +167,7 @@ export default function OrdersView({ orderType }: { orderType: OrderType }) {
                   </span>
                 </span>
                 <span className="text-xs text-slate-400">
-                  {order.summary.totalUnits} units · {order.data.currency}
+                  {order.summary.totalUnits} {order.summary.totalUnits === 1 ? "unit" : "units"} · {order.data.currency}
                 </span>
                 <span className="text-xs tabular-nums text-slate-200 font-semibold">
                   {cash(order.summary.totalLandedNzd)}

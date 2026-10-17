@@ -250,13 +250,14 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                   </p>
                 </div>
               </button>
-              <div className="mt-auto flex items-end justify-between gap-1.5">
+              {/* The button drops below the price when a price range leaves no room beside it. */}
+              <div className="mt-auto flex flex-wrap items-end justify-between gap-x-1.5 gap-y-2">
                 <div className="space-y-1.5">
                   <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">{priceRange(product.variants)}</div>
                   {/* Coming soon is shown as a ribbon on the photo instead. */}
                   {stock !== "soon" && <StockBadge stock={stock} />}
                 </div>
-                <div className="flex-shrink-0">
+                <div className="ml-auto flex-shrink-0">
                   {single && stock === "soon" ? null : single ? (
                     <button
                       className={cardPrimary}

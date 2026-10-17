@@ -238,7 +238,7 @@ export default function SalesView({ openSaleId, onOpened }: { openSaleId?: strin
                 <span className="min-w-0">
                   <span className="block text-sm font-bold text-white truncate">{sale.customerName}</span>
                   <span className="block text-[10px] text-slate-500 truncate">
-                    {sale.totals.units} units
+                    {sale.totals.units} {sale.totals.units === 1 ? "unit" : "units"}
                     {sale.data.orderNumber ? ` · #${sale.data.orderNumber}` : ""}
                   </span>
                 </span>

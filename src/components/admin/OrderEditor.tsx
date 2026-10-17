@@ -907,7 +907,7 @@ export default function OrderEditor({ record, initialData, items, onBack, onSave
                 </div>
                 <div className="flex items-center justify-between px-3 py-2 text-xs bg-slate-900/40 border-t border-slate-800">
                   <span className="text-slate-400">
-                    {data.lines.length} {data.lines.length === 1 ? "item" : "items"} · {calc.totalUnits} units
+                    {data.lines.length} {data.lines.length === 1 ? "item" : "items"} · {calc.totalUnits} {calc.totalUnits === 1 ? "unit" : "units"}
                   </span>
                   <span className="font-bold tabular-nums text-slate-100">
                     {data.orderDiscountPct ? "After discount " : ""}

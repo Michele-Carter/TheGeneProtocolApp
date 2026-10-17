@@ -156,7 +156,7 @@ export default function ShopOrdersView({
               onClick={() => setSelectedId(order.id)}
               className="w-full text-left px-4 py-3 bg-slate-900/30 hover:bg-slate-900/70 transition cursor-pointer flex items-center gap-3"
             >
-              <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-[4.5rem_8rem_minmax(0,1fr)_5rem_6rem_6.5rem] gap-x-4 gap-y-1 items-center">
+              <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-[4.5rem_8rem_minmax(0,1fr)_5.5rem_6rem_9.5rem] gap-x-4 gap-y-1 items-center">
                 <span className="text-sm font-black text-white tabular-nums">#{order.orderNumber}</span>
                 <span className="text-xs text-slate-400">{when(order.createdAt)}</span>
                 <span className="min-w-0">
@@ -164,8 +164,8 @@ export default function ShopOrdersView({
                   <span className="block text-[10px] text-slate-500 truncate">{order.customerEmail || "No email"}</span>
                 </span>
                 <span className="text-xs text-slate-400 tabular-nums">
-                  {order.units} units
-                  {order.preorder && <span className="block text-[10px] font-bold uppercase tracking-wide text-sky-300">Pre-order</span>}
+                  {order.units} {order.units === 1 ? "unit" : "units"}
+                  {order.preorder && <span className="block whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-sky-300">Pre-order</span>}
                 </span>
                 <span className="text-xs tabular-nums text-slate-200 font-semibold">{cash(order.subtotalNzd)}</span>
                 <StatusDot tone={rowStatus(order).tone}>{rowStatus(order).label}</StatusDot>
