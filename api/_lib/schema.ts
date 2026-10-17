@@ -182,9 +182,28 @@ export const customers = pgTable("customers", {
   email: text("email").notNull().default(""),
   shippingAddress: jsonb("shipping_address").notNull().default({}),
   notes: text("notes").notNull().default(""),
+  // The owner archived their conversation with this customer; a new message brings it back (scripts/messages.sql).
+  messagesArchivedAt: timestamp("messages_archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Messages between the shop and one of its customers - one conversation per customer (scripts/messages.sql).
+// readAt is when the other side read it; shopOrderId when it's about one of the customer's orders.
+export const messages = pgTable(
+  "messages",
+  {
+    id: text("id").primaryKey(),
+    businessId: businessId(),
+    customerId: text("customer_id").notNull(),
+    sender: text("sender").notNull(), // "customer" | "owner"
+    body: text("body").notNull(),
+    shopOrderId: text("shop_order_id"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("messages_conversation_idx").on(t.businessId, t.customerId, t.createdAt)]
+);
 
 // Customer orders. Stock is taken out oldest-first when an order is completed;
 // costDetail records the cost of each line at that moment ({ [lineId]: costNzd }).

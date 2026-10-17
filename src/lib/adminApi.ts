@@ -3,7 +3,7 @@ import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sal
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
-import type { ItemShopSection, OrderAlertsInfo, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
+import type { ChatMessage, Conversation, ItemShopSection, OrderAlertsInfo, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 import type { PushSubscriptionData } from "./orderAlerts";
 import type { SupplierProduct } from "../../shared/library";
 import { ApiError, businessHeaders, type BusinessContext } from "./business";
@@ -329,6 +329,21 @@ export const adminApi = {
     adminFetch<{ success: true }>(`bundles?id=${q(id)}`, { method: "DELETE" }, t),
 
   listCustomers: (t: GetToken) => adminFetch<CustomerSummary[]>("customers", { method: "GET" }, t),
+  // Messages with customers (api/admin/messages).
+  conversations: (t: GetToken) => adminFetch<{ unread: number; conversations: Conversation[] }>("messages", { method: "GET" }, t),
+  unreadMessages: (t: GetToken) => adminFetch<{ unread: number }>("messages?summary=1", { method: "GET" }, t),
+  conversation: (customerId: string, t: GetToken) =>
+    adminFetch<{ customer: { id: string; name: string; email: string; archived: boolean }; messages: ChatMessage[] }>(
+      `messages?customerId=${q(customerId)}`,
+      { method: "GET" },
+      t
+    ),
+  sendMessage: (customerId: string, body: string, t: GetToken) =>
+    adminFetch<{ message: ChatMessage }>("messages", { method: "POST", body: JSON.stringify({ customerId, body }) }, t),
+  markMessagesRead: (customerId: string, t: GetToken) =>
+    adminFetch<{ success: true }>("messages?action=read", { method: "POST", body: JSON.stringify({ customerId }) }, t),
+  archiveConversation: (customerId: string, archived: boolean, t: GetToken) =>
+    adminFetch<{ success: true }>("messages?action=archive", { method: "POST", body: JSON.stringify({ customerId, archived }) }, t),
   getCustomer: (id: string, t: GetToken) => adminFetch<CustomerDetail>(`customers?id=${q(id)}`, { method: "GET" }, t),
   createCustomer: (data: CustomerInput, t: GetToken) =>
     adminFetch<CustomerRecord>("customers", { method: "POST", body: JSON.stringify(data) }, t),

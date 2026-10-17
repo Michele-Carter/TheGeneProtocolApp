@@ -1,5 +1,5 @@
 import type { CustomerDetails, ShippingAddress } from "../../shared/customers";
-import type { CartLine, CustomerNotification, ShopOrder, ShopProduct } from "../../shared/shop";
+import type { CartLine, ChatMessage, CustomerNotification, ShopOrder, ShopProduct } from "../../shared/shop";
 import { businessHeaders } from "./business";
 import { signedInFetch } from "./signedInFetch";
 import { appLocale, homeCurrency } from "./locale";
@@ -64,6 +64,13 @@ export const shopApi = {
     shopFetch<PushInfo>("push?action=subscribe", { method: "POST", body: JSON.stringify({ subscription, device }) }, t),
   unsubscribePush: (endpoint: string, t: GetToken) =>
     shopFetch<PushInfo>("push?action=unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }, t),
+
+  // The customer's conversation with the shop.
+  messages: (t: GetToken) => shopFetch<{ unread: number; messages: ChatMessage[] }>("messages", { method: "GET" }, t),
+  unreadMessages: (t: GetToken) => shopFetch<{ unread: number }>("messages?summary=1", { method: "GET" }, t),
+  sendMessage: (body: string, shopOrderId: string | null, t: GetToken) =>
+    shopFetch<{ message: ChatMessage }>("messages", { method: "POST", body: JSON.stringify({ body, shopOrderId }) }, t),
+  markMessagesRead: (t: GetToken) => shopFetch<{ success: true }>("messages?action=read", { method: "POST", body: "{}" }, t),
 };
 
 export interface PushInfo {

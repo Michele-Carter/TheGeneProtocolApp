@@ -11,7 +11,7 @@ import LoadingSpinner from "../LoadingSpinner";
 //                               mentions PepBiz (customers only ever see their shop)
 // Keep these in step with what the app actually does (the services used, the 30 days after a subscription ends).
 
-export const LEGAL_UPDATED = "17 October 2026";
+export const LEGAL_UPDATED = "18 October 2026";
 export const SUPPORT_EMAIL = "support@pepbiz.io";
 // The business that operates PepBiz. A placeholder until it's set up - then change it here.
 const OPERATOR = "PepBiz";
@@ -139,7 +139,7 @@ function PepBizPrivacy() {
             </>,
             <>
               <strong className="text-white">What you put into PepBiz:</strong> products, prices, photos, stock, supplier
-              orders, expenses, customer orders, and your customers' names, email and shipping addresses.
+              orders, expenses, customer orders, your customers' names, email and shipping addresses, and the messages you and your customers send each other in the app.
             </>,
             <>
               <strong className="text-white">Personal tools:</strong> if you use the Protocol Builder, Dosage &amp; Recon or
@@ -469,7 +469,7 @@ function ShopPrivacyPage({ slug }: { slug: string }) {
           items={[
             "Your name, email address and sign-in details.",
             "Your shipping address.",
-            "Your orders, payment confirmations you send us, and messages about your orders.",
+            "Your orders, payment confirmations you send us, and the messages you send us in the app.",
             "If you turn on notifications, a technical address for your device so we can send them.",
             "If you use the planning, dosage or logging tools, what you save there. This can include health-related information - only you can see it.",
           ]}
@@ -481,7 +481,7 @@ function ShopPrivacyPage({ slug }: { slug: string }) {
           items={[
             "To create and run your account.",
             "To process, confirm, ship and support your orders.",
-            "To send you updates about your orders.",
+            "To send you updates about your orders and reply to your messages.",
             "To keep records our business needs, including for tax.",
           ]}
         />

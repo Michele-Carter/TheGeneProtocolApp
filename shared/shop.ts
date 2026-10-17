@@ -205,6 +205,30 @@ export const MAX_IMAGES_PER_PRODUCT = 8;
 // A COA file (image or PDF) - bigger ones can be shared as a link instead.
 export const MAX_COA_BYTES = 3 * 1024 * 1024;
 
+// ---- Messages between a shop and its customers (one conversation per customer) ----
+
+export const MAX_MESSAGE_LENGTH = 2000;
+
+export interface ChatMessage {
+  id: string;
+  from: "customer" | "owner";
+  body: string;
+  shopOrderId: string | null; // when it's about one of the customer's orders
+  orderNumber: number | null;
+  read: boolean; // the other side has read it
+  createdAt: string;
+}
+
+// One customer's conversation, as listed in the owner's inbox.
+export interface Conversation {
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  lastMessage: { body: string; from: "customer" | "owner"; createdAt: string };
+  unread: number; // the customer's messages the owner hasn't read
+  archived: boolean;
+}
+
 // ---- New-order notifications for the business owner (Admin -> Business) ----
 
 export interface OrderAlertDevice {

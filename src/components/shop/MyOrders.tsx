@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Landmark, MessageSquare, Package, Send, Truck } from "lucide-react";
+import { Landmark, MessageCircle, MessageSquare, Package, Send, Truck } from "lucide-react";
 import type { ShopOrder } from "../../../shared/shop";
 import { money, shopApi } from "../../lib/shopApi";
 import { ErrorNote } from "../admin/ui";
@@ -37,7 +37,13 @@ function statusOf(order: ShopOrder): { label: string; tone: Tone; detail: string
 
 const date = (iso: string) => formatDate(iso, { day: "numeric", month: "short", year: "numeric" });
 
-export default function MyOrders({ onShop }: { onShop: () => void }) {
+export default function MyOrders({
+  onShop,
+  onMessage,
+}: {
+  onShop: () => void;
+  onMessage: (order: { id: string; number: number }) => void; // opens Messages about this order
+}) {
   const { getToken } = useAuth();
   const [orders, setOrders] = useState<ShopOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -175,11 +181,16 @@ export default function MyOrders({ onShop }: { onShop: () => void }) {
 
             {order.notes && <p className="text-xs text-slate-500">Your note: {order.notes}</p>}
 
-            {order.status === "submitted" && (
-              <button className={shopSecondary} onClick={() => void cancel(order)} disabled={cancelling != null}>
-                {cancelling === order.id && <Spinner size={13} />} Cancel order
+            <div className="flex flex-wrap gap-2">
+              <button className={shopSecondary} onClick={() => onMessage({ id: order.id, number: order.orderNumber })}>
+                <MessageCircle size={13} /> Ask about this order
               </button>
-            )}
+              {order.status === "submitted" && (
+                <button className={shopSecondary} onClick={() => void cancel(order)} disabled={cancelling != null}>
+                  {cancelling === order.id && <Spinner size={13} />} Cancel order
+                </button>
+              )}
+            </div>
           </section>
         );
       })}
