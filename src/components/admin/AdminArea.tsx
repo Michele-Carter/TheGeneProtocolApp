@@ -4,6 +4,7 @@ import AdminDashboard from "./AdminDashboard";
 import SalesView from "./SalesView";
 import ShopOrdersView from "./ShopOrdersView";
 import CustomersView from "./CustomersView";
+import MessagesView from "./MessagesView";
 import OrdersView from "./OrdersView";
 import InventoryView from "./InventoryView";
 import ExpensesView from "./ExpensesView";
@@ -15,6 +16,7 @@ import type { BusinessContext } from "../../lib/business";
 export type AdminSection =
   | "overview"
   | "new-orders"
+  | "messages"
   | "sales"
   | "customers"
   | "peptide-orders"
@@ -31,6 +33,7 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
     title: "New Customer Orders",
     description: "Orders customers have sent from the shop. Check stock, set shipping, then confirm or decline.",
   },
+  messages: { title: "Messages", description: "Conversations with your customers. They can message you from anywhere in your shop, and you can message them." },
   sales: { title: "Customer Orders", description: "Every order a customer has placed, its payment and shipping status." },
   customers: { title: "Customers", description: "Everyone you sell to: contact details, shipping address and order history." },
   "peptide-orders": { title: "Peptide Orders", description: "Every peptide order you've placed, with its landed cost per vial worked out in your currency." },
@@ -64,6 +67,9 @@ export default function AdminArea({
   onOrdersChanged,
   business,
   onBusinessChanged,
+  messageCustomerId,
+  onOpenConversation,
+  onMessagesChanged,
 }: {
   section: AdminSection;
   onNavigate: (section: AdminSection) => void;
@@ -72,6 +78,9 @@ export default function AdminArea({
   onOrdersChanged: () => void;
   business: BusinessContext;
   onBusinessChanged: () => void;
+  messageCustomerId: string | null; // the conversation to open in Messages
+  onOpenConversation: (customerId: string) => void;
+  onMessagesChanged: () => void; // e.g. some were read, so the badge needs checking
 }) {
   const copy = SECTION_COPY[section];
   // An order picked from a customer's page (or a confirmed shop order), opened once Customer Orders loads.
@@ -97,7 +106,8 @@ export default function AdminArea({
           onSetUpPayment={() => onNavigate("payment-details")}
         />}
       {section === "sales" && <SalesView openSaleId={openSaleId} onOpened={() => setOpenSaleId(null)} />}
-      {section === "customers" && <CustomersView onOpenSale={openSale} />}
+      {section === "messages" && <MessagesView initialCustomerId={messageCustomerId} onUnreadChanged={onMessagesChanged} />}
+      {section === "customers" && <CustomersView onOpenSale={openSale} onMessage={onOpenConversation} />}
       {section === "peptide-orders" && <OrdersView key="peptides" orderType="peptides" />}
       {section === "supply-orders" && <OrdersView key="supplies" orderType="supplies" />}
       {section === "inventory" && <InventoryView />}

@@ -10,6 +10,8 @@ import ShopView from "./components/shop/ShopView";
 import MyAccount, { type AccountTab } from "./components/MyAccount";
 import NotificationBell from "./components/NotificationBell";
 import { useNotifications } from "./hooks/useNotifications";
+import { useMessageCount } from "./hooks/useMessageCount";
+import MessagesPanel from "./components/MessagesPanel";
 import ReconstitutionCalc from "./components/ReconstitutionCalc";
 import TrackingManager from "./components/TrackingManager";
 import DashboardPage from "./components/DashboardPage";
@@ -64,6 +66,7 @@ import {
   Landmark,
   Tags,
   Store,
+  MessageCircle,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
@@ -91,6 +94,7 @@ type ActiveTab = "dashboard" | "protocol" | "shop" | "account" | "recon" | "logs
 const ADMIN_SECTIONS: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
   { id: "new-orders", label: "New Customer Orders", icon: <Inbox size={14} /> },
+  { id: "messages", label: "Messages", icon: <MessageCircle size={14} /> },
   { id: "sales", label: "Customer Orders", icon: <ShoppingBag size={14} /> },
   { id: "customers", label: "Customers", icon: <Users size={14} /> },
   { id: "peptide-orders", label: "Peptide Orders", icon: <FlaskConical size={14} /> },
@@ -210,14 +214,22 @@ export default function App() {
     refresh: refreshWaitingOrders,
   } = useWaitingOrders(isAdmin);
   const notifications = useNotifications(appReady);
+  // Messages with the shop: the unread badge, the customer's Messages panel (optionally about an order), and the
+  // conversation the owner's Messages page should open.
+  const messageCount = useMessageCount(appReady, isAdmin);
+  const refreshMessageCount = messageCount.refresh;
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [messageOrder, setMessageOrder] = useState<{ id: string; number: number } | null>(null);
+  const [messageCustomerId, setMessageCustomerId] = useState<string | null>(null);
   // Moving around the app also checks for new notifications / waiting orders, so they show up promptly.
   const refreshNotifications = notifications.refresh;
   // ...and that the subscription is still running.
   useEffect(() => {
     void refreshNotifications();
     void refreshWaitingOrders();
+    void refreshMessageCount();
     void refreshBusiness();
-  }, [activeTab, adminSection, refreshNotifications, refreshWaitingOrders, refreshBusiness]);
+  }, [activeTab, adminSection, refreshNotifications, refreshWaitingOrders, refreshMessageCount, refreshBusiness]);
   const [accountTab, setAccountTab] = useState<AccountTab>("orders");
 
   useEffect(() => {
@@ -268,18 +280,40 @@ export default function App() {
     });
   }, []);
 
-  // Tapping a notification opens the app at ?open=new-orders (owner) or ?open=orders (customer) - public/sw.js.
+  // The owner opening one customer's conversation (from their customer page, or a message notification).
+  const openConversation = useCallback(
+    (customerId: string) => {
+      setMessageCustomerId(customerId);
+      navigateAdmin("messages");
+    },
+    [navigateAdmin]
+  );
+  // A customer opening their Messages, about one of their orders or not.
+  const openMessages = useCallback((order: { id: string; number: number } | null = null) => {
+    setMessageOrder(order);
+    setMessagesOpen(true);
+  }, []);
+
+  // Tapping a notification opens the app at ?open=new-orders / ?open=messages&customer= (owner) or ?open=orders /
+  // ?open=messages (customer) - public/sw.js.
   useEffect(() => {
     if (!appReady) return;
     const params = new URLSearchParams(window.location.search);
     const open = params.get("open");
-    if (open !== "new-orders" && open !== "orders") return;
+    if (open !== "new-orders" && open !== "orders" && open !== "messages") return;
+    const customer = params.get("customer");
     params.delete("open");
+    params.delete("customer");
     const rest = params.toString();
     window.history.replaceState(window.history.state, "", window.location.pathname + (rest ? `?${rest}` : ""));
     if (open === "new-orders" && isAdmin) navigateAdmin("new-orders");
     if (open === "orders" && !isAdmin) openAccount("orders");
-  }, [appReady, isAdmin, navigateAdmin, openAccount]);
+    if (open === "messages" && isAdmin) {
+      if (customer) openConversation(customer);
+      else navigateAdmin("messages");
+    }
+    if (open === "messages" && !isAdmin) openMessages();
+  }, [appReady, isAdmin, navigateAdmin, openAccount, openConversation, openMessages]);
 
   // A customer's device that already allows notifications keeps getting them (e.g. after reinstalling the
   // browser), unless they turned them off.
@@ -334,7 +368,7 @@ export default function App() {
       case "shop":
         return <ShopView onOpenAccount={openAccount} />;
       case "account":
-        return <MyAccount initialTab={accountTab} onShop={() => navigateTab("shop")} />;
+        return <MyAccount initialTab={accountTab} onShop={() => navigateTab("shop")} onMessage={openMessages} />;
       case "recon":
         return <ReconstitutionCalc />;
       case "logs":
@@ -356,6 +390,9 @@ export default function App() {
               onOrdersChanged={() => void refreshWaitingOrders()}
               business={context!}
               onBusinessChanged={() => void refreshBusiness()}
+              messageCustomerId={messageCustomerId}
+              onOpenConversation={openConversation}
+              onMessagesChanged={() => void refreshMessageCount()}
             />
           </Suspense>
         ) : (
@@ -387,6 +424,7 @@ export default function App() {
                 label={s.label}
               >
                 {s.id === "new-orders" && waitingOrders > 0 && <WaitingBadge count={waitingOrders} />}
+                {s.id === "messages" && messageCount.unread > 0 && <WaitingBadge count={messageCount.unread} />}
               </NavButton>
             ))}
           </div>
@@ -402,7 +440,21 @@ export default function App() {
       <>
         <div className={group}>{tabLink("dashboard", "Dashboard Hub", <LayoutGrid size={14} />)}</div>
         <div className={group}>{TOOLS.map((t) => tabLink(t.id, t.label, t.icon))}</div>
-        <div className={group}>{tabLink("shop", "Shop", <ShoppingCart size={14} />)}</div>
+        <div className={group}>
+          {tabLink("shop", "Shop", <ShoppingCart size={14} />)}
+          <NavButton
+            mobile={mobile}
+            active={false}
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              openMessages();
+            }}
+            icon={<MessageCircle size={14} />}
+            label="Messages"
+          >
+            {messageCount.unread > 0 && <WaitingBadge count={messageCount.unread} />}
+          </NavButton>
+        </div>
       </>
     );
   };
@@ -495,6 +547,7 @@ export default function App() {
                   onSelect={() => openAccount("orders")}
                   placement="up"
                 />
+              {!isAdmin && <MessagesButton unread={messageCount.unread} onClick={() => openMessages()} />}
             </div>
           </aside>
 
@@ -518,6 +571,7 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-3">
+                {!isAdmin && <MessagesButton unread={messageCount.unread} onClick={() => openMessages()} />}
                 <NotificationBell
                   items={notifications.items}
                   unread={notifications.unread}
@@ -594,6 +648,16 @@ export default function App() {
           </div>
         </div>
       )}
+      {messagesOpen && context && !isAdmin && (
+        <MessagesPanel
+          shopName={businessName}
+          shopLogo={businessLogo}
+          order={messageOrder}
+          onClearOrder={() => setMessageOrder(null)}
+          onClose={() => setMessagesOpen(false)}
+          onRead={() => void refreshMessageCount()}
+        />
+      )}
       {/* Registering a business (/start): the details come first, then creating the login. */}
       {isLoaded && sessionChecked && !hasValidSession &&
         (startingBusiness ? (
@@ -637,6 +701,25 @@ function NavButton({
       {icon}
       <span>{label}</span>
       {children}
+    </button>
+  );
+}
+
+// A customer's Messages button (top bar / sidebar), with how many of the shop's messages are unread.
+function MessagesButton({ unread, onClick }: { unread: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="relative cursor-pointer rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-900 hover:text-white"
+      aria-label={unread ? `Messages, ${unread} unread` : "Messages"}
+      title="Messages"
+    >
+      <MessageCircle size={19} />
+      {unread > 0 && (
+        <span className="absolute -right-1 -top-1">
+          <WaitingBadge count={unread} />
+        </span>
+      )}
     </button>
   );
 }

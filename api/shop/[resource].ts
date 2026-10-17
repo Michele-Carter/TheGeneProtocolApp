@@ -4,12 +4,14 @@ import { requireAuthUserId } from "../_lib/auth.js";
 import { businessCountryName, serveAsBusiness, type BusinessRequest, type Db } from "../_lib/business.js";
 import { alertNewOrder, alertOrderCancelled, alertPaymentSent, pushKey, removeDevice, saveDevice, subscribeSchema } from "../_lib/orderAlerts.js";
 import { customerForUser } from "../_lib/customers.js";
+import { MessageError, conversation, markRead, sendMessage, unreadCount } from "../_lib/messages.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { appSettings, customers, notifications, pushSubscriptions, sales, shopOrders } from "../_lib/schema.js";
 import { loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import { isAddressComplete, toAddress } from "../../shared/customers.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
 import {
+    MAX_MESSAGE_LENGTH,
     PAYMENT_DETAILS_KEY,
     hasPaymentDetails,
     toPaymentDetails,
@@ -32,6 +34,8 @@ import {
 //   POST /api/shop/notifications?action=read  mark them all read
 //   GET  /api/shop/push                       phone/computer notifications: the key + the caller's devices
 //   POST /api/shop/push?action=subscribe { subscription, device }   ?action=unsubscribe { endpoint }
+//   GET  /api/shop/messages                   their conversation with the shop (?summary=1: unread count)
+//   POST /api/shop/messages { body, shopOrderId? }   send a message   ?action=read: mark the shop's read
 
 type CustomerRow = typeof customers.$inferSelect;
 
@@ -347,6 +351,48 @@ async function handlePush(req: any, res: any, db: Db, userId: string) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+// The customer's conversation with the shop.
+//   GET  /api/shop/messages               { messages, unread }   (?summary=1: just { unread })
+//   POST /api/shop/messages               { body, shopOrderId? } sends one
+//   POST /api/shop/messages?action=read   marks the shop's messages read
+async function handleMessages(req: any, res: any, db: Db, userId: string) {
+    const customer = await customerForUser(db, userId);
+
+    if (req.method === "GET") {
+        const unread = await unreadCount(db, "customer", customer.id);
+        if (req.query?.summary === "1") return sendJson(res, 200, { unread });
+        return sendJson(res, 200, { unread, messages: await conversation(db, customer.id) });
+    }
+
+    if (req.method === "POST" && req.query?.action === "read") {
+        await markRead(db, "customer", customer.id);
+        return sendJson(res, 200, { success: true });
+    }
+
+    if (req.method === "POST") {
+        let body: unknown;
+        try {
+            body = await parseJsonBody(req);
+        } catch {
+            return sendJson(res, 400, { error: "Invalid JSON body" });
+        }
+        const parsed = z
+            .object({ body: z.string().max(MAX_MESSAGE_LENGTH * 2), shopOrderId: z.string().nullish() })
+            .safeParse(body);
+        if (!parsed.success) return sendJson(res, 400, { error: "Please check your message" });
+        try {
+            const message = await sendMessage(db, { customerId: customer.id, sender: "customer", ...parsed.data });
+            return sendJson(res, 201, { message });
+        } catch (error) {
+            if (error instanceof MessageError) return sendJson(res, 400, { error: error.message });
+            throw error;
+        }
+    }
+
+    res.setHeader("Allow", "GET, POST");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
 async function loadPaymentDetails(db: Db): Promise<PaymentDetails> {
     const [row] = await db.select().from(appSettings).where(eq(appSettings.key, PAYMENT_DETAILS_KEY));
     return toPaymentDetails(row?.value);
@@ -414,6 +460,8 @@ export async function handleShopRequest(req: any, res: any, userId: string) {
                     return await handleNotifications(req, res, db, userId);
                 case "push":
                     return await handlePush(req, res, db, userId);
+                case "messages":
+                    return await handleMessages(req, res, db, userId);
                 default:
                     return sendJson(res, 404, { error: "Not found" });
             }

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { ArrowLeft, ChevronRight, Merge, Plus, RefreshCw, Save, Search, Trash2, UserCheck, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Merge, MessageCircle, Plus, RefreshCw, Save, Search, Trash2, UserCheck, X } from "lucide-react";
 import { addressLines, emptyAddress } from "../../../shared/customers";
 import { adminApi, cash, type CustomerDetail, type CustomerInput, type CustomerSummary } from "../../lib/adminApi";
 import AddressFields from "../AddressFields";
@@ -12,7 +12,13 @@ type Selected = { id: string } | { id: null } | null;
 
 const formatDate = (iso: string | null) => (iso ? writeDate(iso) : "—");
 
-export default function CustomersView({ onOpenSale }: { onOpenSale: (saleId: string) => void }) {
+export default function CustomersView({
+  onOpenSale,
+  onMessage,
+}: {
+  onOpenSale: (saleId: string) => void;
+  onMessage: (customerId: string) => void; // opens their conversation in Messages
+}) {
   const { getToken } = useAuth();
   const [rows, setRows] = useState<CustomerSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +64,7 @@ export default function CustomersView({ onOpenSale }: { onOpenSale: (saleId: str
         id={selected.id}
         others={(rows ?? []).filter((c) => c.id !== selected.id)}
         onOpenSale={onOpenSale}
+        onMessage={onMessage}
         onBack={() => {
           setSelected(null);
           void load();
@@ -187,12 +194,14 @@ function CustomerPage({
   id,
   others,
   onOpenSale,
+  onMessage,
   onBack,
   onSwitch,
 }: {
   id: string | null;
   others: CustomerSummary[];
   onOpenSale: (saleId: string) => void;
+  onMessage: (customerId: string) => void;
   onBack: () => void;
   onSwitch: (id: string) => void;
 }) {
@@ -284,6 +293,12 @@ function CustomerPage({
             </p>
           )}
         </div>
+        {/* Only customers with a login can read messages (in the shop's app). */}
+        {id && detail?.hasLogin && (
+          <button className={`${secondaryButton} ml-auto`} onClick={() => onMessage(id)}>
+            <MessageCircle size={13} /> Message
+          </button>
+        )}
       </div>
 
       <ErrorNote message={error} />

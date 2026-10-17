@@ -19,7 +19,15 @@ const toForm = (d: MyDetails): Form => ({ name: d.name, email: d.email, shipping
 
 export type AccountTab = "orders" | "details";
 
-export default function MyAccount({ initialTab = "orders", onShop }: { initialTab?: AccountTab; onShop: () => void }) {
+export default function MyAccount({
+  initialTab = "orders",
+  onShop,
+  onMessage,
+}: {
+  initialTab?: AccountTab;
+  onShop: () => void;
+  onMessage: (order: { id: string; number: number }) => void;
+}) {
   const { getToken } = useAuth();
   const [tab, setTab] = useState<AccountTab>(initialTab);
   useEffect(() => setTab(initialTab), [initialTab]);
@@ -85,7 +93,7 @@ export default function MyAccount({ initialTab = "orders", onShop }: { initialTa
 
       {tab === "orders" && (
         <div className="max-w-2xl">
-          <MyOrders onShop={onShop} />
+          <MyOrders onShop={onShop} onMessage={onMessage} />
         </div>
       )}
 

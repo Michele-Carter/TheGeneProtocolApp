@@ -29,6 +29,7 @@ import {
 } from "../../shared/shop.js";
 import { toAddress, type ShippingAddress } from "../../shared/customers.js";
 import { linkCustomerByEmail } from "../_lib/customers.js";
+import { MessageError, conversation, conversations, markRead, sendMessage, setArchived, unreadCount } from "../_lib/messages.js";
 import { availableStock, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import {
     cancelShopOrderForDeletedSale,
@@ -1550,6 +1551,60 @@ async function alertsInfo(db: Db): Promise<OrderAlertsInfo> {
     };
 }
 
+// Messages with customers (one conversation per customer; the owner can start one too).
+//   GET  /api/admin/messages                      { conversations, unread }   (?summary=1: just { unread })
+//   GET  /api/admin/messages?customerId=          { customer, messages } - one conversation
+//   POST /api/admin/messages { customerId, body, shopOrderId? }   send
+//   POST /api/admin/messages?action=read    { customerId }            mark the customer's messages read
+//   POST /api/admin/messages?action=archive { customerId, archived }  archive / bring back a conversation
+async function handleMessages(req: any, res: any, db: Db) {
+    if (req.method === "GET") {
+        const customerId = typeof req.query?.customerId === "string" ? req.query.customerId : "";
+        if (customerId) {
+            const [customer] = await db.select().from(customers).where(eq(customers.id, customerId));
+            if (!customer) return sendJson(res, 404, { error: "Customer not found" });
+            return sendJson(res, 200, {
+                customer: { id: customer.id, name: customer.name, email: customer.email, archived: customer.messagesArchivedAt != null },
+                messages: await conversation(db, customerId),
+            });
+        }
+        const unread = await unreadCount(db, "owner");
+        if (req.query?.summary === "1") return sendJson(res, 200, { unread });
+        return sendJson(res, 200, { unread, conversations: await conversations(db) });
+    }
+
+    if (req.method !== "POST") {
+        res.setHeader("Allow", "GET, POST");
+        return sendJson(res, 405, { error: "Method not allowed" });
+    }
+    const read = await readBody(req, res);
+    if (!read.ok) return;
+    const body = (read.body ?? {}) as Record<string, unknown>;
+    const customerId = typeof body.customerId === "string" ? body.customerId : "";
+    if (!customerId) return sendJson(res, 400, { error: "Which customer?" });
+
+    if (req.query?.action === "read") {
+        await markRead(db, "owner", customerId);
+        return sendJson(res, 200, { success: true });
+    }
+    if (req.query?.action === "archive") {
+        await setArchived(db, customerId, body.archived !== false);
+        return sendJson(res, 200, { success: true });
+    }
+    try {
+        const message = await sendMessage(db, {
+            customerId,
+            sender: "owner",
+            body: typeof body.body === "string" ? body.body : "",
+            shopOrderId: typeof body.shopOrderId === "string" ? body.shopOrderId : null,
+        });
+        return sendJson(res, 201, { message });
+    } catch (error) {
+        if (error instanceof MessageError) return sendJson(res, 400, { error: error.message });
+        throw error;
+    }
+}
+
 async function handleAlerts(req: any, res: any, db: Db, access: BusinessAccess, userId: string) {
     const action = req.query?.action;
     if (req.method === "GET") return sendJson(res, 200, await alertsInfo(db));
@@ -2011,6 +2066,8 @@ export async function handleAdminRequest(req: any, res: any, userId: string) {
                     return await handleSettings(req, res, db);
                 case "supplier-catalog":
                     return await handleSupplierCatalog(req, res, db);
+                case "messages":
+                    return await handleMessages(req, res, db);
                 case "alerts":
                     return await handleAlerts(req, res, db, access, userId);
                 case "coa":

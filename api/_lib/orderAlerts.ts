@@ -115,6 +115,17 @@ export function alertPaymentSent(
     });
 }
 
+// A customer sent the shop a message. Tapping it opens the conversation; a newer message from the same customer
+// replaces the last one.
+export function alertNewMessage(business: Business, m: { customerId: string; customerName: string; preview: string }): Promise<void> {
+    return alertOwner(business, {
+        title: `Message from ${m.customerName || "a customer"}`,
+        body: m.preview,
+        url: `/?open=messages&customer=${encodeURIComponent(m.customerId)}`,
+        tag: `message-${m.customerId}`,
+    });
+}
+
 // The customer withdrew an order before it was confirmed.
 export function alertOrderCancelled(business: Business, order: { orderNumber: number; customerName: string }): Promise<void> {
     return alertOwner(business, {
@@ -125,18 +136,18 @@ export function alertOrderCancelled(business: Business, order: { orderNumber: nu
     });
 }
 
-// A customer's own notification (order confirmed, declined, cancelled, paid...) on their devices. Only ever
-// shows their shop's name and logo. Tapping it opens My Orders.
+// A customer's own notification (order confirmed, declined, cancelled, paid, a message from the shop...) on their
+// devices. Only ever shows their shop's name and logo. Tapping it opens My Orders (or wherever url points).
 export async function alertCustomer(
     business: Business,
     customerId: string,
-    message: { title: string; body: string; shopOrderId: string | null }
+    message: { title: string; body: string; shopOrderId: string | null; url?: string; tag?: string }
 ): Promise<void> {
     const alert: Alert = {
         title: message.title,
         body: message.body,
-        url: `/shop/${business.slug}?open=orders`,
-        tag: message.shopOrderId ? `order-${message.shopOrderId}` : `note-${Date.now()}`,
+        url: message.url ?? `/shop/${business.slug}?open=orders`,
+        tag: message.tag ?? (message.shopOrderId ? `order-${message.shopOrderId}` : `note-${Date.now()}`),
         ...(business.logoUrl ? { icon: business.logoUrl } : {}),
     };
     try {

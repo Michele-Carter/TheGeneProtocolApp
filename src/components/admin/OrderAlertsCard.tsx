@@ -70,7 +70,7 @@ export default function OrderAlertsCard() {
         <div className="space-y-2">
           <span className="block text-[11px] font-bold text-white">Notifications</span>
           <p className="text-xs text-slate-400">
-            A pop-up on this phone or computer when a customer sends an order, says they've paid, or cancels - even when the app is closed. Tap it to
+            A pop-up on this phone or computer when a customer sends an order, says they've paid, cancels, or messages you - even when the app is closed. Tap it to
             open the order. Turn it on separately on each device you want alerts on.
           </p>
 
