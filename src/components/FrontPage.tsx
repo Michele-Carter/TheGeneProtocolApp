@@ -503,7 +503,7 @@ function Faq() {
         },
         {
             q: "Do I need my own website?",
-            a: "No. Your shop link is your shop - share it in messages, on social media or in your bio. Customers sign up there, browse your products and order.",
+            a: "No. Your shop link is your shop - send it to your customers and they sign up there, browse your products and order.",
         },
         {
             q: "Will I know when an order comes in?",
