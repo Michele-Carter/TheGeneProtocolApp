@@ -5,7 +5,7 @@ import {
     pushSupported,
     subscribeThisDevice,
     thisDeviceName,
-    unsubscribeThisDevice,
+    thisDeviceEndpoint,
 } from "./orderAlerts";
 
 // A customer's own order updates on their phone/computer (confirmed, declined, paid...). Browsers only allow
@@ -80,6 +80,6 @@ export async function turnOnCustomerNotifications(getToken: GetToken): Promise<v
 
 export async function turnOffCustomerNotifications(getToken: GetToken): Promise<void> {
     rememberOff(true);
-    const endpoint = await unsubscribeThisDevice();
+    const endpoint = await thisDeviceEndpoint();
     if (endpoint) await shopApi.unsubscribePush(endpoint, getToken);
 }

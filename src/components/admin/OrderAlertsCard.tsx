@@ -10,7 +10,7 @@ import {
   pushSupported,
   subscribeThisDevice,
   thisDeviceName,
-  unsubscribeThisDevice,
+  thisDeviceEndpoint,
 } from "../../lib/orderAlerts";
 import { Card, ErrorNote, primaryButton, secondaryButton } from "./ui";
 import { Spinner } from "../LoadingSpinner";
@@ -18,8 +18,8 @@ import { formatDate } from "../../lib/locale";
 
 const date = (iso: string) => formatDate(iso, { day: "numeric", month: "short", year: "numeric" });
 
-// Admin -> Business: a notification on the owner's phone or computer for every new shop order (turned on per
-// device; arrives even when the app is closed).
+// Admin -> Business: a notification on the owner's phone or computer for each shop order step - new order, payment
+// sent, cancelled (turned on per device; arrives even when the app is closed).
 export default function OrderAlertsCard() {
   const { getToken } = useAuth();
   const [info, setInfo] = useState<OrderAlertsInfo | null>(null);
@@ -52,7 +52,7 @@ export default function OrderAlertsCard() {
 
   if (!info) {
     return (
-      <Card title="New order alerts">
+      <Card title="Order alerts">
         {error ? <ErrorNote message={error} /> : <Spinner size={16} className="text-gold-400" />}
       </Card>
     );
@@ -62,7 +62,7 @@ export default function OrderAlertsCard() {
   const otherDevices = info.devices.filter((d) => d.endpoint !== thisEndpoint);
 
   return (
-    <Card title="New order alerts">
+    <Card title="Order alerts">
       <div className="space-y-5">
         <ErrorNote message={error} />
         {notice && <p className="text-xs text-emerald-400">{notice}</p>}
@@ -70,7 +70,7 @@ export default function OrderAlertsCard() {
         <div className="space-y-2">
           <span className="block text-[11px] font-bold text-white">Notifications</span>
           <p className="text-xs text-slate-400">
-            A pop-up on this phone or computer whenever a customer sends an order - even when the app is closed. Tap it to
+            A pop-up on this phone or computer when a customer sends an order, says they've paid, or cancels - even when the app is closed. Tap it to
             open the order. Turn it on separately on each device you want alerts on.
           </p>
 
@@ -105,7 +105,7 @@ export default function OrderAlertsCard() {
                 disabled={busy != null}
                 onClick={() =>
                   void run("off", async () => {
-                    const endpoint = await unsubscribeThisDevice();
+                    const endpoint = await thisDeviceEndpoint();
                     if (endpoint) show(await adminApi.unsubscribeAlerts({ endpoint }, getToken));
                     setThisEndpoint(null);
                   })
@@ -123,7 +123,7 @@ export default function OrderAlertsCard() {
                   const subscription = await subscribeThisDevice(info.pushKey!);
                   show(await adminApi.subscribeAlerts(subscription, thisDeviceName(), getToken));
                   setThisEndpoint(subscription.endpoint);
-                  setNotice("Done - you'll get a notification here for every new order. Try 'Send a test'.");
+                  setNotice("Done - you'll get a notification here for every order update. Try 'Send a test'.");
                 })
               }
             >

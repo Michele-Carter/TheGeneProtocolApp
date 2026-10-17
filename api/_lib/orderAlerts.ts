@@ -78,23 +78,51 @@ export async function sendAlert(db: Db, business: Business, alert: Alert, onlyDe
     await sendTo(db, targets, { ...alert, icon: alert.icon ?? business.logoUrl ?? "/favicon.png" });
 }
 
-// Called once a customer's order has been saved.
-export async function alertNewOrder(
+// The owner's alerts about a shop order, run once the customer's change has been saved. They share the order's
+// tag, so each new step replaces the last one for that order instead of piling up.
+async function alertOwner(business: Business, alert: Alert): Promise<void> {
+    try {
+        await runAsBusiness(business.id, (db) => sendAlert(db, business, alert));
+    } catch (error) {
+        console.error(`Order alert for ${business.id} failed:`, error);
+    }
+}
+
+export function alertNewOrder(
     business: Business,
     order: { orderNumber: number; subtotalNzd: number; itemCount: number; customerName: string }
 ): Promise<void> {
     const items = `${order.itemCount} item${order.itemCount === 1 ? "" : "s"}`;
-    const alert: Alert = {
+    return alertOwner(business, {
         title: `New order #${order.orderNumber}`,
         body: `${order.customerName || "A customer"} - ${items}, ${customerPrice(order.subtotalNzd, business)}. Tap to confirm it.`,
         url: "/?open=new-orders",
         tag: `order-${order.orderNumber}`,
-    };
-    try {
-        await runAsBusiness(business.id, (db) => sendAlert(db, business, alert));
-    } catch (error) {
-        console.error(`New order alert for ${business.id} failed:`, error);
-    }
+    });
+}
+
+// The customer says they've paid a confirmed order: the owner checks the bank and marks it paid.
+export function alertPaymentSent(
+    business: Business,
+    order: { orderNumber: number; totalNzd: number; customerName: string; reference: string }
+): Promise<void> {
+    const reference = order.reference ? ` (reference ${order.reference})` : "";
+    return alertOwner(business, {
+        title: `Payment sent for order #${order.orderNumber}`,
+        body: `${order.customerName || "A customer"} says they've paid ${customerPrice(order.totalNzd, business)}${reference}. Tap to check and mark it paid.`,
+        url: "/?open=new-orders",
+        tag: `order-${order.orderNumber}`,
+    });
+}
+
+// The customer withdrew an order before it was confirmed.
+export function alertOrderCancelled(business: Business, order: { orderNumber: number; customerName: string }): Promise<void> {
+    return alertOwner(business, {
+        title: `Order #${order.orderNumber} cancelled`,
+        body: `${order.customerName || "The customer"} cancelled this order before it was confirmed.`,
+        url: "/?open=new-orders",
+        tag: `order-${order.orderNumber}`,
+    });
 }
 
 // A customer's own notification (order confirmed, declined, cancelled, paid...) on their devices. Only ever
@@ -137,7 +165,8 @@ export const subscribeSchema = z.object({
     device: z.string().trim().max(120).default(""),
 });
 
-// Saves (or re-claims) a device for the owner (customerId null) or a customer.
+// Saves (or refreshes) a device for the owner (customerId null) or a customer. One browser can be both - an owner
+// trying their own shop as a customer - so it gets a row for each, and each gets its own notifications.
 export async function saveDevice(
     db: Db,
     who: { clerkUserId: string; customerId: string | null },
@@ -147,5 +176,8 @@ export async function saveDevice(
     await db
         .insert(pushSubscriptions)
         .values({ id: crypto.randomUUID(), endpoint: subscription.endpoint, ...values })
-        .onConflictDoUpdate({ target: [pushSubscriptions.businessId, pushSubscriptions.endpoint], set: values });
+        .onConflictDoUpdate({
+            target: [pushSubscriptions.businessId, pushSubscriptions.endpoint, pushSubscriptions.customerId],
+            set: values,
+        });
 }
