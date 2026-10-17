@@ -728,7 +728,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
                 </div>
                 <div className="flex items-center justify-between px-3 py-2 text-xs bg-slate-900/40 border-t border-slate-800">
                   <span className="text-slate-400">
-                    {data.lines.length} {data.lines.length === 1 ? "item" : "items"} · {totals.units} units
+                    {data.lines.length} {data.lines.length === 1 ? "item" : "items"} · {totals.units} {totals.units === 1 ? "unit" : "units"}
                   </span>
                   <span className="font-bold tabular-nums text-slate-100">{cash(totals.itemsSubtotal)}</span>
                 </div>
@@ -882,7 +882,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
 
         <div className="xl:sticky xl:top-4 space-y-5">
           <Card title="Order summary">
-            <StatRow label={`Items (${totals.units} units)`} value={cash(totals.itemsSubtotal)} />
+            <StatRow label={`Items (${totals.units} ${totals.units === 1 ? "unit" : "units"})`} value={cash(totals.itemsSubtotal)} />
             {data.discountNzd !== 0 && <StatRow label="Discount" value={cash(-data.discountNzd)} />}
             <StatRow label="Shipping charged" value={cash(data.shippingChargedNzd)} />
             <StatRow label="Order total" value={cash(totals.total)} strong />

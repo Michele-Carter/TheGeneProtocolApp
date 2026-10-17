@@ -41,11 +41,11 @@ export async function subscribeThisDevice(pushKey: string): Promise<PushSubscrip
     return subscription.toJSON() as PushSubscriptionData;
 }
 
-export async function unsubscribeThisDevice(): Promise<string | null> {
-    const subscription = await currentSubscription();
-    if (!subscription) return null;
-    await subscription.unsubscribe();
-    return subscription.endpoint;
+// This device's address, for the server to stop sending to it for whoever is signed in. The browser keeps its
+// subscription: the same browser may also get the owner's alerts or a customer's updates (an owner trying their
+// own shop as a customer), and switching it off would silently stop those too.
+export async function thisDeviceEndpoint(): Promise<string | null> {
+    return (await currentSubscription())?.endpoint ?? null;
 }
 
 // A friendly name for the list of devices, e.g. "Android phone (Chrome)".

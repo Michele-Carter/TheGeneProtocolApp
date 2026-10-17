@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
 import { businessCountryName, serveAsBusiness, type BusinessRequest, type Db } from "../_lib/business.js";
-import { alertNewOrder, pushKey, removeDevice, saveDevice, subscribeSchema } from "../_lib/orderAlerts.js";
+import { alertNewOrder, alertOrderCancelled, alertPaymentSent, pushKey, removeDevice, saveDevice, subscribeSchema } from "../_lib/orderAlerts.js";
 import { customerForUser } from "../_lib/customers.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { appSettings, customers, notifications, pushSubscriptions, sales, shopOrders } from "../_lib/schema.js";
@@ -193,6 +193,15 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
             .returning();
         if (!row) return sendJson(res, 409, { error: "Only confirmed orders can be marked as paid." });
         const [sale] = row.saleId ? await db.select().from(sales).where(eq(sales.id, row.saleId)) : [];
+        // Tell the owner (phone/computer notification) so they can check the bank.
+        afterSave(() =>
+            alertPaymentSent(access.business, {
+                orderNumber: row.orderNumber,
+                totalNzd: sale ? saleTotals(sale.data as SaleInput).total : Number(row.subtotalNzd),
+                customerName: customer.name,
+                reference: row.paymentReference,
+            })
+        );
         return sendJson(res, 200, orderDto(row, sale, await loadPaymentDetails(db)));
     }
 
@@ -204,6 +213,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
             .where(and(eq(shopOrders.id, id), eq(shopOrders.customerId, customer.id), eq(shopOrders.status, "submitted")))
             .returning();
         if (!row) return sendJson(res, 409, { error: "This order can't be cancelled - it may already have been confirmed." });
+        afterSave(() => alertOrderCancelled(access.business, { orderNumber: row.orderNumber, customerName: customer.name }));
         return sendJson(res, 200, orderDto(row));
     }
 

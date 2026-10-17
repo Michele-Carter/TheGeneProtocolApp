@@ -273,7 +273,9 @@ export const pushSubscriptions = pgTable(
     device: text("device").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [uniqueIndex("push_subscriptions_business_endpoint_idx").on(t.businessId, t.endpoint)]
+  // One row per device per person: the owner's (customer_id null) and a customer's can share a browser
+  // (scripts/notifications.sql - nulls count as equal, so the owner has one row per device).
+  (t) => [uniqueIndex("push_subscriptions_business_endpoint_who_idx").on(t.businessId, t.endpoint, t.customerId)]
 );
 
 // A reusable kit of inventory items sold together (e.g. "Pen Starter Bundle"). Holds no stock

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { SignInButton, SignUpButton } from "@clerk/react";
+import FrontPage from "./FrontPage";
 import LoadingSpinner from "./LoadingSpinner";
 import type { BusinessInfo } from "../../shared/billing";
 import { businessApi, cacheShop, rememberedShop, shopSlug, showShopInAddress, wantsToStartBusiness } from "../lib/business";
@@ -43,16 +44,13 @@ export default function AuthPage() {
             .finally(() => setShopLoading(false));
     }, [starting]);
 
+    // Plain pepbiz.io: the front page, which explains PepBiz and leads to registering or signing in.
+    if (!onShopLink && !starting) return <FrontPage />;
+
 
     // On a shop link, a neutral "Welcome" until the shop's name is known - never "PepBiz".
-    const eyebrow = starting ? "PepBiz for business" : onShopLink ? (shop?.name ?? "\u00a0") : "PepBiz";
-    const title = starting
-        ? "Create your account to set up your business"
-        : onShopLink
-          ? shop
-              ? `Welcome to ${shop.name}`
-              : "Welcome"
-          : "Register a new account or sign in if you already have one";
+    const eyebrow = starting ? "PepBiz for business" : (shop?.name ?? "\u00a0");
+    const title = starting ? "Create your account to set up your business" : shop ? `Welcome to ${shop.name}` : "Welcome";
     const blurb = starting
         ? "Register with your email (or sign in if you already have a PepBiz account). Next you'll name your business and choose your shop link."
         : "Use Register to create a new account, or Sign In if you already have one.";
