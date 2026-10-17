@@ -243,8 +243,8 @@ try {
   check("An owner opening someone else's shop link still only gets their own business", ownerOther.body?.business?.slug === TEST_SLUG && ownerLink.status === 200, ownerOther.body);
   const publicName = await business(STRANGER, "GET", "shop", undefined, { slug: TEST_SLUG });
   check(
-    "A shop link shows only its name, logo and customer contact email, nothing else",
-    publicName.status === 200 && Object.keys(publicName.body).sort().join() === "contactEmail,logoUrl,name,slug",
+    "A shop link shows only its name, logo, colour and customer contact email, nothing else",
+    publicName.status === 200 && Object.keys(publicName.body).sort().join() === "brandColor,contactEmail,logoUrl,name,slug",
     publicName.body
   );
 

@@ -6,6 +6,7 @@ import type { BusinessInfo } from "../../shared/billing";
 import { businessApi, cacheShop, rememberedShop, shopSlug, showShopInAddress, wantsToStartBusiness } from "../lib/business";
 import { useSetClerkBrandName } from "../lib/clerkBranding";
 import { PEPBIZ_ICON, setTabBranding } from "../lib/tabBranding";
+import { applyBrandColour } from "../lib/brandColour";
 
 // Sign in / register. Arriving from a shop link shows that shop's name and logo; arriving from /start
 // is someone setting up their own business.
@@ -29,6 +30,8 @@ export default function AuthPage() {
     useEffect(() => {
         if (!onShopLink) setTabBranding("PepBiz", PEPBIZ_ICON);
         else setTabBranding(shop?.name ?? "Welcome", shop?.logoUrl ?? null, shopSlug());
+        // A shop's sign-in page in the shop's own colour; PepBiz's own pages always in gold.
+        applyBrandColour(onShopLink ? shop?.brandColor : null);
     }, [onShopLink, shop]);
 
     useEffect(() => {
@@ -63,9 +66,9 @@ export default function AuthPage() {
                 className="absolute inset-0 pointer-events-none"
                 style={{
                     background:
-                        "radial-gradient(38rem 32rem at 22% 55%, rgba(194, 145, 31, 0.13), transparent 70%)," +
-                        "radial-gradient(34rem 30rem at 80% 45%, rgba(122, 90, 20, 0.16), transparent 70%)," +
-                        "radial-gradient(50rem 24rem at 50% 0%, rgba(219, 169, 49, 0.05), transparent 70%)",
+                        "radial-gradient(38rem 32rem at 22% 55%, color-mix(in srgb, var(--color-gold-500) 13%, transparent), transparent 70%)," +
+                        "radial-gradient(34rem 30rem at 80% 45%, color-mix(in srgb, var(--color-gold-700) 16%, transparent), transparent 70%)," +
+                        "radial-gradient(50rem 24rem at 50% 0%, color-mix(in srgb, var(--color-gold-400) 5%, transparent), transparent 70%)",
                 }}
             />
             {/* On a shop link, just a spinner until the shop's name and logo are known. */}
@@ -84,7 +87,7 @@ export default function AuthPage() {
                             <img
                                 src={PEPBIZ_ICON}
                                 alt="PepBiz"
-                                className="h-20 w-20 object-contain drop-shadow-[0_0_18px_rgba(219,169,49,0.35)]"
+                                className="h-20 w-20 object-contain drop-shadow-[0_0_18px_color-mix(in_srgb,var(--color-gold-400)_35%,transparent)]"
                             />
                         </div>
                     )}
@@ -97,7 +100,7 @@ export default function AuthPage() {
                     <div className="mt-6 sm:mt-8 grid gap-3.5 sm:gap-4">
                         <SignInButton mode="modal">
                             <button
-                                className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-gold-500 text-black hover:bg-gold-400 transition-colors shadow-[0_8px_24px_-6px_rgba(194,145,31,0.55)]"
+                                className="w-full rounded-xl px-4 py-3 text-sm font-bold bg-gold-500 text-black hover:bg-gold-400 transition-colors shadow-[0_8px_24px_-6px_color-mix(in_srgb,var(--color-gold-500)_55%,transparent)]"
                             >
                                 Sign In
                             </button>

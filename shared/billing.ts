@@ -58,6 +58,7 @@ export interface BusinessInfo {
   slug: string;
   logoUrl: string | null;
   contactEmail?: string; // how its customers reach it (its privacy notice)
+  brandColor?: string; // its colour in place of the app's gold ("#rrggbb"), or "" for gold
 }
 
 // What the app is told about the business it's being used as (see shared/countries.ts).
@@ -67,6 +68,7 @@ export interface BusinessSettings extends BusinessInfo {
   timeZone: string;
   contactEmail: string; // the email customers see (the owner's sign-in email unless customContactEmail is set)
   customContactEmail: string; // the one set on the Business page, or ""
+  brandColor: string; // "#rrggbb", or "" for PepBiz gold
 }
 
 export interface BillingInfo {

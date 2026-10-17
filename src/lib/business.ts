@@ -172,6 +172,8 @@ export const businessApi = {
   rename: (name: string, t: GetToken) => businessFetch<{ name: string }>("details", { method: "PATCH", body: JSON.stringify({ name }) }, t),
   setContactEmail: (contactEmail: string, t: GetToken) =>
     businessFetch<{ contactEmail: string }>("details", { method: "PATCH", body: JSON.stringify({ contactEmail }) }, t),
+  setBrandColor: (brandColor: string, t: GetToken) =>
+    businessFetch<{ brandColor: string }>("details", { method: "PATCH", body: JSON.stringify({ brandColor }) }, t),
   setTimeZone: (timeZone: string, t: GetToken) =>
     businessFetch<{ timeZone: string }>("details", { method: "PATCH", body: JSON.stringify({ timeZone }) }, t),
   uploadLogo: (dataUrl: string, t: GetToken) =>
