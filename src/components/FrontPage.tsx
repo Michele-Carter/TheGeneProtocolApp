@@ -150,7 +150,7 @@ function Hero() {
 
 // Screenshots of a made-up business ("Summit Peptides"), one set per country so visitors see their own
 // currency: public/front/<country>/<screen>-desktop.webp (1440x900 at 1.5x) and -mobile.webp (390x844 at 2x).
-type Screen = "dashboard" | "orders" | "inventory" | "supplier" | "shop" | "recon";
+type Screen = "dashboard" | "orders" | "inventory" | "supplier" | "shop" | "recon" | "library" | "protocol";
 type ShotCountry = "nz" | "au" | "us" | "ca" | "gb";
 
 // The visitor's country from their time zone (every country's zones are in shared/countries.ts); the US
@@ -216,6 +216,8 @@ function Tour() {
         { screen: "supplier", label: "Supplier costs", text: "Each supplier order converted to your currency, with the landed cost per vial." },
         { screen: "shop", label: "Your shop", text: "Your products, photos and certificates, under your own name and logo." },
         { screen: "recon", label: "Calculator", text: "Dosage and reconstitution maths your customers can do themselves." },
+        { screen: "protocol", label: "Protocol builder", text: "Customers plan their protocol and follow a dosing calendar, ticking off each dose as they go." },
+        { screen: "library", label: "Peptide database", text: "A reference library of more than 100 peptides - dosing, interactions and safety - built into your shop." },
     ];
     const [active, setActive] = React.useState(0);
     const tab = tabs[active];
