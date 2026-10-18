@@ -5,6 +5,7 @@ import { adminApi, cash, type ExpenseRecord, type SaleRecord } from "../../lib/a
 import { isToSend } from "../../../shared/sales";
 import { Card, ErrorNote } from "./ui";
 import LoadingSpinner from "../LoadingSpinner";
+import SetupChecklist from "./SetupChecklist";
 import { MONTHS } from "../../lib/protocolBuilderUtils";
 import type { AdminSection } from "./AdminArea";
 
@@ -278,10 +279,12 @@ export default function AdminDashboard({
   onNavigate,
   newOrders,
   paymentsToCheck,
+  slug,
 }: {
   onNavigate: (section: AdminSection) => void;
   newOrders: number;
   paymentsToCheck: number;
+  slug: string; // for the shop link in the setup checklist
 }) {
   const attention = [
     newOrders > 0 ? `${newOrders} new shop order${newOrders === 1 ? "" : "s"} to confirm` : "",
@@ -348,6 +351,8 @@ export default function AdminDashboard({
 
   return (
     <div className="space-y-5">
+      <SetupChecklist slug={slug} onNavigate={onNavigate} />
+
       {attention.length > 0 && (
         <button
           onClick={() => onNavigate("new-orders")}

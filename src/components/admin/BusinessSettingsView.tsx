@@ -3,6 +3,7 @@ import { useAuth } from "@clerk/react";
 import { Check, Copy, CreditCard, ImagePlus, RotateCcw, Save, Trash2, XCircle } from "lucide-react";
 import { PLANS } from "../../../shared/billing";
 import { businessApi, type BusinessContext } from "../../lib/business";
+import { adminApi } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, inputClass, primaryButton, secondaryButton } from "./ui";
 import { prepareImage } from "./ProductImages";
 import { Spinner } from "../LoadingSpinner";
@@ -53,6 +54,7 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
     } catch {
       setError("Couldn't copy - select the link and copy it instead.");
     }
+    adminApi.saveSetup({ linkShared: true }, getToken).catch(() => {}); // ticks "Share your shop link" on Admin home
   };
 
   const openBilling = async (flow?: "cancel") => {
@@ -236,7 +238,9 @@ export default function BusinessSettingsView({ context, onChanged }: { context: 
         </div>
       </Card>
 
-      <OrderAlertsCard />
+      <div id="order-alerts" className="scroll-mt-4">
+        <OrderAlertsCard />
+      </div>
 
       <Card title="PepBiz subscription">
         {!billing || billing.exempt ? (
