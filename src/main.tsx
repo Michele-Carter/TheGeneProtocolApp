@@ -42,8 +42,10 @@ const clerkAppearance = {
     // A style object, because Clerk's own styles override Tailwind classes here.
     logoBox: { display: 'none' },
     modalBackdrop: 'bg-zinc-950/80 backdrop-blur-sm',
-    modalContent: 'bg-transparent shadow-none border-0 p-4 sm:p-6 min-h-[100dvh] flex items-center justify-center',
-    cardBox: 'w-[min(92vw,28rem)] max-h-[88dvh] overflow-y-auto bg-transparent shadow-none my-auto',
+    // No height cap on the card: a tall card (big iPhone text, password hints) scrolls with the whole window
+    // instead of being cut off, and the extra bottom padding lets Continue scroll clear of the phone's toolbar.
+    modalContent: 'bg-transparent shadow-none border-0 px-4 pt-4 pb-28 sm:p-6 min-h-[100dvh] flex items-center justify-center',
+    cardBox: 'w-[min(92vw,28rem)] bg-transparent shadow-none my-auto',
     card: 'rounded-[1.6rem] border border-zinc-800 bg-zinc-900/95 text-zinc-100 shadow-2xl',
     headerTitle: 'text-white text-xl sm:text-2xl font-black tracking-tight',
     headerSubtitle: 'text-zinc-400',
