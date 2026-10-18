@@ -153,6 +153,7 @@ export type ItemPatch = Partial<
     | "name"
     | "variant"
     | "unit"
+    | "kind"
     | "reorderLevel"
     | "sellPriceNzd"
     | "shopVisible"

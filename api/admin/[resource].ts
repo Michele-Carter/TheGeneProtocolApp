@@ -144,9 +144,10 @@ const itemCreateSchema = z.object({
 });
 
 const itemPatchSchema = z.object({
-    name: z.string().trim().min(1).optional(),
-    variant: z.string().optional(),
-    unit: z.string().optional(),
+    name: z.string().trim().min(1, "Enter a name").max(120).optional(),
+    variant: z.string().trim().max(60).optional(),
+    unit: z.string().trim().min(1, "Enter what it's counted as").max(30).optional(),
+    kind: z.enum(["peptide", "supply"]).optional(),
     reorderLevel: z.number().int().min(0).nullable().optional(),
     sellPriceNzd: money.min(0).nullable().optional(),
     shopVisible: z.boolean().optional(),
@@ -312,6 +313,28 @@ function validationError(res: any, error: z.ZodError) {
 
 type Tx = Db;
 
+// An item's name, size, unit or type was corrected: past supplier orders, sales and shop orders keep their own copy
+// of those details, so they're brought in line too (nothing else about them changes - quantities, prices, costs).
+async function renameInOrders(tx: Tx, item: typeof invItems.$inferSelect) {
+    const details = { name: item.name, variant: item.variant, unit: item.unit, kind: item.kind };
+    const hasItem = (column: any, key: "itemId" | "refId") => sql`${column} @> ${JSON.stringify([{ [key]: item.id }])}::jsonb`;
+
+    for (const table of [purchaseOrders, sales]) {
+        const rows = await tx.select({ id: table.id, data: table.data }).from(table).where(hasItem(sql`${table.data}->'lines'`, "itemId"));
+        for (const r of rows) {
+            const data = r.data as { lines: { itemId: string }[] };
+            const lines = data.lines.map((l) => (l.itemId === item.id ? { ...l, ...details } : l));
+            await tx.update(table).set({ data: { ...data, lines } }).where(eq(table.id, r.id));
+        }
+    }
+
+    const orders = await tx.select({ id: shopOrders.id, lines: shopOrders.lines }).from(shopOrders).where(hasItem(shopOrders.lines, "refId"));
+    for (const o of orders) {
+        const lines = o.lines.map((l) => (l.kind === "item" && l.refId === item.id ? { ...l, name: item.name, variant: item.variant } : l));
+        await tx.update(shopOrders).set({ lines }).where(eq(shopOrders.id, o.id));
+    }
+}
+
 async function handleItems(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
 
@@ -337,6 +360,32 @@ async function handleItems(req: any, res: any, db: Db) {
         const parsed = itemPatchSchema.safeParse(read.body);
         if (!parsed.success) return validationError(res, parsed.error);
         const { applyToSizes, ...patch } = parsed.data;
+        const renaming = patch.name !== undefined || patch.variant !== undefined || patch.unit !== undefined || patch.kind !== undefined;
+
+        if (renaming) {
+            const [current] = await db.select().from(invItems).where(eq(invItems.id, id));
+            if (!current) return sendJson(res, 404, { error: "Item not found" });
+            const name = patch.name ?? current.name;
+            const variant = patch.variant ?? current.variant;
+            const kind = patch.kind ?? current.kind;
+            const [clash] = await db
+                .select({ id: invItems.id })
+                .from(invItems)
+                .where(
+                    and(
+                        ne(invItems.id, id),
+                        eq(invItems.kind, kind),
+                        sql`lower(${invItems.name}) = lower(${name})`,
+                        sql`lower(${invItems.variant}) = lower(${variant})`
+                    )
+                )
+                .limit(1);
+            if (clash) {
+                return sendJson(res, 409, {
+                    error: `You already have ${[name, variant].filter(Boolean).join(" ")} in your inventory - choose a different name or size.`,
+                });
+            }
+        }
 
         const row = await db.transaction(async (tx) => {
             const [updated] = await tx
@@ -359,6 +408,7 @@ async function handleItems(req: any, res: any, db: Db) {
                     })
                     .where(and(eq(invItems.name, updated.name), eq(invItems.kind, updated.kind), ne(invItems.id, id)));
             }
+            if (renaming) await renameInOrders(tx, updated);
             return updated;
         });
         if (!row) return sendJson(res, 404, { error: "Item not found" });
@@ -1563,7 +1613,17 @@ async function setupStatus(db: Db): Promise<SetupStatus> {
         db.select(one).from(invItems).limit(1),
         db.select(one).from(invItems).where(and(eq(invItems.shopVisible, true), isNotNull(invItems.sellPriceNzd))).limit(1),
         db.select(one).from(bundles).where(and(eq(bundles.shopVisible, true), isNotNull(bundles.priceNzd))).limit(1),
-        db.select(one).from(customers).where(isNotNull(customers.clerkUserId)).limit(1),
+        // A real customer signed up - not the owner's own customer record (made so they can view their shop).
+        db
+            .select(one)
+            .from(customers)
+            .where(
+                and(
+                    isNotNull(customers.clerkUserId),
+                    sql`${customers.clerkUserId} not in (select clerk_user_id from business_members where business_id = ${customers.businessId})`
+                )
+            )
+            .limit(1),
         db.select(one).from(shopOrders).limit(1),
     ]);
     return {
