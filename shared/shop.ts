@@ -242,3 +242,18 @@ export interface OrderAlertsInfo {
   pushKey: string | null; // null until phone notifications are set up on the server
   devices: OrderAlertDevice[];
 }
+
+// The Admin home's "Get your shop ready" checklist (GET /api/admin/setup): each step is worked out from what the
+// business has actually done. Only linkShared and dismissed are saved (app_settings, under SETUP_KEY).
+export const SETUP_KEY = "setup_checklist";
+
+export interface SetupStatus {
+  logo: boolean;
+  paymentDetails: boolean;
+  alerts: boolean; // a device gets the owner's notifications
+  stock: boolean; // anything in Inventory
+  inShop: boolean; // something customers can order (priced and shown in the shop)
+  linkShared: boolean; // copied the shop link, or a customer has signed up
+  dismissed: boolean; // the owner hid the checklist
+  hasShopOrders: boolean; // customers already order from the shop - it's up and running, so no checklist
+}

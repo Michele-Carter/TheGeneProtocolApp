@@ -99,7 +99,7 @@ export default function AdminArea({
         <p className="text-sm text-slate-400">{copy.description}</p>
       </div>
 
-      {section === "overview" && <AdminDashboard onNavigate={onNavigate} newOrders={newOrders} paymentsToCheck={paymentsToCheck} />}
+      {section === "overview" && <AdminDashboard onNavigate={onNavigate} newOrders={newOrders} paymentsToCheck={paymentsToCheck} slug={business.business.slug} />}
       {section === "new-orders" && <ShopOrdersView
           onOpenSale={openSale}
           onChanged={onOrdersChanged}

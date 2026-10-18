@@ -22,9 +22,12 @@ import {
     MAX_IMAGE_BYTES,
     MAX_IMAGES_PER_PRODUCT,
     PAYMENT_DETAILS_KEY,
+    SETUP_KEY,
     formatNzAccountNumber,
+    hasPaymentDetails,
     normalizeCategories,
     toPaymentDetails,
+    type SetupStatus,
     type ShopOrderLine,
 } from "../../shared/shop.js";
 import { toAddress, type ShippingAddress } from "../../shared/customers.js";
@@ -83,6 +86,7 @@ import type { OrderAlertsInfo } from "../../shared/shop.js";
 //   POST   /api/admin/shop-orders?id=&action=decline   { message }
 //   POST   /api/admin/shop-orders?id=&action=mark-paid
 //   GET    /api/admin/settings              PUT /api/admin/settings   { paymentDetails }
+//   GET    /api/admin/setup                 PUT /api/admin/setup   { linkShared?: true, dismissed? }   (setup checklist)
 //   POST   /api/admin/coa?id=  { dataUrl }  (image/PDF)   PUT /api/admin/coa?id=  { url }  (lab link)   DELETE
 //   GET    /api/admin/alerts                                    (new-order notifications)
 //   POST   /api/admin/alerts?action=subscribe { subscription, device }   ?action=unsubscribe { endpoint }
@@ -1541,6 +1545,58 @@ async function handleSettings(req: any, res: any, db: Db) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+// ---- "Get your shop ready" checklist (Admin home) ----
+
+const setupSaveSchema = z.object({ linkShared: z.literal(true).optional(), dismissed: z.boolean().optional() });
+
+async function savedSetup(db: Db): Promise<{ linkShared?: boolean; dismissed?: boolean }> {
+    const [row] = await db.select().from(appSettings).where(eq(appSettings.key, SETUP_KEY));
+    return (row?.value as { linkShared?: boolean; dismissed?: boolean } | undefined) ?? {};
+}
+
+async function setupStatus(db: Db): Promise<SetupStatus> {
+    const one = { id: sql`1` };
+    const [saved, payment, device, item, shopItem, shopBundle, customer, shopOrder] = await Promise.all([
+        savedSetup(db),
+        db.select().from(appSettings).where(eq(appSettings.key, PAYMENT_DETAILS_KEY)),
+        db.select(one).from(pushSubscriptions).where(ownerDevices).limit(1),
+        db.select(one).from(invItems).limit(1),
+        db.select(one).from(invItems).where(and(eq(invItems.shopVisible, true), isNotNull(invItems.sellPriceNzd))).limit(1),
+        db.select(one).from(bundles).where(and(eq(bundles.shopVisible, true), isNotNull(bundles.priceNzd))).limit(1),
+        db.select(one).from(customers).where(isNotNull(customers.clerkUserId)).limit(1),
+        db.select(one).from(shopOrders).limit(1),
+    ]);
+    return {
+        logo: Boolean(currentBusiness()?.logoUrl),
+        paymentDetails: hasPaymentDetails(toPaymentDetails(payment[0]?.value)),
+        alerts: device.length > 0,
+        stock: item.length > 0,
+        inShop: shopItem.length > 0 || shopBundle.length > 0,
+        linkShared: Boolean(saved.linkShared) || customer.length > 0,
+        dismissed: Boolean(saved.dismissed),
+        hasShopOrders: shopOrder.length > 0,
+    };
+}
+
+// GET /api/admin/setup - how far the business is through setting up.  PUT { linkShared?: true, dismissed? }
+async function handleSetup(req: any, res: any, db: Db) {
+    if (req.method === "GET") return sendJson(res, 200, await setupStatus(db));
+    if (req.method === "PUT") {
+        const read = await readBody(req, res);
+        if (!read.ok) return;
+        const parsed = setupSaveSchema.safeParse(read.body);
+        if (!parsed.success) return validationError(res, parsed.error);
+        const value = { ...(await savedSetup(db)), ...parsed.data };
+        await db
+            .insert(appSettings)
+            .values({ key: SETUP_KEY, value })
+            .onConflictDoUpdate({ target: [appSettings.businessId, appSettings.key], set: { value, updatedAt: new Date() } });
+        return sendJson(res, 200, await setupStatus(db));
+    }
+    res.setHeader("Allow", "GET, PUT");
+    return sendJson(res, 405, { error: "Method not allowed" });
+}
+
 // ---- New-order alerts (phone/computer notifications) ----
 
 async function alertsInfo(db: Db): Promise<OrderAlertsInfo> {
@@ -2064,6 +2120,8 @@ export async function handleAdminRequest(req: any, res: any, userId: string) {
                     return await handleShopOrders(req, res, db);
                 case "settings":
                     return await handleSettings(req, res, db);
+                case "setup":
+                    return await handleSetup(req, res, db);
                 case "supplier-catalog":
                     return await handleSupplierCatalog(req, res, db);
                 case "messages":

@@ -3,7 +3,7 @@ import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sal
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
-import type { ChatMessage, Conversation, ItemShopSection, OrderAlertsInfo, PaymentDetails, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
+import type { ChatMessage, Conversation, ItemShopSection, OrderAlertsInfo, PaymentDetails, SetupStatus, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 import type { PushSubscriptionData } from "./orderAlerts";
 import type { SupplierProduct } from "../../shared/library";
 import { ApiError, businessHeaders, type BusinessContext } from "./business";
@@ -374,6 +374,11 @@ export const adminApi = {
   getSettings: (t: GetToken) => adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "GET" }, t),
   updateSettings: (data: { paymentDetails: PaymentDetails }, t: GetToken) =>
     adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "PUT", body: JSON.stringify(data) }, t),
+
+  // The Admin home's "Get your shop ready" checklist
+  getSetup: (t: GetToken) => adminFetch<SetupStatus>("setup", { method: "GET" }, t),
+  saveSetup: (data: { linkShared?: true; dismissed?: boolean }, t: GetToken) =>
+    adminFetch<SetupStatus>("setup", { method: "PUT", body: JSON.stringify(data) }, t),
 
   // New-order notifications (Admin -> Business)
   getAlerts: (t: GetToken) => adminFetch<OrderAlertsInfo>("alerts", { method: "GET" }, t),
