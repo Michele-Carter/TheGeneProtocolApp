@@ -10,6 +10,7 @@ import {
   type InvItem,
   type StockMovement,
 } from "../../lib/adminApi";
+import type { ItemKind } from "../../../shared/landedCost";
 import CategoryPicker from "./CategoryPicker";
 import { SHOP_SECTIONS, itemSection, type ItemShopSection } from "../../../shared/shop";
 import ProductImages from "./ProductImages";
@@ -439,6 +440,87 @@ function ShopCard({
   );
 }
 
+// Corrects an item's name, size, unit or type (e.g. a typo, or water added as a peptide). Stock, costs and history
+// stay as they are; past orders and sales show the corrected details too.
+function EditItemCard({ item, onCancel, onSaved }: { item: InvItem; onCancel: () => void; onSaved: (item: InvItem) => void }) {
+  const { getToken } = useAuth();
+  const [name, setName] = useState(item.name);
+  const [variant, setVariant] = useState(item.variant);
+  const [unit, setUnit] = useState(item.unit);
+  const [kind, setKind] = useState<ItemKind>(item.kind);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const changed = name.trim() !== item.name || variant.trim() !== item.variant || unit.trim() !== item.unit || kind !== item.kind;
+
+  const save = async () => {
+    if (!name.trim()) return setError("Enter a name.");
+    if (!unit.trim()) return setError("Enter what it's counted as, e.g. vial.");
+    setBusy(true);
+    setError(null);
+    try {
+      onSaved(await adminApi.updateItem(item.id, { name: name.trim(), variant: variant.trim(), unit: unit.trim(), kind }, getToken));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title="Edit item">
+      <div className="space-y-4">
+        <p className="text-xs text-slate-400">
+          Fix a mistake in how this item was entered. Your stock, costs and history stay as they are, and past orders and
+          sales show the corrected details.
+        </p>
+        <ErrorNote message={error} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Field label="Name">
+            <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. BPC-157" />
+          </Field>
+          <Field label="Size">
+            <input className={inputClass} value={variant} onChange={(e) => setVariant(e.target.value)} placeholder="e.g. 10mg" />
+          </Field>
+          <Field label="Counted as">
+            <input className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. vial" />
+          </Field>
+        </div>
+        <div>
+          <span className="block text-[11px] font-bold text-white mb-1.5">Type</span>
+          <div className="flex gap-2">
+            {(["peptide", "supply"] as ItemKind[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                  kind === k ? "border-gold-500/60 text-gold-400 bg-gold-500/10" : "border-slate-800 text-slate-400 hover:text-white"
+                }`}
+              >
+                {k === "peptide" ? "Peptide" : "Supply"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {item.catalogCode && (
+          <p className="text-[11px] text-slate-500">
+            Linked to {item.catalogCode} on your vendor price list - new orders of {item.catalogCode} keep adding to this item.
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button className={primaryButton} onClick={() => void save()} disabled={busy || !changed}>
+            {busy && <Spinner size={13} />} Save changes
+          </button>
+          <button className={secondaryButton} onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function ItemDetail({
   itemId,
   inventory,
@@ -462,6 +544,7 @@ function ItemDetail({
   const [date, setDate] = useState(todayIso());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [reorderLevel, setReorderLevel] = useState<number | null>(null);
+  const [editingDetails, setEditingDetails] = useState(false);
   const adjustCardRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -576,7 +659,7 @@ function ItemDetail({
         <button onClick={onBack} className={secondaryButton} aria-label="Back to inventory">
           <ArrowLeft size={14} />
         </button>
-        <div>
+        <div className="min-w-0 flex-1">
           <h3 className="text-base font-black text-white">
             {item ? `${item.name} ${item.variant}` : "Loading…"}
           </h3>
@@ -587,7 +670,23 @@ function ItemDetail({
             </p>
           )}
         </div>
+        {item && !editingDetails && (
+          <button className={secondaryButton} onClick={() => setEditingDetails(true)}>
+            <Pencil size={13} /> Edit
+          </button>
+        )}
       </div>
+
+      {item && editingDetails && (
+        <EditItemCard
+          item={item}
+          onCancel={() => setEditingDetails(false)}
+          onSaved={(updated) => {
+            setDetail((d) => (d ? { ...d, item: updated } : d));
+            setEditingDetails(false);
+          }}
+        />
+      )}
 
       <ErrorNote message={error} />
 
