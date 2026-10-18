@@ -52,8 +52,8 @@ export default function NotificationsCard() {
     <Card title="Notifications">
       <div className="space-y-3">
         <p className="text-xs text-slate-400">
-          A notification on this phone or computer when your order is confirmed, changed or marked as paid - even when the
-          app is closed.
+          A notification on this phone or computer when your order is confirmed, changed or marked as paid, or the shop
+          messages you - even when the app is closed.
         </p>
         <ErrorNote message={error} />
 

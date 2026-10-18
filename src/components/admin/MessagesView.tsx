@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { Archive, ArchiveRestore, ArrowLeft, MessageCircle, PenSquare, Search } from "lucide-react";
 import ChatThread from "../ChatThread";
+import { OwnerMessageNotify } from "../MessageNotifyPrompt";
 import { adminApi, type CustomerSummary } from "../../lib/adminApi";
 import { formatDateTime } from "../../lib/locale";
 import type { Conversation } from "../../../shared/shop";
@@ -70,6 +71,7 @@ export default function MessagesView({
             </button>
           )}
         </div>
+        <OwnerMessageNotify />
         <ErrorNote message={error} />
         {picking && (
           <CustomerPicker

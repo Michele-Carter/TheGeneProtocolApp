@@ -2,6 +2,7 @@ import React, { useCallback, useEffect } from "react";
 import { useAuth } from "@clerk/react";
 import { MessageCircle, X } from "lucide-react";
 import ChatThread from "./ChatThread";
+import { CustomerMessageNotify } from "./MessageNotifyPrompt";
 import { shopApi } from "../lib/shopApi";
 
 // A customer's conversation with their shop, opened from the Messages button anywhere in the app (or from an
@@ -50,6 +51,7 @@ export default function MessagesPanel({
             <X size={18} />
           </button>
         </div>
+        <CustomerMessageNotify shopName={shopName} className="mx-3 mt-3" />
         <div className="min-h-0 flex-1">
           <ChatThread
             me="customer"
