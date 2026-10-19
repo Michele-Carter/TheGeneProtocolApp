@@ -49,11 +49,11 @@ export default function StyledDatePicker({
       setIsOpen(false);
       return;
     }
+    // Open on the chosen date's month, or on this month when nothing is chosen yet.
     const parts = getDateParts(value);
-    if (parts) {
-      setViewYear(parts.year);
-      setViewMonth(parts.month);
-    }
+    const now = new Date();
+    setViewYear(parts?.year ?? now.getFullYear());
+    setViewMonth(parts?.month ?? now.getMonth());
     setIsOpen(true);
   };
 
@@ -139,15 +139,20 @@ export default function StyledDatePicker({
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const dayNum = i + 1;
               const isSelected = parsed?.year === viewYear && parsed?.month === viewMonth && parsed?.day === dayNum;
+              const isToday =
+                today.getFullYear() === viewYear && today.getMonth() === viewMonth && today.getDate() === dayNum;
               return (
                 <button
                   key={`day-${dayNum}`}
                   type="button"
                   onClick={() => handleSelectDay(dayNum)}
+                  aria-current={isToday ? "date" : undefined}
                   className={`py-1 text-center font-mono text-xs rounded transition-all hover:bg-gold-500/20 hover:text-gold-400 cursor-pointer ${
                     isSelected
                       ? "bg-gold-500 text-slate-950 font-bold hover:bg-gold-600 hover:text-slate-950"
-                      : "text-slate-300"
+                      : isToday
+                        ? "ring-1 ring-inset ring-gold-500 text-gold-400 font-bold"
+                        : "text-slate-300"
                   }`}
                 >
                   {dayNum}

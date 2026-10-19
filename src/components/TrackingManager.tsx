@@ -236,20 +236,18 @@ export default function TrackingManager() {
 
   const openWeightDatePicker = () => {
     const dateParts = getDateParts(newWeightDate);
-    if (dateParts) {
-      setWeightPickerYear(dateParts.year);
-      setWeightPickerMonth(dateParts.month);
-    }
+    const now = new Date();
+    setWeightPickerYear(dateParts?.year ?? now.getFullYear());
+    setWeightPickerMonth(dateParts?.month ?? now.getMonth());
     setShowWeightDatePicker(true);
     setShowShotDatePicker(false);
   };
 
   const openShotDatePicker = () => {
     const dateParts = getDateParts(logDate);
-    if (dateParts) {
-      setShotPickerYear(dateParts.year);
-      setShotPickerMonth(dateParts.month);
-    }
+    const now = new Date();
+    setShotPickerYear(dateParts?.year ?? now.getFullYear());
+    setShotPickerMonth(dateParts?.month ?? now.getMonth());
     setShowShotDatePicker(true);
     setShowWeightDatePicker(false);
   };
@@ -313,6 +311,7 @@ export default function TrackingManager() {
     selectedDate: string
   ) => {
     const selected = getDateParts(selectedDate);
+    const today = new Date();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay();
 
@@ -349,14 +348,18 @@ export default function TrackingManager() {
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const dayNum = i + 1;
             const isSelected = selected?.year === year && selected?.month === month && selected?.day === dayNum;
+            const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === dayNum;
             return (
               <button
                 key={`day-${dayNum}`}
                 type="button"
                 onClick={() => onSelectDay(dayNum)}
+                aria-current={isToday ? "date" : undefined}
                 className={`py-1 text-center font-mono text-xs rounded transition-all hover:bg-gold-500/20 hover:text-gold-400 ${isSelected
                   ? "bg-gold-500 text-slate-950 font-bold hover:bg-gold-600 hover:text-slate-950"
-                  : "text-slate-300"
+                  : isToday
+                    ? "ring-1 ring-inset ring-gold-500 text-gold-400 font-bold"
+                    : "text-slate-300"
                   }`}
               >
                 {dayNum}
