@@ -250,44 +250,45 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                   </p>
                 </div>
               </button>
-              {/* The button drops below the price when a price range leaves no room beside it. */}
-              <div className="mt-auto flex flex-wrap items-end justify-between gap-x-1.5 gap-y-2">
-                <div className="space-y-1.5">
-                  <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">{priceRange(product.variants)}</div>
+              {/* Price on its own line, then the stock badge and button share the bottom row,
+                  so the button sits on the bottom edge even when a price range is long. */}
+              <div className="mt-auto space-y-1.5">
+                <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">{priceRange(product.variants)}</div>
+                <div className="flex flex-wrap items-end justify-between gap-x-1.5 gap-y-2">
                   {/* Coming soon is shown as a ribbon on the photo instead. */}
                   {stock !== "soon" && <StockBadge stock={stock} />}
-                </div>
-                <div className="ml-auto flex-shrink-0">
-                  {single && stock === "soon" ? null : single ? (
-                    <button
-                      className={cardPrimary}
-                      onClick={() => quickAdd(product)}
-                      disabled={cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty}
-                      title={
-                        stock === "soon"
-                          ? "Not available to order yet"
-                          : cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty
-                            ? "That's the most you can order at once"
-                            : undefined
-                      }
-                    >
-                      {justAdded === product.id ? (
-                        <>
-                          <Check size={13} /> Added
-                        </>
-                      ) : stock === "preorder" ? (
-                        "Pre-order"
-                      ) : stock === "soon" ? (
-                        "Coming soon"
-                      ) : (
-                        "Add to cart"
-                      )}
-                    </button>
-                  ) : (
-                    <button className={cardPrimary} onClick={() => go({ name: "product", id: product.id })}>
-                      Select options
-                    </button>
-                  )}
+                  <div className="ml-auto flex-shrink-0">
+                    {single && stock === "soon" ? null : single ? (
+                      <button
+                        className={cardPrimary}
+                        onClick={() => quickAdd(product)}
+                        disabled={cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty}
+                        title={
+                          stock === "soon"
+                            ? "Not available to order yet"
+                            : cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty
+                              ? "That's the most you can order at once"
+                              : undefined
+                        }
+                      >
+                        {justAdded === product.id ? (
+                          <>
+                            <Check size={13} /> Added
+                          </>
+                        ) : stock === "preorder" ? (
+                          "Pre-order"
+                        ) : stock === "soon" ? (
+                          "Coming soon"
+                        ) : (
+                          "Add to cart"
+                        )}
+                      </button>
+                    ) : (
+                      <button className={cardPrimary} onClick={() => go({ name: "product", id: product.id })}>
+                        Select options
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
