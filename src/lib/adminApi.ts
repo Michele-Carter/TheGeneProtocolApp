@@ -344,6 +344,13 @@ export const adminApi = {
     ),
   sendMessage: (customerId: string, body: string, t: GetToken) =>
     adminFetch<{ message: ChatMessage }>("messages", { method: "POST", body: JSON.stringify({ customerId, body }) }, t),
+  // The same message to several customers (or "all" who've signed up), each in their own conversation.
+  sendGroupMessage: (to: string[] | "all", body: string, t: GetToken) =>
+    adminFetch<{ sent: number }>(
+      "messages?action=group",
+      { method: "POST", body: JSON.stringify(to === "all" ? { all: true, body } : { customerIds: to, body }) },
+      t
+    ),
   markMessagesRead: (customerId: string, t: GetToken) =>
     adminFetch<{ success: true }>("messages?action=read", { method: "POST", body: JSON.stringify({ customerId }) }, t),
   archiveConversation: (customerId: string, archived: boolean, t: GetToken) =>

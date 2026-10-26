@@ -138,11 +138,22 @@ export function alertOrderCancelled(business: Business, order: { orderNumber: nu
 
 // A customer's own notification (order confirmed, declined, cancelled, paid, a message from the shop...) on their
 // devices. Only ever shows their shop's name and logo. Tapping it opens My Orders (or wherever url points).
-export async function alertCustomer(
+export function alertCustomer(
     business: Business,
     customerId: string,
     message: { title: string; body: string; shopOrderId: string | null; url?: string; tag?: string }
 ): Promise<void> {
+    return alertCustomers(business, [customerId], message);
+}
+
+// The same notification to several customers (e.g. a message to all of them): their devices are looked up together
+// and sent to a batch at a time, so a long customer list doesn't open a connection per customer.
+export async function alertCustomers(
+    business: Business,
+    customerIds: string[],
+    message: { title: string; body: string; shopOrderId: string | null; url?: string; tag?: string }
+): Promise<void> {
+    if (customerIds.length === 0) return;
     const alert: Alert = {
         title: message.title,
         body: message.body,
@@ -152,8 +163,8 @@ export async function alertCustomer(
     };
     try {
         await runAsBusiness(business.id, async (db) => {
-            const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.customerId, customerId));
-            await sendTo(db, subs, alert);
+            const subs = await db.select().from(pushSubscriptions).where(inArray(pushSubscriptions.customerId, customerIds));
+            for (let i = 0; i < subs.length; i += 50) await sendTo(db, subs.slice(i, i + 50), alert);
         });
     } catch (error) {
         console.error(`Customer notification for ${business.id} failed:`, error);

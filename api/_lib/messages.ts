@@ -1,8 +1,8 @@
-import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { afterSave, currentBusiness, type Db } from "./business.js";
-import { alertCustomer, alertNewMessage } from "./orderAlerts.js";
+import { alertCustomer, alertCustomers, alertNewMessage } from "./orderAlerts.js";
 import { customers, messages, shopOrders } from "./schema.js";
-import { MAX_MESSAGE_LENGTH, type ChatMessage, type Conversation } from "../../shared/shop.js";
+import { MAX_GROUP_RECIPIENTS, MAX_MESSAGE_LENGTH, type ChatMessage, type Conversation } from "../../shared/shop.js";
 
 // Messages between a shop and its customers. Everything here runs as one business (api/_lib/business.ts), so it
 // only ever sees that business's customers and messages. One conversation per customer; either side can start it.
@@ -14,6 +14,58 @@ const other = (side: Sender): Sender => (side === "customer" ? "owner" : "custom
 const CUSTOMER_MESSAGES_PER_HOUR = 30;
 
 export class MessageError extends Error {}
+
+// The owner sends the same message to several customers, or to "all" of them. Each gets their own copy in their own
+// conversation - they never see who else got it, and a reply comes back in that customer's own conversation. Only
+// customers with a login can read messages. Chosen customers are capped at MAX_GROUP_RECIPIENTS (so ticking can't
+// flood a list by mistake); "all" is the owner's deliberate choice and isn't. Returns how many it went to.
+export async function sendGroupMessage(db: Db, to: string[] | "all", text: string): Promise<number> {
+    const body = text.trim();
+    if (!body) throw new MessageError("Type a message first.");
+    if (body.length > MAX_MESSAGE_LENGTH) throw new MessageError(`Messages can be up to ${MAX_MESSAGE_LENGTH} characters.`);
+
+    let ids: string[];
+    if (to === "all") {
+        const rows = await db.select({ id: customers.id }).from(customers).where(isNotNull(customers.clerkUserId));
+        ids = rows.map((r) => r.id);
+        if (ids.length === 0) throw new MessageError("None of your customers have signed up in your shop yet.");
+    } else {
+        ids = Array.from(new Set(to));
+        if (ids.length === 0) throw new MessageError("Choose who to send it to.");
+        if (ids.length > MAX_GROUP_RECIPIENTS) {
+            throw new MessageError(`Up to ${MAX_GROUP_RECIPIENTS} chosen customers at a time - use Message all to reach everyone.`);
+        }
+        const found = await db
+            .select({ id: customers.id, clerkUserId: customers.clerkUserId })
+            .from(customers)
+            .where(inArray(customers.id, ids));
+        if (found.length !== ids.length) throw new MessageError("Some of those customers no longer exist - refresh and try again.");
+        if (found.some((c) => !c.clerkUserId)) {
+            throw new MessageError("Only customers who have signed up in your shop can get messages.");
+        }
+    }
+
+    await db
+        .insert(messages)
+        .values(ids.map((customerId) => ({ id: crypto.randomUUID(), customerId, sender: "owner" as const, body })));
+    // A new message brings an archived conversation back to the inbox, as for a single message.
+    await db.update(customers).set({ messagesArchivedAt: null }).where(inArray(customers.id, ids));
+
+    const business = currentBusiness();
+    if (business) {
+        const preview = body.length > 140 ? `${body.slice(0, 137)}...` : body;
+        afterSave(() =>
+            alertCustomers(business, ids, {
+                title: `New message from ${business.name}`,
+                body: preview,
+                shopOrderId: null,
+                url: `/shop/${business.slug}?open=messages`,
+                tag: "messages",
+            })
+        );
+    }
+    return ids.length;
+}
 
 // One customer's conversation, oldest first.
 export async function conversation(db: Db, customerId: string): Promise<ChatMessage[]> {
