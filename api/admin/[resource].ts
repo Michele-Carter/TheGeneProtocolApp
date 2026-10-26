@@ -34,7 +34,16 @@ import { toAddress, type ShippingAddress } from "../../shared/customers.js";
 import { dealText, lineTotal, specialDiscount, toSpecial } from "../../shared/specials.js";
 import { customerPrice } from "../../shared/countries.js";
 import { linkCustomerByEmail } from "../_lib/customers.js";
-import { MessageError, conversation, conversations, markRead, sendMessage, setArchived, unreadCount } from "../_lib/messages.js";
+import {
+    MessageError,
+    conversation,
+    conversations,
+    markRead,
+    sendGroupMessage,
+    sendMessage,
+    setArchived,
+    unreadCount,
+} from "../_lib/messages.js";
 import { availableStock, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import {
     cancelShopOrderForDeletedSale,
@@ -1703,6 +1712,8 @@ async function alertsInfo(db: Db): Promise<OrderAlertsInfo> {
 //   GET  /api/admin/messages                      { conversations, unread }   (?summary=1: just { unread })
 //   GET  /api/admin/messages?customerId=          { customer, messages } - one conversation
 //   POST /api/admin/messages { customerId, body, shopOrderId? }   send
+//   POST /api/admin/messages?action=group { customerIds | all: true, body }   the same message to several (or all)
+//        customers, each privately
 //   POST /api/admin/messages?action=read    { customerId }            mark the customer's messages read
 //   POST /api/admin/messages?action=archive { customerId, archived }  archive / bring back a conversation
 async function handleMessages(req: any, res: any, db: Db) {
@@ -1728,6 +1739,18 @@ async function handleMessages(req: any, res: any, db: Db) {
     const read = await readBody(req, res);
     if (!read.ok) return;
     const body = (read.body ?? {}) as Record<string, unknown>;
+
+    if (req.query?.action === "group") {
+        const ids = Array.isArray(body.customerIds) ? body.customerIds.filter((id): id is string => typeof id === "string") : [];
+        try {
+            const sent = await sendGroupMessage(db, body.all === true ? "all" : ids, typeof body.body === "string" ? body.body : "");
+            return sendJson(res, 201, { sent });
+        } catch (error) {
+            if (error instanceof MessageError) return sendJson(res, 400, { error: error.message });
+            throw error;
+        }
+    }
+
     const customerId = typeof body.customerId === "string" ? body.customerId : "";
     if (!customerId) return sendJson(res, 400, { error: "Which customer?" });
 

@@ -212,6 +212,8 @@ export const MAX_COA_BYTES = 3 * 1024 * 1024;
 // ---- Messages between a shop and its customers (one conversation per customer) ----
 
 export const MAX_MESSAGE_LENGTH = 2000;
+// Most customers one group message can go to at once (so one click can't flood a whole customer list by mistake).
+export const MAX_GROUP_RECIPIENTS = 200;
 
 export interface ChatMessage {
   id: string;

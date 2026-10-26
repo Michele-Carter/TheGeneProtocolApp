@@ -147,6 +147,45 @@ try {
     check("...or see it in its inbox", otherInbox.conversations.length === 0 && otherInbox.unread === 0, otherInbox);
     const otherSend = await call(handleAdminRequest, OTHER_OWNER, OTHER_SLUG, "POST", { resource: "messages" }, { customerId: alice.id, body: "Hi from another shop" });
     check("...or message its customers", otherSend.status === 400, otherSend);
+
+    // One message to several customers: each gets their own private copy.
+    await sql`insert into customers (id, business_id, name, email, shipping_address)
+              values (gen_random_uuid()::text, ${business.id}, 'Carl No-Login', 'carl@example.com', ${sql.json({})})`;
+    const [carl] = await sql`select id from customers where name = 'Carl No-Login' and business_id = ${business.id}`;
+    ok(await owner("POST", { resource: "messages", action: "archive" }, { customerId: bob.id, archived: true }));
+    take();
+    const group = ok(await owner("POST", { resource: "messages", action: "group" }, { customerIds: [alice.id, bob.id, bob.id], body: "  Sale starts Friday!  " }));
+    check("group message goes to each customer once", group.sent === 2, group);
+    const aliceThread = ok(await shop(ALICE, "GET", { resource: "messages" })).messages;
+    const bobThread = ok(await shop(BOB, "GET", { resource: "messages" })).messages;
+    check("...into each one's own conversation", aliceThread.at(-1)?.body === "Sale starts Friday!" && bobThread.at(-1)?.body === "Sale starts Friday!" && bobThread.length === 2, { aliceThread, bobThread });
+    alerts = take();
+    check("...notifying customers with notifications on", alerts.length === 1 && alerts[0].endpoint.endsWith("/alice") && alerts[0].title === "New message from Messages Test", alerts);
+    inbox = ok(await owner("GET", { resource: "messages" }));
+    check("...and brings archived conversations back", inbox.conversations.find((c: any) => c.customerId === bob.id)?.archived === false, inbox);
+    const noLogin = await owner("POST", { resource: "messages", action: "group" }, { customerIds: [alice.id, carl.id], body: "Hi" });
+    check("group refused if someone can't log in to read it", noLogin.status === 400, noLogin);
+    check("group refused with nobody chosen", (await owner("POST", { resource: "messages", action: "group" }, { customerIds: [], body: "Hi" })).status === 400);
+    check("group refused when empty", (await owner("POST", { resource: "messages", action: "group" }, { customerIds: [alice.id], body: "  " })).status === 400);
+    check("group refused over 200 customers",
+        (await owner("POST", { resource: "messages", action: "group" }, { customerIds: Array.from({ length: 201 }, (_, i) => `c${i}`), body: "Hi" })).status === 400);
+    const otherGroup = await call(handleAdminRequest, OTHER_OWNER, OTHER_SLUG, "POST", { resource: "messages", action: "group" }, { customerIds: [alice.id], body: "Hi" });
+    check("another business can't group-message these customers", otherGroup.status === 400, otherGroup);
+    check("nothing was sent by the refused group messages", ok(await shop(ALICE, "GET", { resource: "messages" })).messages.length === aliceThread.length);
+
+    // Message all: everyone who's signed up (Alice and Bob, not Carl), and only this shop's customers.
+    take();
+    const everyone = ok(await owner("POST", { resource: "messages", action: "group" }, { all: true, body: "Closed Monday for the holiday." }));
+    check("message all goes to every customer with a login", everyone.sent === 2, everyone);
+    check("  ...each in their own conversation",
+        ok(await shop(ALICE, "GET", { resource: "messages" })).messages.at(-1)?.body === "Closed Monday for the holiday." &&
+        ok(await shop(BOB, "GET", { resource: "messages" })).messages.at(-1)?.body === "Closed Monday for the holiday.");
+    const carlMessages = await sql`select count(*)::int as n from messages where customer_id = ${carl.id}`;
+    check("  ...but not to customers without a login", carlMessages[0].n === 0, carlMessages);
+    alerts = take();
+    check("  ...notifying customers with notifications on", alerts.length === 1 && alerts[0].endpoint.endsWith("/alice"), alerts);
+    const otherAll = await call(handleAdminRequest, OTHER_OWNER, OTHER_SLUG, "POST", { resource: "messages", action: "group" }, { all: true, body: "Hi" });
+    check("another business's message all never reaches these customers", otherAll.status === 400 && ok(await shop(ALICE, "GET", { resource: "messages" })).messages.at(-1)?.body === "Closed Monday for the holiday.", otherAll);
 } finally {
     await removeEverything();
     await sql.end();
