@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { ShopOrderLine } from "../../shared/shop.js";
+import type { Special } from "../../shared/specials.js";
 
 // ---- Businesses (scripts/multi-business.sql) ----
 
@@ -111,6 +112,8 @@ export const invItems = pgTable("inv_items", {
   shopVisible: boolean("shop_visible").notNull().default(false),
   // Shown in the shop as "Coming soon" and can't be ordered while it has no stock (scripts/coming-soon.sql).
   comingSoon: boolean("coming_soon").notNull().default(false),
+  // A deal on this size: % off or buy X get Y free, with its ribbon (shared/specials.ts, scripts/specials.sql).
+  special: jsonb("special").$type<Special | null>(),
   shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
   shopDescription: text("shop_description").notNull().default(""),
   shopSection: text("shop_section"), // "peptides" | "supplies"; null = by kind (shared/shop.ts itemSection)
@@ -311,6 +314,8 @@ export const bundles = pgTable("bundles", {
   shopVisible: boolean("shop_visible").notNull().default(false),
   shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
   images: jsonb("images").$type<string[]>().notNull().default([]),
+  // A deal on the bundle, for every option of it (shared/specials.ts, scripts/specials.sql).
+  special: jsonb("special").$type<Special | null>(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

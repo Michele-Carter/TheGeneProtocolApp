@@ -10,6 +10,7 @@ import { appSettings, customers, notifications, pushSubscriptions, sales, shopOr
 import { loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import { isAddressComplete, toAddress } from "../../shared/customers.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
+import { lineTotal } from "../../shared/specials.js";
 import {
     MAX_MESSAGE_LENGTH,
     PAYMENT_DETAILS_KEY,
@@ -264,6 +265,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
                         variant: variant.variant,
                         qty,
                         unitPriceNzd: variant.priceNzd,
+                        ...(variant.special ? { special: variant.special } : {}),
                         ...(variant.components ? { components: variant.components } : {}),
                     });
                 }
@@ -277,7 +279,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
                     }
                 }
 
-                const subtotal = Math.round(lines.reduce((t, l) => t + l.qty * l.unitPriceNzd, 0) * 100) / 100;
+                const subtotal = Math.round(lines.reduce((t, l) => t + lineTotal(l), 0) * 100) / 100;
                 const [created] = await tx
                     .insert(shopOrders)
                     .values({

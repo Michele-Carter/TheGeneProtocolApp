@@ -9,7 +9,8 @@ import type { Cart } from "../../hooks/useCart";
 import AddressFields from "../AddressFields";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
-import { PREORDER_NOTE, ProductImage, QtyStepper, shopPrimary, shopSecondary, variantName } from "./parts";
+import { specialDiscount, specialNudge } from "../../../shared/specials";
+import { PREORDER_NOTE, ProductImage, QtyStepper, SpecialTag, shopPrimary, shopSecondary, variantName } from "./parts";
 import { homeCountry } from "../../lib/locale";
 
 interface LineView {
@@ -65,7 +66,9 @@ export default function CartPage({
     [cart.lines, products]
   );
 
-  const subtotal = lines.reduce((t, l) => t + (l.variant ? l.variant.priceNzd * l.qty : 0), 0);
+  const fullPrice = lines.reduce((t, l) => t + (l.variant ? l.variant.priceNzd * l.qty : 0), 0);
+  const savings = lines.reduce((t, l) => t + (l.variant ? specialDiscount(l.qty, l.variant.priceNzd, l.variant.special) : 0), 0);
+  const subtotal = fullPrice - savings;
   const problems = lines.filter((l) => !l.variant || l.qty > l.variant.maxQty);
   const addressReady = me != null && !editingAddress && isAddressComplete(me.shippingAddress);
 
@@ -129,7 +132,11 @@ export default function CartPage({
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-6 items-start">
         <section className="bg-slate-900/40 border border-slate-800 rounded-2xl divide-y divide-slate-800/80">
-          {lines.map((line) => (
+          {lines.map((line) => {
+            const special = line.variant?.special ?? null;
+            const saving = line.variant ? specialDiscount(line.qty, line.variant.priceNzd, special) : 0;
+            const nudge = line.variant && line.qty < line.variant.maxQty ? specialNudge(line.qty, special) : null;
+            return (
             <div key={line.key} className="p-4 flex gap-4">
               <ProductImage
                 src={line.variant?.images[0] ?? line.product?.images[0]}
@@ -143,9 +150,16 @@ export default function CartPage({
                       {line.product && line.variant ? variantName(line.product, line.variant) : "Unavailable item"}
                     </div>
                     {line.variant && <div className="text-xs text-slate-500 tabular-nums">{money(line.variant.priceNzd)} each</div>}
+                    {special && <SpecialTag special={special} className="mt-1" />}
                   </div>
-                  <div className="text-sm font-black text-white tabular-nums">
-                    {line.variant ? money(line.variant.priceNzd * line.qty) : "—"}
+                  <div className="text-right tabular-nums">
+                    {saving > 0 && line.variant && (
+                      <div className="text-xs text-slate-500 line-through">{money(line.variant.priceNzd * line.qty)}</div>
+                    )}
+                    <div className="text-sm font-black text-white">
+                      {line.variant ? money(line.variant.priceNzd * line.qty - saving) : "—"}
+                    </div>
+                    {saving > 0 && <div className="text-[11px] font-bold text-gold-400">You save {money(saving)}</div>}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -177,15 +191,29 @@ export default function CartPage({
                       : `At most ${line.variant.maxQty} per order - please reduce the quantity.`}
                   </p>
                 )}
+                {nudge && <p className="text-xs font-bold text-gold-400">{nudge}</p>}
                 {line.variant?.stock === "preorder" && <p className="text-xs text-sky-300">{PREORDER_NOTE}</p>}
               </div>
             </div>
-          ))}
+            );
+          })}
         </section>
 
         <div className="space-y-4">
           <section className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-3">
             <h3 className="text-[11px] font-black uppercase tracking-widest text-gold-400">Order summary</h3>
+            {savings > 0 && (
+              <>
+                <div className="flex justify-between text-sm text-slate-300">
+                  <span>Items</span>
+                  <span className="tabular-nums">{money(fullPrice)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gold-400 font-bold">
+                  <span>Specials</span>
+                  <span className="tabular-nums">-{money(savings)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between text-sm text-slate-300">
               <span>Subtotal</span>
               <span className="font-bold text-white tabular-nums">{money(subtotal)}</span>

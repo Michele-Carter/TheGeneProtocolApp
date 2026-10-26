@@ -5,7 +5,8 @@ import type { ShopOrder } from "../../../shared/shop";
 import { money, shopApi } from "../../lib/shopApi";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
-import { shopPrimary, shopSecondary } from "./parts";
+import { lineTotal } from "../../../shared/specials";
+import { LineSaving, shopPrimary, shopSecondary } from "./parts";
 import { formatDate, homeCountry } from "../../lib/locale";
 
 type Tone = "good" | "warn" | "muted" | "bad";
@@ -141,8 +142,9 @@ export default function MyOrders({
                         Pre-order
                       </span>
                     )}
+                    <LineSaving line={line} />
                   </span>
-                  <span className="text-slate-200 tabular-nums">{money(line.qty * line.unitPriceNzd)}</span>
+                  <span className="text-slate-200 tabular-nums">{money(lineTotal(line))}</span>
                 </div>
               ))}
             </div>

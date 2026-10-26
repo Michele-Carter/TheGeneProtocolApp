@@ -7,9 +7,12 @@ import { Card, ErrorNote, Field, NumberField, dangerButton, inputClass, primaryB
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import CategoryPicker from "./CategoryPicker";
 import ProductImages from "./ProductImages";
+import SpecialEditor, { fromDraft, toDraft, type SpecialDraft } from "./SpecialEditor";
+import { dealText } from "../../../shared/specials";
 import { homeCurrency } from "../../lib/locale";
 
-type Editing = { id: string | null; data: BundleInput; images: string[] } | null;
+// specialDraft: the special as it's being typed; it becomes data.special when saved.
+type Editing = { id: string | null; data: BundleInput; images: string[]; specialDraft: SpecialDraft } | null;
 
 export default function BundlesView({ inventory }: { inventory: InventorySummaryRow[] }) {
   const { getToken } = useAuth();
@@ -54,7 +57,7 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
     setError(null);
     setDraftItemId("");
     setDraftQty(1);
-    setEditing({ id: null, data: emptyBundle(), images: [] });
+    setEditing({ id: null, data: emptyBundle(), images: [], specialDraft: toDraft(null) });
   };
 
   const startEdit = (row: BundleRecord) => {
@@ -70,8 +73,10 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
         priceNzd: row.priceNzd,
         shopVisible: row.shopVisible,
         shopCategories: row.shopCategories,
+        special: row.special ?? null,
       },
       images: row.images,
+      specialDraft: toDraft(row.special ?? null),
     });
   };
 
@@ -123,14 +128,17 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
     if (editing.data.shopVisible && editing.data.priceNzd == null) {
       return setError("Set a package price before showing this bundle in the shop.");
     }
+    const special = fromDraft(editing.specialDraft);
+    if (special.error != null) return setError(`Special: ${special.error}`);
+    const data = { ...editing.data, special: special.special };
     run("save", async () => {
       if (editing.id) {
-        await adminApi.updateBundle(editing.id, editing.data, getToken);
+        await adminApi.updateBundle(editing.id, data, getToken);
         setEditing(null);
       } else {
         // Stay on a new bundle once it's saved so images can be added straight away.
-        const created = await adminApi.createBundle(editing.data, getToken);
-        setEditing({ id: created.id, data: editing.data, images: created.images });
+        const created = await adminApi.createBundle(data, getToken);
+        setEditing({ id: created.id, data, images: created.images, specialDraft: editing.specialDraft });
       }
       await load();
     });
@@ -201,6 +209,17 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
                 known={knownCategories}
                 onChange={(shopCategories) => setEditing((ed) => (ed ? { ...ed, data: { ...ed.data, shopCategories } } : ed))}
               />
+            </div>
+            <div className="border-t border-slate-800 pt-3">
+              <SpecialEditor
+                draft={editing.specialDraft}
+                onChange={(specialDraft) => setEditing((ed) => (ed ? { ...ed, specialDraft } : ed))}
+                image={editing.images[0]}
+                unit="bundle"
+              />
+              <p className="text-[11px] text-slate-500 mt-2">
+                The special applies to the bundle as a whole, on top of its package price, whichever option is chosen.
+              </p>
             </div>
           </div>
           <div className="space-y-1">
@@ -357,6 +376,7 @@ export default function BundlesView({ inventory }: { inventory: InventorySummary
                   <span className="text-sm font-bold text-white truncate">{row.name}</span>
                   {row.priceNzd != null && <span className="text-xs tabular-nums text-gold-400 font-semibold">{cash(row.priceNzd)}</span>}
                   {row.shopVisible && <span className="text-[10px] font-bold text-emerald-400">In shop</span>}
+                  {row.special && <span className="text-[10px] font-bold text-gold-400">{dealText(row.special)}</span>}
                 </div>
                 <div className="text-[11px] text-slate-500 truncate">
                   {row.components

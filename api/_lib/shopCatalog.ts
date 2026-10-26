@@ -3,6 +3,7 @@ import type { Db } from "./business.js";
 import { bundles, invItems, inventoryLots, sales, shopOrders } from "./schema.js";
 import type { SaleInput } from "../../shared/sales.js";
 import type { BundleComponent } from "../../shared/bundles.js";
+import { toSpecial, type Special } from "../../shared/specials.js";
 import {
   compareSizes,
   itemSection,
@@ -61,6 +62,7 @@ export interface OrderableVariant {
   name: string;
   variant: string;
   priceNzd: number;
+  special?: Special;
   components?: { itemId: string; qty: number }[];
 }
 
@@ -102,8 +104,16 @@ export async function loadCatalog(db: Db | Tx) {
         const units = avail(item.id);
         // Coming soon: shown, but can't be ordered until its stock arrives (then it's a normal product).
         const soon = item.comingSoon && units <= 0;
+        const special = toSpecial(item.special);
         if (!soon) {
-          orderable.set(key, { kind: "item", refId: item.id, name: item.name, variant: item.variant, priceNzd: item.sellPriceNzd! });
+          orderable.set(key, {
+            kind: "item",
+            refId: item.id,
+            name: item.name,
+            variant: item.variant,
+            priceNzd: item.sellPriceNzd!,
+            ...(special ? { special } : {}),
+          });
         }
         return {
           key,
@@ -114,6 +124,7 @@ export async function loadCatalog(db: Db | Tx) {
           maxQty: soon ? 0 : MAX_PER_LINE,
           images: item.images,
           coaUrl: item.coaUrl,
+          special,
         };
       }),
     });
@@ -147,6 +158,8 @@ export async function loadCatalog(db: Db | Tx) {
           }))
         : [{ key: `bundle:${bundle.id}`, label: "", parts: components.map((c) => ({ itemId: c.itemId, qty: c.qty })) }];
 
+    // One special for the whole bundle, whichever option is chosen.
+    const special = toSpecial(bundle.special);
     for (const option of options) {
       orderable.set(option.key, {
         kind: "bundle",
@@ -154,6 +167,7 @@ export async function loadCatalog(db: Db | Tx) {
         name: bundle.name,
         variant: option.label,
         priceNzd: bundle.priceNzd!,
+        ...(special ? { special } : {}),
         components: option.parts,
       });
     }
@@ -180,6 +194,7 @@ export async function loadCatalog(db: Db | Tx) {
           maxQty: MAX_PER_LINE,
           images: [],
           coaUrl: null,
+          special,
         };
       }),
     });

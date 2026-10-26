@@ -3,6 +3,7 @@ import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sal
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
+import type { Special } from "../../shared/specials";
 import type { ChatMessage, Conversation, ItemShopSection, OrderAlertsInfo, PaymentDetails, SetupStatus, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 import type { PushSubscriptionData } from "./orderAlerts";
 import type { SupplierProduct } from "../../shared/library";
@@ -138,6 +139,7 @@ export interface InvItem {
   sellPriceNzd: number | null;
   shopVisible: boolean;
   comingSoon: boolean; // shown as "Coming soon", not orderable until it has stock
+  special: Special | null; // a deal on this size, shown as a ribbon in the shop (shared/specials.ts)
   shopCategories: string[];
   shopDescription: string;
   shopSection: ItemShopSection | null; // shop tab; null = by kind (itemSection)
@@ -158,6 +160,7 @@ export type ItemPatch = Partial<
     | "sellPriceNzd"
     | "shopVisible"
     | "comingSoon"
+    | "special"
     | "shopCategories"
     | "shopDescription"
     | "shopSection"
