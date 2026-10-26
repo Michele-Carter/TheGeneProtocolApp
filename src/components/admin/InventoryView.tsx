@@ -20,6 +20,8 @@ import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import BundlesView from "./BundlesView";
 import AddStockPanel from "./AddStockPanel";
 import CoaSection from "./CoaSection";
+import SpecialEditor, { fromDraft, toDraft, type SpecialDraft } from "./SpecialEditor";
+import { dealText } from "../../../shared/specials";
 import { businessDay, formatDate, homeCurrency } from "../../lib/locale";
 
 type KindFilter = "all" | "peptide" | "supply";
@@ -254,6 +256,7 @@ export default function InventoryView() {
                         In shop · {itemSection(row.item) === "supplies" ? "Supplies" : "Peptides"}
                       </div>
                     )}
+                    {row.item.special && <div className="text-[10px] font-bold text-gold-400">{dealText(row.item.special)}</div>}
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-gold-400 font-bold">{cash(row.nextCostNzd)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{cash(row.averageCostNzd)}</td>
@@ -295,6 +298,7 @@ function ShopCard({
   const [price, setPrice] = useState<number | null>(item.sellPriceNzd);
   const [visible, setVisible] = useState(item.shopVisible);
   const [comingSoon, setComingSoon] = useState(item.comingSoon);
+  const [specialDraft, setSpecialDraft] = useState<SpecialDraft>(() => toDraft(item.special));
   const [categories, setCategories] = useState(item.shopCategories);
   const [description, setDescription] = useState(item.shopDescription);
   const [section, setSection] = useState<ItemShopSection>(itemSection(item));
@@ -311,10 +315,14 @@ function ShopCard({
 
   const knownCategories = useMemo(() => inventory.flatMap((row) => row.item.shopCategories), [inventory]);
 
+  const special = fromDraft(specialDraft);
   const dirty =
     price !== item.sellPriceNzd ||
     visible !== item.shopVisible ||
     comingSoon !== item.comingSoon ||
+    special.error != null ||
+    // Both through the same steps, so they compare in the same key order (the database reorders saved JSON).
+    JSON.stringify(special.special ?? null) !== JSON.stringify(fromDraft(toDraft(item.special)).special ?? null) ||
     categories.join("\n") !== item.shopCategories.join("\n") ||
     description !== item.shopDescription ||
     section !== itemSection(item);
@@ -322,6 +330,10 @@ function ShopCard({
   const save = async () => {
     if (visible && price == null) {
       setError("Set a sell price before showing this in the shop.");
+      return;
+    }
+    if (special.error != null) {
+      setError(`Special: ${special.error}`);
       return;
     }
     setBusy(true);
@@ -333,6 +345,7 @@ function ShopCard({
           sellPriceNzd: price,
           shopVisible: visible,
           comingSoon,
+          special: special.special,
           shopCategories: categories,
           shopDescription: description,
           shopSection: section,
@@ -373,6 +386,9 @@ function ShopCard({
               </span>
             </span>
           </label>
+          <div className="border-y border-slate-800 py-3">
+            <SpecialEditor draft={specialDraft} onChange={setSpecialDraft} image={images[0]} unit={item.unit} />
+          </div>
           <div className="space-y-1">
             <span className="block text-[11px] font-bold text-white">Shows under</span>
             <div className="flex gap-2">

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ArrowLeft, Check, ShoppingCart } from "lucide-react";
 import type { ShopProduct } from "../../../shared/shop";
-import { money } from "../../lib/shopApi";
+import { specialNudge } from "../../../shared/specials";
 import type { Cart } from "../../hooks/useCart";
 import {
   CoaButton,
@@ -9,9 +9,14 @@ import {
   SOON_NOTE,
   ProductImage,
   QtyStepper,
+  SpecialPrice,
+  SpecialTag,
   StockBadge,
   priceRange,
   productCoas,
+  productRibbon,
+  productSpecial,
+  sameSpecialForAll,
   productStock,
   shopPrimary,
   shopSecondary,
@@ -50,6 +55,8 @@ export default function ProductPage({
 
   const inCart = variant ? cart.qtyOf(variant.key) : 0;
   const canAdd = variant ? Math.max(0, variant.maxQty - inCart) : 0;
+  // Counting what's already in the cart, e.g. "Add 1 more - it's free".
+  const nudge = variant && canAdd > 0 ? specialNudge(inCart + qty, variant.special) : null;
 
   const add = () => {
     if (!variant || qty < 1 || qty > canAdd) return;
@@ -74,7 +81,11 @@ export default function ProductPage({
               src={gallery[imageIndex] ?? gallery[0]}
               alt={product.name}
               className="aspect-square border border-slate-800"
-              ribbon={(variant ? variant.stock : productStock(product)) === "soon" ? "Coming soon" : undefined}
+              ribbon={
+                variant
+                  ? productRibbon(variant.stock, variant.special)
+                  : productRibbon(productStock(product), productSpecial(product)?.special)
+              }
             />
             {coaUrl && <CoaButton url={coaUrl} className="top-3 left-3" />}
           </div>
@@ -102,8 +113,25 @@ export default function ProductPage({
           )}
           <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight leading-tight">{product.name}</h1>
           <div className="text-2xl font-black text-white tabular-nums">
-            {variant ? money(variant.priceNzd) : priceRange(product.variants)}
+            {variant ? <SpecialPrice priceNzd={variant.priceNzd} special={variant.special} /> : priceRange(product.variants)}
           </div>
+          {/* The chosen size's special, or before a size is chosen, every size's. */}
+          {variant ? (
+            variant.special && <SpecialTag special={variant.special} className="text-sm" />
+          ) : (
+            product.variants.some((v) => v.special) &&
+            (sameSpecialForAll(product) ? (
+              <SpecialTag special={product.variants[0].special!} className="text-sm" />
+            ) : (
+              <div className="space-y-1">
+                {product.variants
+                  .filter((v) => v.special)
+                  .map((v) => (
+                    <SpecialTag key={v.key} special={v.special!} size={v.label} className="text-sm" />
+                  ))}
+              </div>
+            ))
+          )}
 
           {product.description && (
             <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">{product.description}</p>
@@ -136,6 +164,7 @@ export default function ProductPage({
                     <option key={v.key} value={v.key}>
                       {v.label}
                       {v.stock === "preorder" ? " - pre-order" : ""}
+                      {v.special && v.stock !== "soon" && !sameSpecialForAll(product) ? " - on special" : ""}
                     </option>
                   ))}
                 </select>
@@ -158,6 +187,7 @@ export default function ProductPage({
                 {variant?.stock === "preorder" ? "Pre-order" : variant?.stock === "soon" ? "Coming soon" : "Add to cart"}
               </button>
             </div>
+            {nudge && <p className="text-xs font-bold text-gold-400">{nudge}</p>}
             {variant && variant.stock === "preorder" && <p className="text-xs text-sky-300">{PREORDER_NOTE}</p>}
             {variant && variant.stock === "soon" && <p className="text-xs text-violet-300">{SOON_NOTE}</p>}
 

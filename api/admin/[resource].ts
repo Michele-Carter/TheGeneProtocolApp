@@ -31,6 +31,8 @@ import {
     type ShopOrderLine,
 } from "../../shared/shop.js";
 import { toAddress, type ShippingAddress } from "../../shared/customers.js";
+import { dealText, lineTotal, specialDiscount, toSpecial } from "../../shared/specials.js";
+import { customerPrice } from "../../shared/countries.js";
 import { linkCustomerByEmail } from "../_lib/customers.js";
 import { MessageError, conversation, conversations, markRead, sendMessage, setArchived, unreadCount } from "../_lib/messages.js";
 import { availableStock, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
@@ -143,6 +145,20 @@ const itemCreateSchema = z.object({
     unit: z.string().default("unit"),
 });
 
+// A deal on an item size or a bundle (shared/specials.ts); null removes it, left out leaves it as it is.
+const specialField = z
+    .unknown()
+    .transform((value, ctx) => {
+        if (value === null) return null;
+        const special = toSpecial(value);
+        if (!special) {
+            ctx.addIssue({ code: "custom", message: "Check the special's numbers" });
+            return z.NEVER;
+        }
+        return special;
+    })
+    .optional();
+
 const itemPatchSchema = z.object({
     name: z.string().trim().min(1, "Enter a name").max(120).optional(),
     variant: z.string().trim().max(60).optional(),
@@ -152,6 +168,7 @@ const itemPatchSchema = z.object({
     sellPriceNzd: money.min(0).nullable().optional(),
     shopVisible: z.boolean().optional(),
     comingSoon: z.boolean().optional(),
+    special: specialField,
     shopCategories: z.array(z.string()).transform(normalizeCategories).optional(),
     shopDescription: z.string().optional(),
     shopSection: z.enum(["peptides", "supplies"]).nullable().optional(),
@@ -257,6 +274,7 @@ const bundleSchema = z.object({
     priceNzd: money.min(0).nullable(),
     shopVisible: z.boolean().default(false),
     shopCategories: z.array(z.string()).default([]).transform(normalizeCategories),
+    special: specialField,
 });
 
 class NotFoundError extends Error {}
@@ -1505,14 +1523,28 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             const [customer] = await tx.select().from(customers).where(eq(customers.id, order.customerId));
             if (!customer) throw new NotFoundError("This order's customer no longer exists.");
 
+            // Specials come off as the order's discount, so lines keep their full price and the sale shows the saving.
+            const specials = lines
+                .map((l) => ({ line: l, off: specialDiscount(l.qty, l.unitPriceNzd, l.special) }))
+                .filter((s) => s.off > 0);
+            const specialNotes = specials.map(
+                ({ line, off }) =>
+                    `${[line.name, line.variant].filter(Boolean).join(" ")}: ${dealText(line.special!)} (-${customerPrice(off, currentBusiness()!)})`
+            );
             const data: SaleInput = {
                 ...emptySale(businessDateString(new Date())),
                 customerName: customer.name,
                 customerContact: customer.email,
                 orderNumber: `Shop #${order.orderNumber}`,
                 lines: await saleLinesFor(tx, lines),
+                discountNzd: Math.round(specials.reduce((t, s) => t + s.off, 0) * 100) / 100,
                 shippingChargedNzd: parsed.data.shippingNzd,
-                notes: order.notes ? `Customer note: ${order.notes}` : "",
+                notes: [
+                    order.notes ? `Customer note: ${order.notes}` : "",
+                    specialNotes.length ? `Specials: ${specialNotes.join("; ")}` : "",
+                ]
+                    .filter(Boolean)
+                    .join("\n"),
             };
             const saleId = crypto.randomUUID();
             await tx.insert(sales).values({
@@ -1524,7 +1556,7 @@ async function handleShopOrders(req: any, res: any, db: Db) {
                 data,
             });
 
-            const subtotal = Math.round(lines.reduce((t, l) => t + l.qty * l.unitPriceNzd, 0) * 100) / 100;
+            const subtotal = Math.round(lines.reduce((t, l) => t + lineTotal(l), 0) * 100) / 100;
             await tx
                 .update(shopOrders)
                 .set({

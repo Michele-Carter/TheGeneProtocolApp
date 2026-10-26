@@ -1,7 +1,9 @@
 import React from "react";
-import { CheckCircle2, Minus, Package, Plus } from "lucide-react";
-import type { ShopProduct, ShopVariant, StockLevel } from "../../../shared/shop";
+import { CheckCircle2, Minus, Package, Plus, Tag } from "lucide-react";
+import type { ShopOrderLine, ShopProduct, ShopVariant, StockLevel } from "../../../shared/shop";
+import { dealText, ribbonText, salePrice, specialDiscount, type Special } from "../../../shared/specials";
 import { money } from "../../lib/shopApi";
+import { inkOn, isHexColour } from "../../lib/brandColour";
 
 export const shopButton =
   "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black border transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
@@ -63,8 +65,22 @@ export function CoaButton({ url, onClick, className = "top-2 left-2" }: { url?: 
 export const productCoas = (product: ShopProduct) =>
   Array.from(new Set(product.variants.map((v) => v.coaUrl).filter((u): u is string => Boolean(u))));
 
+// A banner across a product photo's corner: "Coming soon", or a special in the owner's colour ("" = brand colour).
+export interface Ribbon {
+  text: string;
+  colour?: string; // left out: Coming soon's violet
+}
+
+export const SOON_RIBBON: Ribbon = { text: "Coming soon" };
+export const specialRibbon = (special: Special): Ribbon => ({ text: ribbonText(special), colour: special.ribbonColour });
+
+// The ribbon for a product photo: Coming soon wins, as it can't be ordered yet; otherwise the special, if any.
+export function productRibbon(stock: StockLevel, special: Special | null | undefined): Ribbon | undefined {
+  if (stock === "soon") return SOON_RIBBON;
+  return special ? specialRibbon(special) : undefined;
+}
+
 // Product photos have white backgrounds, so they sit on a white panel.
-// ribbon: a banner across the photo's top-right corner, e.g. "Coming soon".
 export function ProductImage({
   src,
   alt,
@@ -74,7 +90,7 @@ export function ProductImage({
   src: string | undefined;
   alt: string;
   className?: string;
-  ribbon?: string;
+  ribbon?: Ribbon;
 }) {
   return (
     <div className={`theme-keep-bg relative bg-white rounded-xl overflow-hidden flex items-center justify-center ${className}`}>
@@ -83,12 +99,61 @@ export function ProductImage({
       ) : (
         <Package size={32} className="text-slate-300" aria-hidden />
       )}
-      {ribbon && (
-        <div className="pointer-events-none absolute top-[45px] -right-[44px] w-[200px] rotate-45 bg-violet-600 py-1 text-center text-[10px] font-black uppercase tracking-widest text-white shadow-md">
-          {ribbon}
-        </div>
-      )}
+      {ribbon && <RibbonBanner ribbon={ribbon} />}
     </div>
+  );
+}
+
+export function RibbonBanner({ ribbon }: { ribbon: Ribbon }) {
+  const custom = ribbon.colour && isHexColour(ribbon.colour) ? ribbon.colour : null;
+  // bg-gold-500 is the business's brand colour, with its own readable text colour (src/index.css).
+  const colours = ribbon.colour == null ? "bg-violet-600 text-white" : custom ? "" : "bg-gold-500";
+  // The strip is a fixed width and only about 130px of it shows across the corner: longer wording (up to
+  // RIBBON_MAX) gets smaller, tighter text so it isn't cut off at the photo's edges.
+  const size = ribbon.text.length > 14 ? "text-[9px] tracking-wider py-[5px]" : "text-[10px] tracking-widest py-1";
+  return (
+    <div
+      className={`pointer-events-none absolute top-[45px] -right-[44px] w-[200px] rotate-45 text-center font-black uppercase whitespace-nowrap shadow-md ${size} ${colours}`}
+      style={custom ? { backgroundColor: custom, color: inkOn(custom) } : undefined}
+    >
+      {ribbon.text}
+    </div>
+  );
+}
+
+// A special's deal, e.g. "Buy 2, get 1 free", as a small tag - with the size it's on, when a product has several.
+export function SpecialTag({ special, size, className = "" }: { special: Special; size?: string; className?: string }) {
+  return (
+    <span className={`flex items-start gap-1 text-[11px] leading-4 font-black text-gold-400 ${className}`}>
+      <Tag size={11} className="mt-0.5 flex-shrink-0" aria-hidden />
+      <span>
+        {size ? `${size}: ` : ""}
+        {dealText(special)}
+      </span>
+    </span>
+  );
+}
+
+// Under a sent order's line: the special it got and what it saved (nothing if it didn't qualify).
+export function LineSaving({ line }: { line: ShopOrderLine }) {
+  const saved = specialDiscount(line.qty, line.unitPriceNzd, line.special);
+  if (!line.special || saved <= 0) return null;
+  return (
+    <div className="text-[11px] font-bold text-gold-400">
+      {dealText(line.special)} - you saved {money(saved)}
+    </div>
+  );
+}
+
+// A price with a special's immediate saving: the full price struck through beside the sale price.
+export function SpecialPrice({ priceNzd, special }: { priceNzd: number; special: Special | null | undefined }) {
+  const now = salePrice(priceNzd, special);
+  if (now === priceNzd) return <>{money(priceNzd)}</>;
+  return (
+    <>
+      <span className="text-slate-500 line-through font-semibold mr-1.5">{money(priceNzd)}</span>
+      {money(now)}
+    </>
   );
 }
 
@@ -120,8 +185,9 @@ export function QtyStepper({
   );
 }
 
+// Lowest to highest, after any straight percentage off.
 export function priceRange(variants: ShopVariant[]): string {
-  const prices = variants.map((v) => v.priceNzd);
+  const prices = variants.map((v) => salePrice(v.priceNzd, v.special));
   const low = Math.min(...prices);
   const high = Math.max(...prices);
   return low === high ? money(low) : `${money(low)} – ${money(high)}`;
@@ -135,6 +201,14 @@ export function productStock(product: ShopProduct): StockLevel {
   if (levels.includes("preorder")) return "preorder";
   return "soon";
 }
+
+// The special to show on a product's card and photo: the first size that can be ordered with one.
+export const productSpecial = (product: ShopProduct): ShopVariant | undefined =>
+  product.variants.find((v) => v.special && v.stock !== "soon");
+
+// Every size or option has the same special (always so for a bundle), so it's shown once, without naming a size.
+export const sameSpecialForAll = (product: ShopProduct) =>
+  product.variants.every((v) => JSON.stringify(v.special) === JSON.stringify(product.variants[0].special));
 
 export const variantName = (product: ShopProduct, variant: ShopVariant) =>
   [product.name, variant.label].filter(Boolean).join(" ");

@@ -2,7 +2,8 @@ import React from "react";
 import { CheckCircle2 } from "lucide-react";
 import type { ShopOrder } from "../../../shared/shop";
 import { money } from "../../lib/shopApi";
-import { shopPrimary, shopSecondary } from "./parts";
+import { lineTotal } from "../../../shared/specials";
+import { LineSaving, shopPrimary, shopSecondary } from "./parts";
 
 export default function OrderSent({ order, onBack, onViewOrders }: { order: ShopOrder; onBack: () => void; onViewOrders: () => void }) {
   return (
@@ -21,8 +22,9 @@ export default function OrderSent({ order, onBack, onViewOrders }: { order: Shop
           <div key={line.key} className="flex justify-between gap-3 text-sm">
             <span className="text-slate-300">
               <span className="text-slate-500 tabular-nums">{line.qty}×</span> {[line.name, line.variant].filter(Boolean).join(" ")}
+              <LineSaving line={line} />
             </span>
-            <span className="text-white font-semibold tabular-nums">{money(line.qty * line.unitPriceNzd)}</span>
+            <span className="text-white font-semibold tabular-nums">{money(lineTotal(line))}</span>
           </div>
         ))}
         <div className="flex justify-between gap-3 text-sm border-t border-slate-800 pt-2">

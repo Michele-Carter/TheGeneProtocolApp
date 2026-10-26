@@ -1,3 +1,5 @@
+import type { Special } from "./specials.js";
+
 // Reusable "kit" definitions (e.g. a pen starter bundle = 1 pen + 4 cartridges + 4 needle tips).
 // A bundle holds no stock of its own — adding one to a sale expands it into one SaleLine per
 // component, pulled from that item's own FIFO batches like any other sale.
@@ -20,8 +22,9 @@ export interface BundleInput {
   // Customer shop. Images are uploaded separately (they need the bundle saved first).
   shopVisible: boolean;
   shopCategories: string[];
+  special: Special | null; // a deal on the bundle, e.g. 2 for 1 (shared/specials.ts)
 }
 
 export function emptyBundle(): BundleInput {
-  return { name: "", description: "", components: [], priceNzd: null, shopVisible: false, shopCategories: [] };
+  return { name: "", description: "", components: [], priceNzd: null, shopVisible: false, shopCategories: [], special: null };
 }

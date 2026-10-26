@@ -10,7 +10,21 @@ import LoadingSpinner from "../LoadingSpinner";
 import ProductPage from "./ProductPage";
 import CartPage from "./CartPage";
 import OrderSent from "./OrderSent";
-import { CoaButton, ProductImage, StockBadge, priceRange, productStock, productCoas, cardPrimary, shopSecondary } from "./parts";
+import {
+  CoaButton,
+  ProductImage,
+  SpecialPrice,
+  SpecialTag,
+  StockBadge,
+  priceRange,
+  productRibbon,
+  productSpecial,
+  sameSpecialForAll,
+  productStock,
+  productCoas,
+  cardPrimary,
+  shopSecondary,
+} from "./parts";
 
 type Page = { name: "list" } | { name: "product"; id: string } | { name: "cart" } | { name: "sent"; order: ShopOrder };
 
@@ -221,6 +235,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
           const single = product.variants.length === 1;
           const sizes = product.variants.map((v) => v.label).filter(Boolean);
           const coas = productCoas(product);
+          const onSpecial = productSpecial(product);
           return (
             <div
               key={product.id}
@@ -238,7 +253,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                   src={product.images[0]}
                   alt={product.name}
                   className="aspect-square"
-                  ribbon={stock === "soon" ? "Coming soon" : undefined}
+                  ribbon={productRibbon(stock, onSpecial?.special)}
                 />
                 <div className="space-y-1">
                   {product.categories[0] && (
@@ -253,7 +268,12 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
               {/* Price on its own line, then the stock badge and button share the bottom row,
                   so the button sits on the bottom edge even when a price range is long. */}
               <div className="mt-auto space-y-1.5">
-                <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">{priceRange(product.variants)}</div>
+                <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">
+                  {single ? <SpecialPrice priceNzd={product.variants[0].priceNzd} special={product.variants[0].special} /> : priceRange(product.variants)}
+                </div>
+                {onSpecial?.special && (
+                  <SpecialTag special={onSpecial.special} size={sameSpecialForAll(product) ? undefined : onSpecial.label} />
+                )}
                 <div className="flex flex-wrap items-end justify-between gap-x-1.5 gap-y-2">
                   {/* Coming soon is shown as a ribbon on the photo instead. */}
                   {stock !== "soon" && <StockBadge stock={stock} />}
