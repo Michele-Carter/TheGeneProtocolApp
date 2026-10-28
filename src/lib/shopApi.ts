@@ -4,6 +4,7 @@ import { businessHeaders } from "./business";
 import { signedInFetch } from "./signedInFetch";
 import { appLocale, homeCurrency } from "./locale";
 import type { PushSubscriptionData } from "./orderAlerts";
+import type { StorewideSale } from "../../shared/specials";
 
 // Calls made by signed-in customers (api/shop). The server only ever returns the caller's own data.
 
@@ -41,6 +42,7 @@ export const shopApi = {
     shopFetch<MyDetails>("me", { method: "PUT", body: JSON.stringify(data) }, t),
 
   products: (t: GetToken) => shopFetch<ShopProduct[]>("products", { method: "GET" }, t),
+  sale: (t: GetToken) => shopFetch<{ sale: StorewideSale | null }>("sale", { method: "GET" }, t),
   orders: (t: GetToken) => shopFetch<ShopOrder[]>("orders", { method: "GET" }, t),
   sendOrder: (data: { lines: CartLine[]; notes: string }, t: GetToken) =>
     shopFetch<ShopOrder>("orders", { method: "POST", body: JSON.stringify(data) }, t),

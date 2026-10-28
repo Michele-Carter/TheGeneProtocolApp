@@ -3,7 +3,7 @@ import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sal
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
-import type { Special } from "../../shared/specials";
+import type { Special, StorewideSale } from "../../shared/specials";
 import type { ChatMessage, Conversation, ItemShopSection, OrderAlertsInfo, PaymentDetails, SetupStatus, ShopOrderLine, ShopOrderStatus } from "../../shared/shop";
 import type { PushSubscriptionData } from "./orderAlerts";
 import type { SupplierProduct } from "../../shared/library";
@@ -385,6 +385,11 @@ export const adminApi = {
   getSettings: (t: GetToken) => adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "GET" }, t),
   updateSettings: (data: { paymentDetails: PaymentDetails }, t: GetToken) =>
     adminFetch<{ paymentDetails: PaymentDetails }>("settings", { method: "PUT", body: JSON.stringify(data) }, t),
+
+  // Storewide sale: the one last saved (null = none) and whether customers get it today
+  getStorewide: (t: GetToken) => adminFetch<{ sale: StorewideSale | null; on: boolean }>("storewide", { method: "GET" }, t),
+  saveStorewide: (sale: StorewideSale | null, t: GetToken) =>
+    adminFetch<{ sale: StorewideSale | null; on: boolean }>("storewide", { method: "PUT", body: JSON.stringify({ sale }) }, t),
 
   // The Admin home's "Get your shop ready" checklist
   getSetup: (t: GetToken) => adminFetch<SetupStatus>("setup", { method: "GET" }, t),

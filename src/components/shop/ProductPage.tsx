@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ArrowLeft, Check, ShoppingCart } from "lucide-react";
 import type { ShopProduct } from "../../../shared/shop";
-import { specialNudge } from "../../../shared/specials";
+import { specialNudge, type StorewideDeal } from "../../../shared/specials";
 import type { Cart } from "../../hooks/useCart";
 import {
   CoaButton,
@@ -24,11 +24,13 @@ import {
 
 export default function ProductPage({
   product,
+  sale,
   cart,
   onBack,
   onViewCart,
 }: {
   product: ShopProduct;
+  sale: StorewideDeal | null; // the storewide sale on now, if any
   cart: Cart;
   onBack: () => void;
   onViewCart: () => void;
@@ -113,7 +115,11 @@ export default function ProductPage({
           )}
           <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight leading-tight">{product.name}</h1>
           <div className="text-2xl font-black text-white tabular-nums">
-            {variant ? <SpecialPrice priceNzd={variant.priceNzd} special={variant.special} /> : priceRange(product.variants)}
+            {variant ? (
+              <SpecialPrice priceNzd={variant.priceNzd} special={variant.special} sale={sale} />
+            ) : (
+              priceRange(product.variants, sale)
+            )}
           </div>
           {/* The chosen size's special, or before a size is chosen, every size's. */}
           {variant ? (

@@ -1,6 +1,7 @@
 // Checks specials end to end: the owner sets one on an item or a bundle (and bad ones are refused), the shop shows it, an order
 // sent with it is priced with the special taken off, and confirming it puts the saving on the customer order as its
-// discount - worked out again on the quantity the owner confirms. Sets up a throwaway business, runs real API
+// discount - worked out again on the quantity the owner confirms. Then the same for a storewide sale with a minimum spend,
+// where each line gets its own special or the sale, whichever saves more. Sets up a throwaway business, runs real API
 // requests, then deletes everything it made. Dev database only.
 // Usage: npx tsx scripts/testSpecials.ts
 import dotenv from "dotenv";
@@ -154,6 +155,53 @@ try {
     check("the bundle's customer order has the 18 off as its discount", kitSale?.data.discountNzd === 18, kitSale?.data.discountNzd);
     check("  ...and its item lines still add up to the full bundle price",
         Math.round(kitSale?.data.lines.reduce((t: number, l: any) => t + l.qty * l.unitPriceNzd, 0) * 100) / 100 === 180, kitSale?.data.lines);
+
+    // ---- Storewide sale: 15% off orders of $200 or more. Now: 5mg no special, 10mg 20% off from 4, kit 10% off. ----
+    const zeroSale = await call(handleAdminRequest, OWNER, "PUT", { resource: "storewide" }, { sale: { percentOff: 0 } });
+    check("a storewide sale of 0% is refused", zeroSale.status === 400, zeroSale);
+    const pastSale = await call(handleAdminRequest, OWNER, "PUT", { resource: "storewide" }, { sale: { percentOff: 10, endsOn: "2020-01-01" } });
+    check("a storewide sale ending in the past is refused", pastSale.status === 400, pastSale);
+    const started = await admin("PUT", { resource: "storewide" }, {
+        sale: { percentOff: 15, minSpendNzd: 200, endsOn: null, bannerText: "  Spring sale ", bannerColour: "#2563EB" },
+    });
+    check("storewide sale saved and on, wording trimmed, colour tidied",
+        started.on && started.sale?.percentOff === 15 && started.sale.bannerText === "Spring sale" && started.sale.bannerColour === "#2563eb", started);
+    check("the shop gets the sale", (await shop("GET", { resource: "sale" })).sale?.percentOff === 15);
+
+    // Under the minimum spend: no sale.
+    const under = await shop("POST", { resource: "orders" }, { lines: [{ key: smallKey, qty: 1 }], notes: "" });
+    check("an order under the minimum spend doesn't get the sale", Number(under.subtotalNzd) === 50, under.subtotalNzd);
+    check("  ...but its lines keep the sale they were sent under", under.lines[0]?.storewide?.percentOff === 15, under.lines);
+
+    // 2 x 5mg ($100: sale 15 off) + 4 x 10mg ($200: own special 40 off beats the sale's 30) + 1 kit ($90: sale 13.50
+    // beats its own 9). After specials that's 341, over the 200 minimum. 390 - 15 - 40 - 13.50 = 321.50.
+    const over = await shop("POST", { resource: "orders" }, {
+        lines: [{ key: smallKey, qty: 2 }, { key: largeKey, qty: 4 }, { key: kit.variants[0].key, qty: 1 }], notes: "",
+    });
+    check("each line gets its special or the sale, whichever saves more", Number(over.subtotalNzd) === 321.5, over.subtotalNzd);
+    await admin("POST", { resource: "shop-orders", id: over.id, action: "confirm" }, {
+        lines: over.lines.map((l: any) => ({ key: l.key, qty: l.qty })), shippingNzd: 0, message: "",
+    });
+    const [overRow] = await sql`select subtotal_nzd, sale_id from shop_orders where id = ${over.id}`;
+    const overSale = (await admin("GET", { resource: "sales" })).find((s: any) => s.id === overRow.sale_id);
+    check("the customer order has specials + sale as its discount (40 + 28.50)", overSale?.data.discountNzd === 68.5, overSale?.data.discountNzd);
+    check("  ...notes say what the sale took off", /Storewide sale: 15% off/.test(overSale?.data.notes ?? "") && /20% off/.test(overSale?.data.notes ?? ""), overSale?.data.notes);
+
+    // Confirming fewer, so it drops under the minimum: the sale comes off.
+    const dropping = await shop("POST", { resource: "orders" }, { lines: [{ key: smallKey, qty: 5 }], notes: "" });
+    check("5 x 5mg ($250) gets 15% off", Number(dropping.subtotalNzd) === 212.5, dropping.subtotalNzd);
+    await admin("POST", { resource: "shop-orders", id: dropping.id, action: "confirm" }, { lines: [{ key: smallKey, qty: 3 }], shippingNzd: 0, message: "" });
+    const [dropRow] = await sql`select subtotal_nzd, sale_id from shop_orders where id = ${dropping.id}`;
+    const dropSale = (await admin("GET", { resource: "sales" })).find((s: any) => s.id === dropRow.sale_id);
+    check("confirmed under the minimum ($150): no sale", Number(dropRow.subtotal_nzd) === 150 && dropSale?.data.discountNzd === 0, [dropRow, dropSale?.data.discountNzd]);
+
+    // An end date that's passed switches it off by itself; ending it takes it away.
+    await sql`update app_settings set value = jsonb_set(value, '{endsOn}', '"2020-01-01"') where business_id = ${business.id} and key = 'storewide_sale'`;
+    check("a sale past its end date is off", (await shop("GET", { resource: "sale" })).sale === null && !(await admin("GET", { resource: "storewide" })).on);
+    await admin("PUT", { resource: "storewide" }, { sale: { percentOff: 10 } });
+    await admin("PUT", { resource: "storewide" }, { sale: null });
+    const afterEnd = await shop("POST", { resource: "orders" }, { lines: [{ key: smallKey, qty: 1 }], notes: "" });
+    check("after ending it, orders don't carry the sale", (await shop("GET", { resource: "sale" })).sale === null && !afterEnd.lines[0].storewide, afterEnd.lines);
 } finally {
     await removeEverything();
     await sql.end();

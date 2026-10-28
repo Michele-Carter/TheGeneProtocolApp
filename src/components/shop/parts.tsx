@@ -1,9 +1,19 @@
 import React from "react";
-import { CheckCircle2, Minus, Package, Plus, Tag } from "lucide-react";
+import { CheckCircle2, Minus, Package, Percent, Plus, Tag } from "lucide-react";
 import type { ShopOrderLine, ShopProduct, ShopVariant, StockLevel } from "../../../shared/shop";
-import { dealText, ribbonText, salePrice, specialDiscount, type Special } from "../../../shared/specials";
+import {
+  bestUnitPrice,
+  dealText,
+  ribbonText,
+  storewideText,
+  type OrderPricing,
+  type Special,
+  type StorewideDeal,
+  type StorewideSale,
+} from "../../../shared/specials";
 import { money } from "../../lib/shopApi";
 import { inkOn, isHexColour } from "../../lib/brandColour";
+import { formatDate } from "../../lib/locale";
 
 export const shopButton =
   "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black border transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
@@ -134,20 +144,62 @@ export function SpecialTag({ special, size, className = "" }: { special: Special
   );
 }
 
-// Under a sent order's line: the special it got and what it saved (nothing if it didn't qualify).
-export function LineSaving({ line }: { line: ShopOrderLine }) {
-  const saved = specialDiscount(line.qty, line.unitPriceNzd, line.special);
-  if (!line.special || saved <= 0) return null;
+// Under a sent order's line: the special or storewide sale it got and what it saved (nothing if it didn't qualify).
+export function LineSaving({ line, saving }: { line: ShopOrderLine; saving: OrderPricing["lines"][number] }) {
+  const deal =
+    saving.storewideNzd > 0 && line.storewide
+      ? `${line.storewide.percentOff}% off storewide sale`
+      : saving.specialNzd > 0 && line.special
+        ? dealText(line.special)
+        : null;
+  if (!deal) return null;
   return (
     <div className="text-[11px] font-bold text-gold-400">
-      {dealText(line.special)} - you saved {money(saved)}
+      {deal} - you saved {money(saving.storewideNzd + saving.specialNzd)}
     </div>
   );
 }
 
-// A price with a special's immediate saving: the full price struck through beside the sale price.
-export function SpecialPrice({ priceNzd, special }: { priceNzd: number; special: Special | null | undefined }) {
-  const now = salePrice(priceNzd, special);
+// Across the top of the shop while a storewide sale is on, in the owner's words and colour ("" = brand colour).
+export function SaleBanner({ sale }: { sale: StorewideSale }) {
+  const custom = isHexColour(sale.bannerColour) ? sale.bannerColour : null;
+  const deal = storewideText(sale, money);
+  const own = sale.bannerText.trim();
+  // With their own wording, the deal itself still shows underneath.
+  const details = [
+    own ? deal : null,
+    sale.endsOn ? `Ends ${formatDate(sale.endsOn, { weekday: "long", day: "numeric", month: "long" })}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div
+      className={`theme-keep-bg rounded-2xl px-4 py-3 flex items-center gap-3 shadow-md ${custom ? "" : "bg-gold-500"}`}
+      style={custom ? { backgroundColor: custom, color: inkOn(custom) } : undefined}
+    >
+      <span className="flex-shrink-0 w-8 h-8 rounded-full bg-black/15 flex items-center justify-center" aria-hidden>
+        <Percent size={16} />
+      </span>
+      <div className="min-w-0">
+        <div className="text-sm md:text-base font-black leading-snug">{own || deal}</div>
+        {details && <div className="text-xs font-semibold opacity-80">{details}</div>}
+      </div>
+    </div>
+  );
+}
+
+// A price with any immediate saving - a special's straight % off, or a storewide sale with no minimum spend,
+// whichever is more: the full price struck through beside the sale price.
+export function SpecialPrice({
+  priceNzd,
+  special,
+  sale,
+}: {
+  priceNzd: number;
+  special: Special | null | undefined;
+  sale?: StorewideDeal | null;
+}) {
+  const now = bestUnitPrice(priceNzd, special, sale);
   if (now === priceNzd) return <>{money(priceNzd)}</>;
   return (
     <>
@@ -185,9 +237,9 @@ export function QtyStepper({
   );
 }
 
-// Lowest to highest, after any straight percentage off.
-export function priceRange(variants: ShopVariant[]): string {
-  const prices = variants.map((v) => salePrice(v.priceNzd, v.special));
+// Lowest to highest, after any straight percentage off (a special's, or a storewide sale with no minimum spend).
+export function priceRange(variants: ShopVariant[], sale?: StorewideDeal | null): string {
+  const prices = variants.map((v) => bestUnitPrice(v.priceNzd, v.special, sale));
   const low = Math.min(...prices);
   const high = Math.max(...prices);
   return low === high ? money(low) : `${money(low)} – ${money(high)}`;

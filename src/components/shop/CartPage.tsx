@@ -9,7 +9,7 @@ import type { Cart } from "../../hooks/useCart";
 import AddressFields from "../AddressFields";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
-import { specialDiscount, specialNudge } from "../../../shared/specials";
+import { priceOrder, specialNudge, type StorewideSale } from "../../../shared/specials";
 import { PREORDER_NOTE, ProductImage, QtyStepper, SpecialTag, shopPrimary, shopSecondary, variantName } from "./parts";
 import { homeCountry } from "../../lib/locale";
 
@@ -22,6 +22,7 @@ interface LineView {
 
 export default function CartPage({
   products,
+  sale,
   cart,
   onBack,
   onOpenAccount,
@@ -29,6 +30,7 @@ export default function CartPage({
   onSent,
 }: {
   products: ShopProduct[];
+  sale: StorewideSale | null; // the storewide sale on now, if any
   cart: Cart;
   onBack: () => void;
   onOpenAccount: () => void;
@@ -66,9 +68,11 @@ export default function CartPage({
     [cart.lines, products]
   );
 
-  const fullPrice = lines.reduce((t, l) => t + (l.variant ? l.variant.priceNzd * l.qty : 0), 0);
-  const savings = lines.reduce((t, l) => t + (l.variant ? specialDiscount(l.qty, l.variant.priceNzd, l.variant.special) : 0), 0);
-  const subtotal = fullPrice - savings;
+  // Each line gets its special or the storewide sale, whichever saves more - as the order will when it's sent.
+  const pricing = priceOrder(
+    lines.map((l) => ({ qty: l.qty, unitPriceNzd: l.variant?.priceNzd ?? 0, special: l.variant?.special, storewide: sale }))
+  );
+  const savings = pricing.specialsNzd + pricing.storewideNzd;
   const problems = lines.filter((l) => !l.variant || l.qty > l.variant.maxQty);
   const addressReady = me != null && !editingAddress && isAddressComplete(me.shippingAddress);
 
@@ -132,9 +136,10 @@ export default function CartPage({
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-6 items-start">
         <section className="bg-slate-900/40 border border-slate-800 rounded-2xl divide-y divide-slate-800/80">
-          {lines.map((line) => {
+          {lines.map((line, i) => {
             const special = line.variant?.special ?? null;
-            const saving = line.variant ? specialDiscount(line.qty, line.variant.priceNzd, special) : 0;
+            const { specialNzd, storewideNzd } = pricing.lines[i];
+            const saving = specialNzd + storewideNzd;
             const nudge = line.variant && line.qty < line.variant.maxQty ? specialNudge(line.qty, special) : null;
             return (
             <div key={line.key} className="p-4 flex gap-4">
@@ -159,7 +164,12 @@ export default function CartPage({
                     <div className="text-sm font-black text-white">
                       {line.variant ? money(line.variant.priceNzd * line.qty - saving) : "—"}
                     </div>
-                    {saving > 0 && <div className="text-[11px] font-bold text-gold-400">You save {money(saving)}</div>}
+                    {saving > 0 && (
+                      <div className="text-[11px] font-bold text-gold-400">
+                        You save {money(saving)}
+                        {storewideNzd > 0 && sale ? ` (${sale.percentOff}% sale)` : ""}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -206,18 +216,36 @@ export default function CartPage({
               <>
                 <div className="flex justify-between text-sm text-slate-300">
                   <span>Items</span>
-                  <span className="tabular-nums">{money(fullPrice)}</span>
+                  <span className="tabular-nums">{money(pricing.fullNzd)}</span>
                 </div>
-                <div className="flex justify-between text-sm text-gold-400 font-bold">
-                  <span>Specials</span>
-                  <span className="tabular-nums">-{money(savings)}</span>
-                </div>
+                {pricing.specialsNzd > 0 && (
+                  <div className="flex justify-between text-sm text-gold-400 font-bold">
+                    <span>Specials</span>
+                    <span className="tabular-nums">-{money(pricing.specialsNzd)}</span>
+                  </div>
+                )}
+                {pricing.storewideNzd > 0 && sale && (
+                  <div className="flex justify-between text-sm text-gold-400 font-bold">
+                    <span>Sale - {sale.percentOff}% off</span>
+                    <span className="tabular-nums">-{money(pricing.storewideNzd)}</span>
+                  </div>
+                )}
               </>
             )}
             <div className="flex justify-between text-sm text-slate-300">
               <span>Subtotal</span>
-              <span className="font-bold text-white tabular-nums">{money(subtotal)}</span>
+              <span className="font-bold text-white tabular-nums">{money(pricing.subtotalNzd)}</span>
             </div>
+            {pricing.spendMoreNzd > 0 && sale && (
+              <p className="text-xs font-bold text-gold-400">
+                Spend {money(pricing.spendMoreNzd)} more to get {sale.percentOff}% off your order.
+              </p>
+            )}
+            {sale && lines.some((l) => l.variant?.special) && (
+              <p className="text-[11px] text-slate-500">
+                Items on special get their special or the sale - whichever saves you more.
+              </p>
+            )}
             <div className="flex justify-between text-sm text-slate-300">
               <span>Shipping</span>
               <span className="text-slate-400">Confirmed by us</span>
