@@ -12,8 +12,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { addressLines } from "../../../shared/customers";
-import { hasPaymentDetails, type ShopOrderLine, type ShopOrderStatus } from "../../../shared/shop";
-import { dealText, specialDiscount } from "../../../shared/specials";
+import { hasPaymentDetails, type ShopOrderStatus } from "../../../shared/shop";
+import { dealText, priceOrder } from "../../../shared/specials";
 import { adminApi, cash, type ShopOrderDetail, type ShopOrderSummary } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, StatRow, StatusDot, dangerButton, inputClass, primaryButton, secondaryButton } from "./ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
@@ -220,11 +220,11 @@ function OrderReview({
   const editable = order?.status === "submitted";
   const qtyOf = (key: string) => qty[key] ?? 0;
   const priceOf = (key: string) => price[key] ?? 0;
-  // A line's special, worked out on the quantity and price as they are now (e.g. fewer sent = no free one).
-  const savingOf = (l: ShopOrderLine) => specialDiscount(qtyOf(l.key), priceOf(l.key), l.special);
-  const fullPrice = order ? order.lines.reduce((t, l) => t + qtyOf(l.key) * priceOf(l.key), 0) : 0;
-  const specialsOff = order ? order.lines.reduce((t, l) => t + savingOf(l), 0) : 0;
-  const subtotal = fullPrice - specialsOff;
+  // Specials and the storewide sale, worked out on the quantities and prices as they are now (e.g. fewer sent = no
+  // free one, or under the sale's minimum spend). Each line gets one or the other, whichever saves more.
+  const pricing = priceOrder(order ? order.lines.map((l) => ({ ...l, qty: qtyOf(l.key), unitPriceNzd: priceOf(l.key) })) : []);
+  const { fullNzd: fullPrice, specialsNzd: specialsOff, storewideNzd: saleOff, subtotalNzd: subtotal } = pricing;
+  const sale = pricing.deal;
   const short = order ? order.lines.filter((l) => qtyOf(l.key) > l.available) : [];
   const changed = order ? order.lines.some((l) => qtyOf(l.key) !== l.qty) : false;
   const repriced = order ? order.lines.some((l) => priceOf(l.key) !== l.unitPriceNzd) : false;
@@ -334,9 +334,10 @@ function OrderReview({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70">
-                    {order.lines.map((line) => {
+                    {order.lines.map((line, i) => {
                       const q = qtyOf(line.key);
                       const p = priceOf(line.key);
+                      const saving = pricing.lines[i];
                       const over = editable && q > line.available;
                       return (
                         <tr key={line.key} className={q === 0 ? "opacity-40" : ""}>
@@ -395,9 +396,12 @@ function OrderReview({
                             )}
                           </td>
                           <td className="py-2 text-right tabular-nums text-slate-100 font-bold">
-                            {cash(q * p - savingOf(line))}
-                            {savingOf(line) > 0 && (
-                              <div className="text-[10px] font-bold text-gold-400">-{cash(savingOf(line))} special</div>
+                            {cash(saving.totalNzd)}
+                            {saving.specialNzd > 0 && (
+                              <div className="text-[10px] font-bold text-gold-400">-{cash(saving.specialNzd)} special</div>
+                            )}
+                            {saving.storewideNzd > 0 && (
+                              <div className="text-[10px] font-bold text-gold-400">-{cash(saving.storewideNzd)} sale</div>
                             )}
                           </td>
                         </tr>
@@ -419,7 +423,7 @@ function OrderReview({
                 <p className="text-[11px] text-slate-500 mt-3">
                   Available = stock on hand less what other open and waiting orders need. Set a quantity to 0 to remove an
                   item. You can change a price before confirming - the customer sees the new price on their order. Specials
-                  are worked out again on what you confirm, and go on the customer order as its discount.
+                  and the storewide sale are worked out again on what you confirm, and go on the customer order as its discount.
                 </p>
               )}
               {short.length > 0 && (
@@ -473,9 +477,16 @@ function OrderReview({
                   <div>
                     <StatRow label="Items" value={cash(fullPrice)} />
                     {specialsOff > 0 && <StatRow label="Specials" value={cash(-specialsOff)} />}
+                    {saleOff > 0 && <StatRow label={`Storewide sale (${sale!.percentOff}%)`} value={cash(-saleOff)} />}
                     <StatRow label="Shipping" value={shipping == null ? "—" : cash(shipping)} />
                     <StatRow label="Total" value={cash(subtotal + (shipping ?? 0))} strong />
                   </div>
+                  {sale && pricing.spendMoreNzd > 0 && (
+                    <p className="text-[11px] text-amber-300">
+                      Sent during your {sale.percentOff}% storewide sale, but it's now under the sale's {cash(sale.minSpendNzd)}{" "}
+                      minimum spend, so the sale doesn't apply.
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <button
                       className={primaryButton}
@@ -502,7 +513,8 @@ function OrderReview({
             ) : (
               <Card title={STATUS[order.status].label}>
                 {specialsOff > 0 && <StatRow label="Specials" value={cash(-specialsOff)} />}
-                <StatRow label={specialsOff > 0 ? "Items, less specials" : "Items"} value={cash(order.subtotalNzd)} />
+                {saleOff > 0 && <StatRow label={`Storewide sale (${sale!.percentOff}%)`} value={cash(-saleOff)} />}
+                <StatRow label={specialsOff + saleOff > 0 ? "Items, less discounts" : "Items"} value={cash(order.subtotalNzd)} />
                 {order.shippingNzd != null && <StatRow label="Shipping" value={cash(order.shippingNzd)} />}
                 {order.status === "confirmed" && (
                   <StatRow label="Total" value={cash(order.subtotalNzd + (order.shippingNzd ?? 0))} strong />

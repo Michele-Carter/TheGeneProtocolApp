@@ -11,6 +11,7 @@ import ExpensesView from "./ExpensesView";
 import PaymentDetailsView from "./PaymentDetailsView";
 import PriceListView from "./PriceListView";
 import BusinessSettingsView from "./BusinessSettingsView";
+import StorewideSaleView from "./StorewideSaleView";
 import type { BusinessContext } from "../../lib/business";
 
 export type AdminSection =
@@ -22,6 +23,7 @@ export type AdminSection =
   | "peptide-orders"
   | "supply-orders"
   | "inventory"
+  | "storewide-sale"
   | "expenses"
   | "payment-details"
   | "business"
@@ -42,6 +44,10 @@ const SECTION_COPY: Record<AdminSection, { title: string; description: string }>
     description: "Pens, needles, swabs and other stock — plus business items bought on the same invoice (mark those lines as Expense).",
   },
   inventory: { title: "Inventory", description: "Stock on hand, valued at cost, with batch and expiry tracking." },
+  "storewide-sale": {
+    title: "Storewide Sale",
+    description: "A percentage off everything in your shop, with a banner across the top - for as long as you choose.",
+  },
   expenses: { title: "Expenses", description: "Business costs outside of supply orders — equipment, software, marketing and more." },
   "payment-details": {
     title: "Payment Details",
@@ -111,6 +117,7 @@ export default function AdminArea({
       {section === "peptide-orders" && <OrdersView key="peptides" orderType="peptides" />}
       {section === "supply-orders" && <OrdersView key="supplies" orderType="supplies" />}
       {section === "inventory" && <InventoryView />}
+      {section === "storewide-sale" && <StorewideSaleView />}
       {section === "expenses" && <ExpensesView />}
       {section === "payment-details" && <PaymentDetailsView />}
       {section === "business" && <BusinessSettingsView context={business} onChanged={onBusinessChanged} />}

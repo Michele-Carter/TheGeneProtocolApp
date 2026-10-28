@@ -1,4 +1,4 @@
-import type { Special } from "./specials.js";
+import type { Special, StorewideDeal } from "./specials.js";
 
 // Customer shop front: categories offered when setting up a product (admin can also add their own).
 // Matches the Peptide Database's category tags so the two read the same.
@@ -122,7 +122,8 @@ export interface ShopOrderLine {
   variant: string;
   qty: number;
   unitPriceNzd: number; // fixed when the order was sent
-  special?: Special; // the deal on it when it was sent - taken off with lineTotal (shared/specials.ts)
+  special?: Special; // the deal on it when it was sent - taken off with priceOrder (shared/specials.ts)
+  storewide?: StorewideDeal; // the storewide sale on when it was sent - it gets that or its special, whichever saves more
   components?: { itemId: string; qty: number }[]; // bundles: per one bundle, as it was when ordered
   preorder?: boolean; // more than was in stock when it was ordered - confirmed once the stock arrives
 }
@@ -132,7 +133,7 @@ export interface ShopOrder {
   orderNumber: number;
   status: ShopOrderStatus;
   lines: ShopOrderLine[];
-  subtotalNzd: number; // items, less any specials
+  subtotalNzd: number; // items, less any specials and storewide sale
   shippingNzd: number | null;
   notes: string;
   adminMessage: string;

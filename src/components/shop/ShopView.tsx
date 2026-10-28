@@ -3,6 +3,7 @@ import { useAuth } from "@clerk/react";
 import { Check, Package, Search, ShoppingCart, X } from "lucide-react";
 import type { AccountTab } from "../MyAccount";
 import { SHOP_SECTIONS, type ShopOrder, type ShopProduct, type ShopSection } from "../../../shared/shop";
+import type { StorewideSale } from "../../../shared/specials";
 import { shopApi } from "../../lib/shopApi";
 import { useCart } from "../../hooks/useCart";
 import { ErrorNote } from "../admin/ui";
@@ -13,6 +14,7 @@ import OrderSent from "./OrderSent";
 import {
   CoaButton,
   ProductImage,
+  SaleBanner,
   SpecialPrice,
   SpecialTag,
   StockBadge,
@@ -28,10 +30,13 @@ import {
 
 type Page = { name: "list" } | { name: "product"; id: string } | { name: "cart" } | { name: "sent"; order: ShopOrder };
 
-export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: AccountTab) => void }) {
+// isOwner: the owner viewing their own shop - they see it as customers do, but without My orders and Cart (they
+// don't order from themselves; their own use comes off stock in Inventory).
+export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAccount: (tab: AccountTab) => void; isOwner?: boolean }) {
   const { getToken } = useAuth();
   const cart = useCart();
   const [products, setProducts] = useState<ShopProduct[] | null>(null);
+  const [sale, setSale] = useState<StorewideSale | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<Page>({ name: "list" });
   const [section, setSection] = useState<ShopSection | null>(null);
@@ -42,7 +47,9 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
   const load = useCallback(async () => {
     setError(null);
     try {
-      setProducts(await shopApi.products(getToken));
+      const [list, current] = await Promise.all([shopApi.products(getToken), shopApi.sale(getToken)]);
+      setProducts(list);
+      setSale(current.sale);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -93,24 +100,30 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
   };
 
   const header = (
-    <div className="flex items-start justify-between gap-4">
-      <div className="space-y-1">
-        <h2 className="text-lg font-black text-white tracking-tight">Shop</h2>
-        <p className="text-sm text-slate-400">Choose your products and send us your order - we'll confirm it and the shipping cost.</p>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-      <button className={shopSecondary} onClick={() => onOpenAccount("orders")}>
-        <Package size={14} /> <span className="hidden sm:inline">My orders</span>
-      </button>
-      <button className={`${shopSecondary} relative`} onClick={() => go({ name: "cart" })}>
-        <ShoppingCart size={14} /> Cart
-        {cart.count > 0 && (
-          <span className="absolute -top-2 -right-2 min-w-[1.25rem] h-5 px-1 rounded-full bg-gold-500 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
-            {cart.count}
-          </span>
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-black text-white tracking-tight">Shop</h2>
+          <p className="text-sm text-slate-400">Choose your products and send us your order - we'll confirm it and the shipping cost.</p>
+        </div>
+        {!isOwner && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button className={shopSecondary} onClick={() => onOpenAccount("orders")}>
+              <Package size={14} /> <span className="hidden sm:inline">My orders</span>
+            </button>
+            <button className={`${shopSecondary} relative`} onClick={() => go({ name: "cart" })}>
+              <ShoppingCart size={14} /> Cart
+              {cart.count > 0 && (
+                <span className="absolute -top-2 -right-2 min-w-[1.25rem] h-5 px-1 rounded-full bg-gold-500 text-slate-950 text-[10px] font-black flex items-center justify-center tabular-nums">
+                  {cart.count}
+                </span>
+              )}
+            </button>
+          </div>
         )}
-      </button>
       </div>
+      {/* A storewide sale, while it's on (not on the "order sent" page). */}
+      {sale && page.name !== "sent" && <SaleBanner sale={sale} />}
     </div>
   );
 
@@ -120,7 +133,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
       return (
         <div className="space-y-6">
           {header}
-          <ProductPage product={product} cart={cart} onBack={() => go({ name: "list" })} onViewCart={() => go({ name: "cart" })} />
+          <ProductPage product={product} sale={sale} cart={cart} onBack={() => go({ name: "list" })} onViewCart={() => go({ name: "cart" })} />
         </div>
       );
     }
@@ -132,6 +145,7 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
         {header}
         <CartPage
           products={products ?? []}
+          sale={sale}
           cart={cart}
           onBack={() => go({ name: "list" })}
           onOpenAccount={() => onOpenAccount("details")}
@@ -269,7 +283,11 @@ export default function ShopView({ onOpenAccount }: { onOpenAccount: (tab: Accou
                   so the button sits on the bottom edge even when a price range is long. */}
               <div className="mt-auto space-y-1.5">
                 <div className="text-[15px] leading-5 font-black text-white tabular-nums whitespace-nowrap">
-                  {single ? <SpecialPrice priceNzd={product.variants[0].priceNzd} special={product.variants[0].special} /> : priceRange(product.variants)}
+                  {single ? (
+                    <SpecialPrice priceNzd={product.variants[0].priceNzd} special={product.variants[0].special} sale={sale} />
+                  ) : (
+                    priceRange(product.variants, sale)
+                  )}
                 </div>
                 {onSpecial?.special && (
                   <SpecialTag special={onSpecial.special} size={sameSpecialForAll(product) ? undefined : onSpecial.label} />

@@ -5,7 +5,7 @@ import type { ShopOrder } from "../../../shared/shop";
 import { money, shopApi } from "../../lib/shopApi";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
-import { lineTotal } from "../../../shared/specials";
+import { priceOrder } from "../../../shared/specials";
 import { LineSaving, shopPrimary, shopSecondary } from "./parts";
 import { formatDate, homeCountry } from "../../lib/locale";
 
@@ -97,6 +97,7 @@ export default function MyOrders({
       {orders.map((order) => {
         const status = statusOf(order);
         const p = order.progress;
+        const pricing = priceOrder(order.lines);
         return (
           <section key={order.id} className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -133,7 +134,7 @@ export default function MyOrders({
             )}
 
             <div className="border-t border-slate-800 pt-3 space-y-1.5">
-              {order.lines.map((line) => (
+              {order.lines.map((line, i) => (
                 <div key={line.key} className="flex justify-between gap-3 text-sm">
                   <span className="text-slate-300">
                     <span className="text-slate-500 tabular-nums">{line.qty}×</span> {[line.name, line.variant].filter(Boolean).join(" ")}
@@ -142,9 +143,9 @@ export default function MyOrders({
                         Pre-order
                       </span>
                     )}
-                    <LineSaving line={line} />
+                    <LineSaving line={line} saving={pricing.lines[i]} />
                   </span>
-                  <span className="text-slate-200 tabular-nums">{money(lineTotal(line))}</span>
+                  <span className="text-slate-200 tabular-nums">{money(pricing.lines[i].totalNzd)}</span>
                 </div>
               ))}
             </div>

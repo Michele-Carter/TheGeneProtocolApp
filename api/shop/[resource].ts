@@ -7,10 +7,10 @@ import { customerForUser } from "../_lib/customers.js";
 import { MessageError, conversation, markRead, sendMessage, unreadCount } from "../_lib/messages.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { appSettings, customers, notifications, pushSubscriptions, sales, shopOrders } from "../_lib/schema.js";
-import { loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
+import { activeSale, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
 import { isAddressComplete, toAddress } from "../../shared/customers.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
-import { lineTotal } from "../../shared/specials.js";
+import { priceOrder, toDeal } from "../../shared/specials.js";
 import {
     MAX_MESSAGE_LENGTH,
     PAYMENT_DETAILS_KEY,
@@ -27,6 +27,7 @@ import {
 //   GET  /api/shop/me         the caller's customer details (linked or created on first visit)
 //   PUT  /api/shop/me         update their name, email and shipping address
 //   GET  /api/shop/products   everything in the shop, with prices and a stock label
+//   GET  /api/shop/sale       the storewide sale on today: { sale } (null = none)
 //   GET  /api/shop/orders     the caller's orders
 //   POST /api/shop/orders     send an order { lines: [{ key, qty }], notes } - prices and stock are checked here
 //   POST /api/shop/orders?id=&action=cancel   withdraw an order that hasn't been confirmed yet
@@ -104,6 +105,14 @@ async function handleProducts(req: any, res: any, db: Db) {
     }
     const { products } = await loadCatalog(db);
     return sendJson(res, 200, products);
+}
+
+async function handleSale(req: any, res: any, db: Db) {
+    if (req.method !== "GET") {
+        res.setHeader("Allow", "GET");
+        return sendJson(res, 405, { error: "Method not allowed" });
+    }
+    return sendJson(res, 200, { sale: await activeSale(db) });
 }
 
 const orderSchema = z.object({
@@ -247,7 +256,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
             const row = await db.transaction(async (tx) => {
                 // One order at a time, so two customers can't both be promised the last vial.
                 await lockStock(tx);
-                const { orderable, available } = await loadCatalog(tx);
+                const [{ orderable, available }, sale] = await Promise.all([loadCatalog(tx), activeSale(tx)]);
 
                 const lines: ShopOrderLine[] = [];
                 for (const [key, qty] of wanted) {
@@ -266,6 +275,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
                         qty,
                         unitPriceNzd: variant.priceNzd,
                         ...(variant.special ? { special: variant.special } : {}),
+                        ...(sale ? { storewide: toDeal(sale) } : {}),
                         ...(variant.components ? { components: variant.components } : {}),
                     });
                 }
@@ -279,7 +289,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
                     }
                 }
 
-                const subtotal = Math.round(lines.reduce((t, l) => t + lineTotal(l), 0) * 100) / 100;
+                const subtotal = priceOrder(lines).subtotalNzd;
                 const [created] = await tx
                     .insert(shopOrders)
                     .values({
@@ -456,6 +466,8 @@ export async function handleShopRequest(req: any, res: any, userId: string) {
                     return await handleMe(req, res, db, userId);
                 case "products":
                     return await handleProducts(req, res, db);
+                case "sale":
+                    return await handleSale(req, res, db);
                 case "orders":
                     return await handleOrders(req, res, db, userId, request);
                 case "notifications":

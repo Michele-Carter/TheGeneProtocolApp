@@ -67,6 +67,7 @@ import {
   Tags,
   Store,
   MessageCircle,
+  Percent,
 } from "lucide-react";
 
 // Owner-only; loaded on demand so customers never download it.
@@ -366,7 +367,7 @@ export default function App() {
           </LibraryGate>
         );
       case "shop":
-        return <ShopView onOpenAccount={openAccount} />;
+        return <ShopView onOpenAccount={openAccount} isOwner={isAdmin} />;
       case "account":
         return <MyAccount initialTab={accountTab} onShop={() => navigateTab("shop")} onMessage={openMessages} />;
       case "recon":
@@ -428,7 +429,16 @@ export default function App() {
               </NavButton>
             ))}
           </div>
-          <div className={`${group} border-t border-slate-900 pt-4`}>{tabLink("shop", "View my shop", <Store size={14} />)}</div>
+          <div className={`${group} border-t border-slate-900 pt-4`}>
+            {tabLink("shop", "View my shop", <Store size={14} />)}
+            <NavButton
+              mobile={mobile}
+              active={currentTab === "admin" && adminSection === "storewide-sale"}
+              onClick={() => navigateAdmin("storewide-sale")}
+              icon={<Percent size={14} />}
+              label="Storewide Sale"
+            />
+          </div>
           <div className={`${group} border-t border-slate-900 pt-4`}>
             <p className={`${mobile ? "px-4" : "px-3.5"} pb-1 text-[10px] font-bold uppercase tracking-widest text-white`}>My Tools</p>
             {TOOLS.map((t) => tabLink(t.id, t.label, t.icon))}

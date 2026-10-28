@@ -2,10 +2,11 @@ import React from "react";
 import { CheckCircle2 } from "lucide-react";
 import type { ShopOrder } from "../../../shared/shop";
 import { money } from "../../lib/shopApi";
-import { lineTotal } from "../../../shared/specials";
+import { priceOrder } from "../../../shared/specials";
 import { LineSaving, shopPrimary, shopSecondary } from "./parts";
 
 export default function OrderSent({ order, onBack, onViewOrders }: { order: ShopOrder; onBack: () => void; onViewOrders: () => void }) {
+  const pricing = priceOrder(order.lines);
   return (
     <div className="max-w-xl mx-auto bg-slate-900/40 border border-slate-800 rounded-2xl p-6 md:p-8 space-y-6">
       <div className="text-center space-y-2">
@@ -18,13 +19,13 @@ export default function OrderSent({ order, onBack, onViewOrders }: { order: Shop
       </div>
 
       <div className="border-t border-slate-800 pt-4 space-y-2">
-        {order.lines.map((line) => (
+        {order.lines.map((line, i) => (
           <div key={line.key} className="flex justify-between gap-3 text-sm">
             <span className="text-slate-300">
               <span className="text-slate-500 tabular-nums">{line.qty}×</span> {[line.name, line.variant].filter(Boolean).join(" ")}
-              <LineSaving line={line} />
+              <LineSaving line={line} saving={pricing.lines[i]} />
             </span>
-            <span className="text-white font-semibold tabular-nums">{money(lineTotal(line))}</span>
+            <span className="text-white font-semibold tabular-nums">{money(pricing.lines[i].totalNzd)}</span>
           </div>
         ))}
         <div className="flex justify-between gap-3 text-sm border-t border-slate-800 pt-2">

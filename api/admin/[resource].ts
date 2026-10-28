@@ -31,7 +31,7 @@ import {
     type ShopOrderLine,
 } from "../../shared/shop.js";
 import { toAddress, type ShippingAddress } from "../../shared/customers.js";
-import { dealText, lineTotal, specialDiscount, toSpecial } from "../../shared/specials.js";
+import { STOREWIDE_KEY, dealText, priceOrder, saleIsOn, toSpecial, toStorewideSale } from "../../shared/specials.js";
 import { customerPrice } from "../../shared/countries.js";
 import { linkCustomerByEmail } from "../_lib/customers.js";
 import {
@@ -44,7 +44,7 @@ import {
     setArchived,
     unreadCount,
 } from "../_lib/messages.js";
-import { availableStock, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
+import { availableStock, loadCatalog, lockStock, orderDemand, savedSale } from "../_lib/shopCatalog.js";
 import {
     cancelShopOrderForDeletedSale,
     confirmedMessage,
@@ -98,6 +98,7 @@ import type { OrderAlertsInfo } from "../../shared/shop.js";
 //   POST   /api/admin/shop-orders?id=&action=mark-paid
 //   GET    /api/admin/settings              PUT /api/admin/settings   { paymentDetails }
 //   GET    /api/admin/setup                 PUT /api/admin/setup   { linkShared?: true, dismissed? }   (setup checklist)
+//   GET    /api/admin/storewide             PUT /api/admin/storewide   { sale }   (null ends it)
 //   POST   /api/admin/coa?id=  { dataUrl }  (image/PDF)   PUT /api/admin/coa?id=  { url }  (lab link)   DELETE
 //   GET    /api/admin/alerts                                    (new-order notifications)
 //   POST   /api/admin/alerts?action=subscribe { subscription, device }   ?action=unsubscribe { endpoint }
@@ -1532,25 +1533,28 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             const [customer] = await tx.select().from(customers).where(eq(customers.id, order.customerId));
             if (!customer) throw new NotFoundError("This order's customer no longer exists.");
 
-            // Specials come off as the order's discount, so lines keep their full price and the sale shows the saving.
-            const specials = lines
-                .map((l) => ({ line: l, off: specialDiscount(l.qty, l.unitPriceNzd, l.special) }))
-                .filter((s) => s.off > 0);
-            const specialNotes = specials.map(
-                ({ line, off }) =>
-                    `${[line.name, line.variant].filter(Boolean).join(" ")}: ${dealText(line.special!)} (-${customerPrice(off, currentBusiness()!)})`
-            );
+            // Specials and the storewide sale come off as the order's discount, so lines keep their full price and the
+            // customer order shows the saving. Worked out again on what's confirmed (fewer may miss the minimum spend).
+            const pricing = priceOrder(lines);
+            const price = (n: number) => customerPrice(n, currentBusiness()!);
+            const specialNotes = lines.flatMap((line, i) => {
+                const off = pricing.lines[i].specialNzd;
+                return off > 0 ? [`${[line.name, line.variant].filter(Boolean).join(" ")}: ${dealText(line.special!)} (-${price(off)})`] : [];
+            });
             const data: SaleInput = {
                 ...emptySale(businessDateString(new Date())),
                 customerName: customer.name,
                 customerContact: customer.email,
                 orderNumber: `Shop #${order.orderNumber}`,
                 lines: await saleLinesFor(tx, lines),
-                discountNzd: Math.round(specials.reduce((t, s) => t + s.off, 0) * 100) / 100,
+                discountNzd: Math.round((pricing.specialsNzd + pricing.storewideNzd) * 100) / 100,
                 shippingChargedNzd: parsed.data.shippingNzd,
                 notes: [
                     order.notes ? `Customer note: ${order.notes}` : "",
                     specialNotes.length ? `Specials: ${specialNotes.join("; ")}` : "",
+                    pricing.storewideNzd > 0
+                        ? `Storewide sale: ${pricing.deal!.percentOff}% off (-${price(pricing.storewideNzd)})`
+                        : "",
                 ]
                     .filter(Boolean)
                     .join("\n"),
@@ -1565,7 +1569,7 @@ async function handleShopOrders(req: any, res: any, db: Db) {
                 data,
             });
 
-            const subtotal = Math.round(lines.reduce((t, l) => t + lineTotal(l), 0) * 100) / 100;
+            const subtotal = pricing.subtotalNzd;
             await tx
                 .update(shopOrders)
                 .set({
@@ -1677,6 +1681,40 @@ async function setupStatus(db: Db): Promise<SetupStatus> {
         dismissed: Boolean(saved.dismissed),
         hasShopOrders: shopOrder.length > 0,
     };
+}
+
+// ---- Storewide sale (shared/specials.ts) ----
+
+// GET /api/admin/storewide - the sale as last saved, and whether customers get it today.
+// PUT { sale } starts or changes it; { sale: null } ends it now. Orders already sent keep the sale they were sent with.
+async function handleStorewide(req: any, res: any, db: Db) {
+    const today = businessDateString(new Date());
+    const reply = async () => {
+        const sale = await savedSale(db);
+        return sendJson(res, 200, { sale, on: saleIsOn(sale, today) });
+    };
+    if (req.method === "GET") return reply();
+    if (req.method === "PUT") {
+        const read = await readBody(req, res);
+        if (!read.ok) return;
+        const raw = (read.body as any)?.sale;
+        if (raw === null) {
+            await db.delete(appSettings).where(eq(appSettings.key, STOREWIDE_KEY));
+            return reply();
+        }
+        const value = toStorewideSale(raw);
+        if (!value) return sendJson(res, 400, { error: "Enter the % off (between 1 and 99) and check the minimum spend." });
+        if (value.endsOn != null && value.endsOn < today) {
+            return sendJson(res, 400, { error: "That end date has already passed - pick today or later, or leave it blank." });
+        }
+        await db
+            .insert(appSettings)
+            .values({ key: STOREWIDE_KEY, value })
+            .onConflictDoUpdate({ target: [appSettings.businessId, appSettings.key], set: { value, updatedAt: new Date() } });
+        return reply();
+    }
+    res.setHeader("Allow", "GET, PUT");
+    return sendJson(res, 405, { error: "Method not allowed" });
 }
 
 // GET /api/admin/setup - how far the business is through setting up.  PUT { linkShared?: true, dismissed? }
@@ -2237,6 +2275,8 @@ export async function handleAdminRequest(req: any, res: any, userId: string) {
                     return await handleSettings(req, res, db);
                 case "setup":
                     return await handleSetup(req, res, db);
+                case "storewide":
+                    return await handleStorewide(req, res, db);
                 case "supplier-catalog":
                     return await handleSupplierCatalog(req, res, db);
                 case "messages":

@@ -1,9 +1,10 @@
 import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "./business.js";
-import { bundles, invItems, inventoryLots, sales, shopOrders } from "./schema.js";
+import { appSettings, bundles, invItems, inventoryLots, sales, shopOrders } from "./schema.js";
+import { businessDateString } from "./dates.js";
 import type { SaleInput } from "../../shared/sales.js";
 import type { BundleComponent } from "../../shared/bundles.js";
-import { toSpecial, type Special } from "../../shared/specials.js";
+import { STOREWIDE_KEY, saleIsOn, toSpecial, toStorewideSale, type Special, type StorewideSale } from "../../shared/specials.js";
 import {
   compareSizes,
   itemSection,
@@ -202,4 +203,16 @@ export async function loadCatalog(db: Db | Tx) {
 
   products.sort((a, b) => a.name.localeCompare(b.name));
   return { products, orderable, available };
+}
+
+// The storewide sale as the owner last saved it (null = none), whether or not it's still on.
+export async function savedSale(db: Db | Tx): Promise<StorewideSale | null> {
+  const [row] = await db.select().from(appSettings).where(eq(appSettings.key, STOREWIDE_KEY));
+  return toStorewideSale(row?.value);
+}
+
+// The storewide sale customers get today, if there is one.
+export async function activeSale(db: Db | Tx): Promise<StorewideSale | null> {
+  const sale = await savedSale(db);
+  return saleIsOn(sale, businessDateString(new Date())) ? sale : null;
 }

@@ -141,58 +141,7 @@ export default function SpecialEditor({
             </span>
           </Field>
 
-          <div className="space-y-1.5">
-            <span className="block text-[11px] font-bold text-white">Banner colour</span>
-            <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Banner colour">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={draft.ribbonColour === ""}
-                onClick={() => set({ ribbonColour: "" })}
-                className={`theme-keep-bg h-8 px-3 rounded-full border-2 text-[11px] font-black bg-gold-500 cursor-pointer flex items-center gap-1 transition ${
-                  draft.ribbonColour === "" ? "border-white" : "border-transparent hover:scale-105"
-                }`}
-              >
-                {draft.ribbonColour === "" && <Check size={12} />} Brand colour
-              </button>
-              {BRAND_PRESETS.map((p) => {
-                const selected = draft.ribbonColour === p.hex;
-                return (
-                  <button
-                    key={p.hex}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    title={p.name}
-                    onClick={() => set({ ribbonColour: p.hex })}
-                    className={`theme-keep-bg h-8 w-8 rounded-full border-2 cursor-pointer flex items-center justify-center transition ${
-                      selected ? "border-white scale-110" : "border-transparent hover:scale-105"
-                    }`}
-                    style={{ backgroundColor: p.hex }}
-                  >
-                    {selected && <Check size={13} className="text-white drop-shadow" />}
-                    <span className="sr-only">{p.name}</span>
-                  </button>
-                );
-              })}
-              <label
-                className="theme-keep-bg relative h-8 w-12 rounded-lg border border-slate-700 overflow-hidden cursor-pointer flex items-center justify-center"
-                title="Choose any colour"
-              >
-                <input
-                  type="color"
-                  value={isHexColour(draft.ribbonColour) ? draft.ribbonColour : "#ef4444"}
-                  onChange={(e) => set({ ribbonColour: e.target.value.toLowerCase() })}
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                />
-                {isHexColour(draft.ribbonColour) && !BRAND_PRESETS.some((p) => p.hex === draft.ribbonColour) ? (
-                  <span className="block h-full w-full" style={{ backgroundColor: draft.ribbonColour }} />
-                ) : (
-                  <Palette size={14} className="text-slate-400" />
-                )}
-              </label>
-            </div>
-          </div>
+          <BannerColourPicker value={draft.ribbonColour} onChange={(ribbonColour) => set({ ribbonColour })} />
 
           {special && (
             <div className="space-y-1">
@@ -202,6 +151,64 @@ export default function SpecialEditor({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// The colour of a special's ribbon or the storewide sale's banner: the brand colour (""), a preset, or any colour.
+export function BannerColourPicker({ value, onChange }: { value: string; onChange: (colour: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <span className="block text-[11px] font-bold text-white">Banner colour</span>
+      <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Banner colour">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === ""}
+          onClick={() => onChange("")}
+          className={`theme-keep-bg h-8 px-3 rounded-full border-2 text-[11px] font-black bg-gold-500 cursor-pointer flex items-center gap-1 transition ${
+            value === "" ? "border-white" : "border-transparent hover:scale-105"
+          }`}
+        >
+          {value === "" && <Check size={12} />} Brand colour
+        </button>
+        {BRAND_PRESETS.map((p) => {
+          const selected = value === p.hex;
+          return (
+            <button
+              key={p.hex}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              title={p.name}
+              onClick={() => onChange(p.hex)}
+              className={`theme-keep-bg h-8 w-8 rounded-full border-2 cursor-pointer flex items-center justify-center transition ${
+                selected ? "border-white scale-110" : "border-transparent hover:scale-105"
+              }`}
+              style={{ backgroundColor: p.hex }}
+            >
+              {selected && <Check size={13} className="text-white drop-shadow" />}
+              <span className="sr-only">{p.name}</span>
+            </button>
+          );
+        })}
+        <label
+          className="theme-keep-bg relative h-8 w-12 rounded-lg border border-slate-700 overflow-hidden cursor-pointer flex items-center justify-center"
+          title="Choose any colour"
+        >
+          <input
+            type="color"
+            value={isHexColour(value) ? value : "#ef4444"}
+            onChange={(e) => onChange(e.target.value.toLowerCase())}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
+          {isHexColour(value) && !BRAND_PRESETS.some((p) => p.hex === value) ? (
+            <span className="block h-full w-full" style={{ backgroundColor: value }} />
+          ) : (
+            <Palette size={14} className="text-slate-400" />
+          )}
+        </label>
+      </div>
     </div>
   );
 }
