@@ -4,7 +4,7 @@ import { ExternalLink, FileUp, Link2, Trash2 } from "lucide-react";
 import { MAX_COA_BYTES } from "../../../shared/shop";
 import { adminApi, type InvItem } from "../../lib/adminApi";
 import { ErrorNote, inputClass, secondaryButton } from "./ui";
-import { prepareImage } from "./ProductImages";
+import { prepareImage, readAsDataUrl } from "../../lib/fileData";
 import { Spinner } from "../LoadingSpinner";
 
 // Admin -> Inventory -> a product -> Shop: the certificate of analysis for this size. Customers see a "View COA"
@@ -12,15 +12,6 @@ import { Spinner } from "../LoadingSpinner";
 
 // COA photos are kept larger than product photos so the small print stays readable.
 const COA_IMAGE_EDGE = 2400;
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("Couldn't read that file."));
-    reader.readAsDataURL(file);
-  });
-}
 
 const describe = (url: string) =>
   /\.blob\.vercel-storage\.com\//.test(url) ? (/\.pdf($|\?)/i.test(url) ? "PDF uploaded" : "Image uploaded") : `Link: ${new URL(url).host}`;

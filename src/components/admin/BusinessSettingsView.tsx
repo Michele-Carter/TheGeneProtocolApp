@@ -5,7 +5,7 @@ import { PLANS } from "../../../shared/billing";
 import { businessApi, type BusinessContext } from "../../lib/business";
 import { adminApi } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, inputClass, primaryButton, secondaryButton } from "./ui";
-import { prepareImage } from "./ProductImages";
+import { prepareImage } from "../../lib/fileData";
 import { Spinner } from "../LoadingSpinner";
 import OrderAlertsCard from "./OrderAlertsCard";
 import BrandColourCard from "./BrandColourCard";

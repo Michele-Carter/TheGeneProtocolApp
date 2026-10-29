@@ -114,15 +114,22 @@ export async function deleteBusiness(businessId: string, now = new Date()): Prom
     return deleteUnusedLogins([...logins], withLogins);
 }
 
-// Its logo (logos/<id>/), shop images and certificates of analysis (shop/<id>/).
+// Its logo (logos/<id>/), shop images and certificates of analysis (shop/<id>/), and the photos and files sent in
+// its messages (messages/<id>/, in the private store).
 async function deleteFiles(businessId: string) {
     const token = process.env.BLOB_READ_WRITE_TOKEN;
     if (!token) throw new Error("BLOB_READ_WRITE_TOKEN is missing");
-    for (const prefix of [`logos/${businessId}/`, `shop/${businessId}/`]) {
+    const stores: { prefix: string; token: string | null }[] = [
+        { prefix: `logos/${businessId}/`, token },
+        { prefix: `shop/${businessId}/`, token },
+        { prefix: `messages/${businessId}/`, token: process.env.MESSAGE_FILES_READ_WRITE_TOKEN || null },
+    ];
+    for (const store of stores) {
+        if (!store.token) continue; // message files were never set up, so there are none
         let cursor: string | undefined;
         do {
-            const page = await list({ prefix, cursor, token });
-            if (page.blobs.length) await del(page.blobs.map((b) => b.url), { token });
+            const page = await list({ prefix: store.prefix, cursor, token: store.token });
+            if (page.blobs.length) await del(page.blobs.map((b) => b.url), { token: store.token });
             cursor = page.hasMore ? page.cursor : undefined;
         } while (cursor);
     }

@@ -4,6 +4,7 @@ import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Megaphone, MessageCir
 import ChatThread from "../ChatThread";
 import { OwnerMessageNotify } from "../MessageNotifyPrompt";
 import { adminApi, type CustomerSummary } from "../../lib/adminApi";
+import type { MessageUpload } from "../../lib/fileData";
 import { formatDateTime } from "../../lib/locale";
 import { MAX_GROUP_RECIPIENTS, MAX_MESSAGE_LENGTH, type Conversation } from "../../../shared/shop";
 import { ErrorNote, inputClass, primaryButton, secondaryButton } from "./ui";
@@ -187,13 +188,14 @@ function OpenConversation({ customerId, onBack, onChanged }: { customerId: strin
     return result.messages;
   }, [customerId, getToken]);
   const send = useCallback(
-    async (body: string) => {
-      const { message } = await adminApi.sendMessage(customerId, body, getToken);
+    async (body: string, _shopOrderId: string | null, attachment: MessageUpload | null) => {
+      const { message } = await adminApi.sendMessage(customerId, body, attachment, getToken);
       onChanged();
       return message;
     },
     [customerId, getToken, onChanged]
   );
+  const loadFile = useCallback((messageId: string) => adminApi.messageFile(messageId, getToken), [getToken]);
   const markRead = useCallback(() => adminApi.markMessagesRead(customerId, getToken), [customerId, getToken]);
 
   const toggleArchive = async () => {
@@ -231,6 +233,7 @@ function OpenConversation({ customerId, onBack, onChanged }: { customerId: strin
           otherName={customer?.name.split(" ")[0] || "customer"}
           load={load}
           send={send}
+          loadFile={loadFile}
           markRead={markRead}
           onRead={onChanged}
           emptyText="No messages yet - send the first one."

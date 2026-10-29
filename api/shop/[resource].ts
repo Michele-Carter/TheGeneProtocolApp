@@ -4,7 +4,7 @@ import { requireAuthUserId } from "../_lib/auth.js";
 import { businessCountryName, serveAsBusiness, type BusinessRequest, type Db } from "../_lib/business.js";
 import { alertNewOrder, alertOrderCancelled, alertPaymentSent, pushKey, removeDevice, saveDevice, subscribeSchema } from "../_lib/orderAlerts.js";
 import { customerForUser } from "../_lib/customers.js";
-import { MessageError, conversation, markRead, sendMessage, unreadCount } from "../_lib/messages.js";
+import { MessageError, conversation, markRead, sendMessage, sendMessageFile, unreadCount } from "../_lib/messages.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
 import { appSettings, customers, notifications, pushSubscriptions, sales, shopOrders } from "../_lib/schema.js";
 import { activeSale, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
@@ -37,7 +37,8 @@ import {
 //   GET  /api/shop/push                       phone/computer notifications: the key + the caller's devices
 //   POST /api/shop/push?action=subscribe { subscription, device }   ?action=unsubscribe { endpoint }
 //   GET  /api/shop/messages                   their conversation with the shop (?summary=1: unread count)
-//   POST /api/shop/messages { body, shopOrderId? }   send a message   ?action=read: mark the shop's read
+//   POST /api/shop/messages { body, shopOrderId?, attachment? }   send a message   ?action=read: mark the shop's read
+//   GET  /api/shop/messages?file=<id>        a photo/PDF from their conversation
 
 type CustomerRow = typeof customers.$inferSelect;
 
@@ -367,8 +368,13 @@ async function handlePush(req: any, res: any, db: Db, userId: string) {
 //   GET  /api/shop/messages               { messages, unread }   (?summary=1: just { unread })
 //   POST /api/shop/messages               { body, shopOrderId? } sends one
 //   POST /api/shop/messages?action=read   marks the shop's messages read
+//   GET  /api/shop/messages?file=<id>     the photo/PDF sent with one of their messages
 async function handleMessages(req: any, res: any, db: Db, userId: string) {
     const customer = await customerForUser(db, userId);
+
+    if (req.method === "GET" && typeof req.query?.file === "string") {
+        return sendMessageFile(res, db, req.query.file, customer.id);
+    }
 
     if (req.method === "GET") {
         const unread = await unreadCount(db, "customer", customer.id);
@@ -389,7 +395,11 @@ async function handleMessages(req: any, res: any, db: Db, userId: string) {
             return sendJson(res, 400, { error: "Invalid JSON body" });
         }
         const parsed = z
-            .object({ body: z.string().max(MAX_MESSAGE_LENGTH * 2), shopOrderId: z.string().nullish() })
+            .object({
+                body: z.string().max(MAX_MESSAGE_LENGTH * 2),
+                shopOrderId: z.string().nullish(),
+                attachment: z.object({ dataUrl: z.string(), name: z.string().max(300) }).nullish(),
+            })
             .safeParse(body);
         if (!parsed.success) return sendJson(res, 400, { error: "Please check your message" });
         try {

@@ -9,6 +9,7 @@ import type { PushSubscriptionData } from "./orderAlerts";
 import type { SupplierProduct } from "../../shared/library";
 import { ApiError, businessHeaders, type BusinessContext } from "./business";
 import { signedInFetch } from "./signedInFetch";
+import { fetchSignedInFile, type MessageUpload } from "./fileData";
 import { appLocale, businessToday, homeCurrency } from "./locale";
 import { moneyPrefix } from "../../shared/countries";
 
@@ -344,8 +345,10 @@ export const adminApi = {
       { method: "GET" },
       t
     ),
-  sendMessage: (customerId: string, body: string, t: GetToken) =>
-    adminFetch<{ message: ChatMessage }>("messages", { method: "POST", body: JSON.stringify({ customerId, body }) }, t),
+  sendMessage: (customerId: string, body: string, attachment: MessageUpload | null, t: GetToken) =>
+    adminFetch<{ message: ChatMessage }>("messages", { method: "POST", body: JSON.stringify({ customerId, body, attachment }) }, t),
+  // The photo/PDF sent with a message.
+  messageFile: (messageId: string, t: GetToken) => fetchSignedInFile(`/api/admin/messages?file=${q(messageId)}`, t),
   // The same message to several customers (or "all" who've signed up), each in their own conversation.
   sendGroupMessage: (to: string[] | "all", body: string, t: GetToken) =>
     adminFetch<{ sent: number }>(
