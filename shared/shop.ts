@@ -216,10 +216,21 @@ export const MAX_MESSAGE_LENGTH = 2000;
 // Most customers one group message can go to at once (so one click can't flood a whole customer list by mistake).
 export const MAX_GROUP_RECIPIENTS = 200;
 
+// A photo or PDF sent with a message. Photos are shrunk before sending; PDFs are sent as they are.
+export const MAX_MESSAGE_FILE_BYTES = 3 * 1024 * 1024;
+export const MESSAGE_FILE_TYPES = ["image/webp", "image/jpeg", "image/png", "application/pdf"] as const;
+
+export interface MessageAttachment {
+  name: string;
+  type: (typeof MESSAGE_FILE_TYPES)[number];
+  size: number; // bytes
+}
+
 export interface ChatMessage {
   id: string;
   from: "customer" | "owner";
-  body: string;
+  body: string; // can be empty when there's a file
+  attachment: MessageAttachment | null; // opened through the app only (it's kept private)
   shopOrderId: string | null; // when it's about one of the customer's orders
   orderNumber: number | null;
   read: boolean; // the other side has read it

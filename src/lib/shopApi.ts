@@ -2,6 +2,7 @@ import type { CustomerDetails, ShippingAddress } from "../../shared/customers";
 import type { CartLine, ChatMessage, CustomerNotification, ShopOrder, ShopProduct } from "../../shared/shop";
 import { businessHeaders } from "./business";
 import { signedInFetch } from "./signedInFetch";
+import { fetchSignedInFile, type MessageUpload } from "./fileData";
 import { appLocale, homeCurrency } from "./locale";
 import type { PushSubscriptionData } from "./orderAlerts";
 import type { StorewideSale } from "../../shared/specials";
@@ -70,8 +71,10 @@ export const shopApi = {
   // The customer's conversation with the shop.
   messages: (t: GetToken) => shopFetch<{ unread: number; messages: ChatMessage[] }>("messages", { method: "GET" }, t),
   unreadMessages: (t: GetToken) => shopFetch<{ unread: number }>("messages?summary=1", { method: "GET" }, t),
-  sendMessage: (body: string, shopOrderId: string | null, t: GetToken) =>
-    shopFetch<{ message: ChatMessage }>("messages", { method: "POST", body: JSON.stringify({ body, shopOrderId }) }, t),
+  sendMessage: (body: string, shopOrderId: string | null, attachment: MessageUpload | null, t: GetToken) =>
+    shopFetch<{ message: ChatMessage }>("messages", { method: "POST", body: JSON.stringify({ body, shopOrderId, attachment }) }, t),
+  // The photo/PDF sent with a message (only the customer and their shop can open it).
+  messageFile: (messageId: string, t: GetToken) => fetchSignedInFile(`/api/shop/messages?file=${encodeURIComponent(messageId)}`, t),
   markMessagesRead: (t: GetToken) => shopFetch<{ success: true }>("messages?action=read", { method: "POST", body: "{}" }, t),
 };
 

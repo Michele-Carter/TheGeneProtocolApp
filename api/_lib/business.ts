@@ -89,12 +89,18 @@ class HeldResponse {
         this.body = body;
         return this;
     }
+    // Raw bytes (e.g. a photo sent in a message) go out as they are, not as JSON.
+    send(body: Buffer) {
+        this.body = body;
+        return this;
+    }
     setHeader(name: string, value: string) {
         this.headers[name] = value;
     }
     sendTo(res: any) {
         for (const [name, value] of Object.entries(this.headers)) res.setHeader(name, value);
-        sendJson(res, this.statusCode, this.body ?? null);
+        if (Buffer.isBuffer(this.body)) res.status(this.statusCode).send(this.body);
+        else sendJson(res, this.statusCode, this.body ?? null);
     }
 }
 

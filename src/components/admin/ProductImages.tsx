@@ -1,37 +1,11 @@
 import React, { useRef, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { ImagePlus, Star, Trash2 } from "lucide-react";
-import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_PRODUCT } from "../../../shared/shop";
+import { MAX_IMAGES_PER_PRODUCT } from "../../../shared/shop";
 import { adminApi, type ImageTarget } from "../../lib/adminApi";
+import { prepareImage } from "../../lib/fileData";
 import { ErrorNote, secondaryButton } from "./ui";
 import { Spinner } from "../LoadingSpinner";
-
-const MAX_EDGE = 1400;
-
-// Shrinks a photo to at most maxEdge px on its longest side and re-encodes it, so uploads stay small
-// and the shop loads quickly. WebP keeps transparent backgrounds; browsers that can't write WebP get JPEG.
-export async function prepareImage(file: File, maxEdge = MAX_EDGE): Promise<string> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Couldn't read that image.");
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-
-  let dataUrl = canvas.toDataURL("image/webp", 0.86);
-  if (!dataUrl.startsWith("data:image/webp")) {
-    ctx.globalCompositeOperation = "destination-over";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    dataUrl = canvas.toDataURL("image/jpeg", 0.88);
-  }
-  // Base64 is about 4/3 the size of the file.
-  if ((dataUrl.length * 3) / 4 > MAX_IMAGE_BYTES) throw new Error(`${file.name} is too large even after resizing.`);
-  return dataUrl;
-}
 
 export default function ProductImages({
   target,

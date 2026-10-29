@@ -4,6 +4,7 @@ import { MessageCircle, X } from "lucide-react";
 import ChatThread from "./ChatThread";
 import { CustomerMessageNotify } from "./MessageNotifyPrompt";
 import { shopApi } from "../lib/shopApi";
+import type { MessageUpload } from "../lib/fileData";
 
 // A customer's conversation with their shop, opened from the Messages button anywhere in the app (or from an
 // order's "Ask about this order"). A window in the middle of the screen; fills the screen on a phone.
@@ -24,7 +25,12 @@ export default function MessagesPanel({
 }) {
   const { getToken } = useAuth();
   const load = useCallback(async () => (await shopApi.messages(getToken)).messages, [getToken]);
-  const send = useCallback(async (body: string, shopOrderId: string | null) => (await shopApi.sendMessage(body, shopOrderId, getToken)).message, [getToken]);
+  const send = useCallback(
+    async (body: string, shopOrderId: string | null, attachment: MessageUpload | null) =>
+      (await shopApi.sendMessage(body, shopOrderId, attachment, getToken)).message,
+    [getToken]
+  );
+  const loadFile = useCallback((messageId: string) => shopApi.messageFile(messageId, getToken), [getToken]);
   const markRead = useCallback(() => shopApi.markMessagesRead(getToken), [getToken]);
 
   useEffect(() => {
@@ -58,6 +64,7 @@ export default function MessagesPanel({
             otherName={shopName}
             load={load}
             send={send}
+            loadFile={loadFile}
             markRead={markRead}
             order={order}
             onClearOrder={onClearOrder}

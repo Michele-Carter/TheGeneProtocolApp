@@ -9,6 +9,7 @@ dotenv.config({ path: ".env.local", quiet: true });
 process.env.VAPID_PUBLIC_KEY ||= "test";
 process.env.VAPID_PRIVATE_KEY ||= "test";
 
+import { del, list } from "@vercel/blob";
 import postgres from "postgres";
 import webpush from "web-push";
 import { handleAdminRequest } from "../api/admin/[resource]";
@@ -45,6 +46,7 @@ async function call(handler: any, userId: string, slug: string, method: string, 
     const res = {
         status(code: number) { out.status = code; return res; },
         json(data: unknown) { out.body = data; return res; },
+        send(data: unknown) { out.body = data; return res; },
         setHeader() {},
     };
     await handler({ method, query, body, headers: { "x-business": slug } }, res, userId);
@@ -59,9 +61,14 @@ const shop = (who: string, method: string, query: Record<string, string>, body?:
 
 async function removeEverything() {
     const tables = (await sql`select table_name from information_schema.columns where table_schema = 'public' and column_name = 'business_id'`).map((r) => r.table_name);
+    const token = process.env.MESSAGE_FILES_READ_WRITE_TOKEN;
     for (const slug of [SLUG, OTHER_SLUG]) {
         const [b] = await sql`select id from businesses where slug = ${slug}`;
         if (!b) continue;
+        if (token) {
+            const files = await list({ prefix: `messages/${b.id}/`, token });
+            if (files.blobs.length) await del(files.blobs.map((f) => f.url), { token });
+        }
         for (const t of tables) await sql`delete from ${sql(t)} where business_id = ${b.id}`;
         await sql`delete from businesses where id = ${b.id}`;
     }
@@ -139,6 +146,42 @@ try {
     // Bad messages.
     check("empty message refused", (await shop(ALICE, "POST", { resource: "messages" }, { body: "   " })).status === 400);
     check("too-long message refused", (await shop(ALICE, "POST", { resource: "messages" }, { body: "x".repeat(2001) })).status === 400);
+
+    // Photos and PDFs. They're stored privately, so they can only be fetched through the app, by the shop and
+    // that customer. The real upload checks need the private store's token in .env.local.
+    const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    const photo = { dataUrl: `data:image/png;base64,${PNG}`, name: "reaction.png" };
+    if (!process.env.MESSAGE_FILES_READ_WRITE_TOKEN) {
+        const refused = await shop(ALICE, "POST", { resource: "messages" }, { body: "", attachment: photo });
+        check("a file is refused while file storage isn't set up", refused.status === 400 && /isn't set up/.test(refused.body?.error), refused);
+        console.log("(skipping upload checks - MESSAGE_FILES_READ_WRITE_TOKEN isn't in .env.local)");
+    } else {
+        take();
+        const sent = ok(await shop(ALICE, "POST", { resource: "messages" }, { body: "", attachment: photo }));
+        check("customer can send a photo on its own", sent.message.body === "" && sent.message.attachment?.type === "image/png" && sent.message.attachment?.name === "reaction.png", sent);
+        alerts = take();
+        check("...the owner's notification says it's a photo", alerts.length === 1 && alerts[0].body === "Sent a photo", alerts);
+        inbox = ok(await owner("GET", { resource: "messages" }));
+        check("...and so does the inbox", inbox.conversations.find((c: any) => c.customerId === alice.id)?.lastMessage.body === "Sent a photo", inbox);
+        const asOwner = await owner("GET", { resource: "messages", file: sent.message.id });
+        check("owner can open the photo", asOwner.status === 200 && Buffer.isBuffer(asOwner.body) && asOwner.body.equals(Buffer.from(PNG, "base64")), asOwner.status);
+        const asAlice = await shop(ALICE, "GET", { resource: "messages", file: sent.message.id });
+        check("...and so can the customer who sent it", asAlice.status === 200 && Buffer.isBuffer(asAlice.body), asAlice.status);
+        const asBob = await shop(BOB, "GET", { resource: "messages", file: sent.message.id });
+        check("...but not another customer", asBob.status === 404, asBob.status);
+        const asOther = await call(handleAdminRequest, OTHER_OWNER, OTHER_SLUG, "GET", { resource: "messages", file: sent.message.id });
+        check("...or another business", asOther.status === 404, asOther.status);
+
+        const pdf = { dataUrl: `data:application/pdf;base64,${Buffer.from("%PDF-1.4 test").toString("base64")}`, name: "COA BPC-157.pdf" };
+        const withPdf = ok(await owner("POST", { resource: "messages" }, { customerId: alice.id, body: "Here's the COA", attachment: pdf }));
+        const aliceSees = ok(await shop(ALICE, "GET", { resource: "messages" })).messages.at(-1);
+        check("owner can send a PDF with a message", aliceSees.id === withPdf.message.id && aliceSees.body === "Here's the COA" && aliceSees.attachment?.type === "application/pdf", aliceSees);
+        const wrongType = await shop(ALICE, "POST", { resource: "messages" }, { body: "", attachment: { dataUrl: "data:text/html;base64,PGI+aGk8L2I+", name: "x.html" } });
+        check("other kinds of file are refused", wrongType.status === 400, wrongType);
+        const tooBig = await shop(ALICE, "POST", { resource: "messages" }, { body: "", attachment: { dataUrl: `data:application/pdf;base64,${Buffer.alloc(3 * 1024 * 1024 + 1).toString("base64")}`, name: "big.pdf" } });
+        check("files over 3 MB are refused", tooBig.status === 400, tooBig.status);
+        take();
+    }
 
     // Another business can't read it.
     const other = await call(handleAdminRequest, OTHER_OWNER, OTHER_SLUG, "GET", { resource: "messages", customerId: alice.id });

@@ -202,6 +202,11 @@ export const messages = pgTable(
     sender: text("sender").notNull(), // "customer" | "owner"
     body: text("body").notNull(),
     shopOrderId: text("shop_order_id"),
+    // A photo or PDF sent with it, in the private Blob store (scripts/message-files.sql).
+    attachmentUrl: text("attachment_url"),
+    attachmentName: text("attachment_name"),
+    attachmentType: text("attachment_type"), // image/webp, image/jpeg, image/png or application/pdf
+    attachmentSize: integer("attachment_size"),
     readAt: timestamp("read_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

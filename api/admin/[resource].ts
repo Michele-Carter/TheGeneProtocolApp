@@ -41,6 +41,7 @@ import {
     markRead,
     sendGroupMessage,
     sendMessage,
+    sendMessageFile,
     setArchived,
     unreadCount,
 } from "../_lib/messages.js";
@@ -1763,15 +1764,22 @@ async function alertsInfo(db: Db): Promise<OrderAlertsInfo> {
     };
 }
 
+const attachmentSchema = z.object({ dataUrl: z.string(), name: z.string().max(300) });
+
 // Messages with customers (one conversation per customer; the owner can start one too).
 //   GET  /api/admin/messages                      { conversations, unread }   (?summary=1: just { unread })
 //   GET  /api/admin/messages?customerId=          { customer, messages } - one conversation
-//   POST /api/admin/messages { customerId, body, shopOrderId? }   send
+//   POST /api/admin/messages { customerId, body, shopOrderId?, attachment? }   send
 //   POST /api/admin/messages?action=group { customerIds | all: true, body }   the same message to several (or all)
 //        customers, each privately
 //   POST /api/admin/messages?action=read    { customerId }            mark the customer's messages read
 //   POST /api/admin/messages?action=archive { customerId, archived }  archive / bring back a conversation
+//   GET  /api/admin/messages?file=<id>            the photo/PDF sent with a message
 async function handleMessages(req: any, res: any, db: Db) {
+    if (req.method === "GET" && typeof req.query?.file === "string") {
+        return sendMessageFile(res, db, req.query.file, null);
+    }
+
     if (req.method === "GET") {
         const customerId = typeof req.query?.customerId === "string" ? req.query.customerId : "";
         if (customerId) {
@@ -1823,6 +1831,7 @@ async function handleMessages(req: any, res: any, db: Db) {
             sender: "owner",
             body: typeof body.body === "string" ? body.body : "",
             shopOrderId: typeof body.shopOrderId === "string" ? body.shopOrderId : null,
+            attachment: attachmentSchema.safeParse(body.attachment).data ?? null,
         });
         return sendJson(res, 201, { message });
     } catch (error) {
