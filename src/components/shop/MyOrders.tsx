@@ -178,7 +178,7 @@ export default function MyOrders({
               )}
             </div>
 
-            {p && p.paymentStatus !== "paid" && !p.completed && (
+            {p && p.paymentStatus !== "paid" && (
               <PaymentBox order={order} onReported={load} />
             )}
 

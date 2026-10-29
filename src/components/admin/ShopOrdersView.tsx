@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { addressLines } from "../../../shared/customers";
 import { hasPaymentDetails, type ShopOrderStatus } from "../../../shared/shop";
+import { fifoEstimate } from "../../../shared/sales";
 import { dealText, priceOrder } from "../../../shared/specials";
 import { adminApi, cash, type ShopOrderDetail, type ShopOrderSummary } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, StatRow, StatusDot, dangerButton, inputClass, primaryButton, secondaryButton } from "./ui";
@@ -225,6 +226,22 @@ function OrderReview({
   const pricing = priceOrder(order ? order.lines.map((l) => ({ ...l, qty: qtyOf(l.key), unitPriceNzd: priceOf(l.key) })) : []);
   const { fullNzd: fullPrice, specialsNzd: specialsOff, storewideNzd: saleOff, subtotalNzd: subtotal } = pricing;
   const sale = pricing.deal;
+  // What each line's stock will cost, taken from the oldest batches first as confirming does (bundles by their
+  // parts). Null when there isn't enough stock to say, or the line has been removed.
+  const parts = (order?.lines ?? []).flatMap((l) =>
+    l.kind === "item"
+      ? [{ key: l.key, id: `${l.key}:0`, itemId: l.refId, qty: qtyOf(l.key) }]
+      : (l.components ?? []).map((c, i) => ({ key: l.key, id: `${l.key}:${i}`, itemId: c.itemId, qty: c.qty * qtyOf(l.key) }))
+  );
+  const { byLine } = fifoEstimate(parts, order?.stock ?? {});
+  const lineCosts = (order?.lines ?? []).map((l) => {
+    const own = parts.filter((p) => p.key === l.key);
+    if (qtyOf(l.key) <= 0 || own.length === 0 || own.some((p) => byLine[p.id] == null)) return null;
+    return own.reduce((total, p) => total + byLine[p.id]!, 0);
+  });
+  const itemsCost = (order?.lines ?? []).some((l, i) => qtyOf(l.key) > 0 && lineCosts[i] == null)
+    ? null
+    : lineCosts.reduce<number>((total, c) => total + (c ?? 0), 0);
   const short = order ? order.lines.filter((l) => qtyOf(l.key) > l.available) : [];
   const changed = order ? order.lines.some((l) => qtyOf(l.key) !== l.qty) : false;
   const repriced = order ? order.lines.some((l) => priceOf(l.key) !== l.unitPriceNzd) : false;
@@ -323,7 +340,7 @@ function OrderReview({
           <div className="space-y-5 min-w-0">
             <Card title="Items">
               <div className="overflow-x-auto">
-                <table className="w-full text-xs min-w-[34rem]">
+                <table className="w-full text-xs min-w-[40rem]">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wider text-white">
                       <th className="py-1.5 pr-3 font-bold">Item</th>
@@ -331,6 +348,7 @@ function OrderReview({
                       <th className="py-1.5 pr-3 font-bold text-right">{editable ? "Available" : ""}</th>
                       <th className="py-1.5 pr-3 font-bold text-right w-24">Qty</th>
                       <th className="py-1.5 font-bold text-right">Total</th>
+                      {editable && <th className="py-1.5 pl-3 font-bold text-right">Profit</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70">
@@ -339,6 +357,8 @@ function OrderReview({
                       const p = priceOf(line.key);
                       const saving = pricing.lines[i];
                       const over = editable && q > line.available;
+                      const cost = lineCosts[i];
+                      const lineProfit = cost == null ? null : saving.totalNzd - cost;
                       return (
                         <tr key={line.key} className={q === 0 ? "opacity-40" : ""}>
                           <td className="py-2 pr-3">
@@ -404,6 +424,21 @@ function OrderReview({
                               <div className="text-[10px] font-bold text-gold-400">-{cash(saving.storewideNzd)} sale</div>
                             )}
                           </td>
+                          {editable && (
+                            <td className="py-2 pl-3 text-right tabular-nums">
+                              {cost == null || lineProfit == null ? (
+                                <span className="text-slate-500">—</span>
+                              ) : (
+                                <>
+                                  <div className={`font-bold ${lineProfit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                    {cash(lineProfit)}
+                                  </div>
+                                  {q > 1 && <div className="text-[10px] text-slate-400">{cash(lineProfit / q)} each</div>}
+                                  <div className="text-[10px] text-slate-500">cost {cash(cost / q)} each</div>
+                                </>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -480,7 +515,18 @@ function OrderReview({
                     {saleOff > 0 && <StatRow label={`Storewide sale (${sale!.percentOff}%)`} value={cash(-saleOff)} />}
                     <StatRow label="Shipping" value={shipping == null ? "—" : cash(shipping)} />
                     <StatRow label="Total" value={cash(subtotal + (shipping ?? 0))} strong />
+                    <StatRow label="Stock cost (est.)" value={itemsCost == null ? "—" : cash(itemsCost)} />
+                    <StatRow
+                      label="Profit on items (est.)"
+                      value={itemsCost == null ? "—" : cash(subtotal - itemsCost)}
+                      strong
+                      tone={itemsCost == null ? "muted" : subtotal - itemsCost >= 0 ? "good" : "bad"}
+                    />
                   </div>
+                  <p className="text-[11px] text-slate-500">
+                    Profit is the items' price after specials and sales, less what that stock cost you (oldest batches first).
+                    It doesn't include shipping.
+                  </p>
                   {sale && pricing.spendMoreNzd > 0 && (
                     <p className="text-[11px] text-amber-300">
                       Sent during your {sale.percentOff}% storewide sale, but it's now under the sale's {cash(sale.minSpendNzd)}{" "}
@@ -506,7 +552,8 @@ function OrderReview({
                     </p>
                   )}
                   <p className="text-[11px] text-slate-500">
-                    Confirming adds it to Customer Orders, where you record payment and shipping and complete it as usual.
+                    Confirming takes the items out of stock and adds the order to Customer Orders, where you record
+                    payment and shipping. To change the items later, reopen it there (they go back into stock).
                   </p>
                 </div>
               </Card>

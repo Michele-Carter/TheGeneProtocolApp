@@ -124,6 +124,8 @@ export interface ShopOrderDetail extends ShopOrderSummary {
   notes: string;
   adminMessage: string;
   shippingAddress: ShippingAddress;
+  // While waiting: the batches in stock for its items, oldest first (to estimate cost and profit)
+  stock: Record<string, { qty: number; unitCostNzd: number }[]>;
 }
 
 type GetToken = () => Promise<string | null>;
