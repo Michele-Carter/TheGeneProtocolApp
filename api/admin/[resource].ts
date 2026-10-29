@@ -894,6 +894,31 @@ async function saleDtos(db: Db, rows: (typeof sales.$inferSelect)[]) {
     return rows.map((row) => ({ ...saleDto(row), sendTo: sendTo.get(row.id) ?? null }));
 }
 
+// Takes a customer order's items out of stock, oldest batch first, and returns what completes the order:
+// its status, what the stock cost and when.
+async function takeSaleStock(tx: Tx, saleId: string, customerName: string, data: SaleInput, occurredAt: Date) {
+    const costDetail: Record<string, number> = {};
+    let cogs = 0;
+    for (const line of data.lines) {
+        try {
+            const taken = await consumeFifo(tx, line.itemId, line.qty, {
+                type: "sale",
+                refId: saleId,
+                reason: `Customer order — ${customerName}`,
+                occurredAt,
+            });
+            costDetail[line.id] = taken.totalCostNzd;
+            cogs += taken.totalCostNzd;
+        } catch (error) {
+            if (error instanceof InventoryError) {
+                throw new InventoryError(`${[line.name, line.variant].filter(Boolean).join(" ")}: ${error.message}`);
+            }
+            throw error;
+        }
+    }
+    return { status: "completed" as const, cogsNzd: Math.round(cogs * 10000) / 10000, costDetail, completedAt: occurredAt };
+}
+
 async function handleSales(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
     const action = typeof req.query?.action === "string" ? req.query.action : null;
@@ -950,34 +975,9 @@ async function handleSales(req: any, res: any, db: Db) {
                 const occurredAt = businessDate(
                     typeof completedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(completedDate) ? completedDate : undefined
                 );
-                const costDetail: Record<string, number> = {};
-                let cogs = 0;
-                for (const line of data.lines) {
-                    try {
-                        const taken = await consumeFifo(tx, line.itemId, line.qty, {
-                            type: "sale",
-                            refId: sale.id,
-                            reason: `Customer order — ${sale.customerName}`,
-                            occurredAt,
-                        });
-                        costDetail[line.id] = taken.totalCostNzd;
-                        cogs += taken.totalCostNzd;
-                    } catch (error) {
-                        if (error instanceof InventoryError) {
-                            throw new InventoryError(`${[line.name, line.variant].filter(Boolean).join(" ")}: ${error.message}`);
-                        }
-                        throw error;
-                    }
-                }
                 const [updated] = await tx
                     .update(sales)
-                    .set({
-                        status: "completed",
-                        cogsNzd: Math.round(cogs * 10000) / 10000,
-                        costDetail,
-                        completedAt: occurredAt,
-                        updatedAt: new Date(),
-                    })
+                    .set({ ...(await takeSaleStock(tx, sale.id, sale.customerName, data, occurredAt)), updatedAt: new Date() })
                     .where(eq(sales.id, id))
                     .returning();
                 return updated;
@@ -1296,6 +1296,19 @@ function lineAvailability(line: ShopOrderLine, free: (itemId: string) => number)
     return components.length ? Math.min(...components.map((c) => Math.floor(free(c.itemId) / Math.max(1, c.qty)))) : 0;
 }
 
+// The batches in stock for these items, oldest first, so the owner can see what an order will cost and make.
+async function stockBatches(db: Db, itemIds: string[]) {
+    const batches: Record<string, { qty: number; unitCostNzd: number }[]> = {};
+    if (itemIds.length === 0) return batches;
+    const lots = await db
+        .select()
+        .from(inventoryLots)
+        .where(and(inArray(inventoryLots.itemId, itemIds), gt(inventoryLots.qtyRemaining, 0)))
+        .orderBy(asc(inventoryLots.receivedAt), asc(inventoryLots.createdAt));
+    for (const lot of lots) (batches[lot.itemId] ??= []).push({ qty: lot.qtyRemaining, unitCostNzd: lot.unitCostNzd });
+    return batches;
+}
+
 // Paid status of the customer order a confirmed shop order became (null until confirmed).
 function salePaymentStatus(sale: typeof sales.$inferSelect | undefined) {
     return sale ? saleTotals(sale.data as SaleInput).paymentStatus : null;
@@ -1419,7 +1432,9 @@ async function handleShopOrders(req: any, res: any, db: Db) {
             const orderSales = await salesFor(db, [order]);
             // Today's shop price for each line, so the owner can see if prices have changed since it was sent.
             const { orderable } = order.status === "submitted" ? await loadCatalog(db) : { orderable: new Map() };
+            const stock = order.status === "submitted" ? await stockBatches(db, Array.from(orderDemand(order.lines).keys())) : {};
             return sendJson(res, 200, {
+                stock,
                 ...shopOrderSummary(order, customer, order.saleId ? orderSales.get(order.saleId) : undefined),
                 lines: order.lines.map((line) => ({
                     ...line,
@@ -1559,14 +1574,16 @@ async function handleShopOrders(req: any, res: any, db: Db) {
                     .filter(Boolean)
                     .join("\n"),
             };
+            // Confirming takes the items out of stock straight away: the customer order starts completed, so
+            // Inventory shows what's really left. Reopening it puts them back.
             const saleId = crypto.randomUUID();
             await tx.insert(sales).values({
                 id: saleId,
                 customerId: customer.id,
                 customerName: customer.name,
                 orderDate: data.orderDate,
-                status: "open",
                 data,
+                ...(await takeSaleStock(tx, saleId, customer.name, data, businessDate(data.orderDate))),
             });
 
             const subtotal = pricing.subtotalNzd;

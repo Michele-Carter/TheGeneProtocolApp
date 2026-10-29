@@ -99,7 +99,7 @@ export function saleProfit(sale: SaleInput, cogsNzd: number | null) {
 // Estimates the cost of each line by taking units from the oldest batches first,
 // the same way completing the order will. `stock` maps itemId -> open batches, oldest first.
 export function fifoEstimate(
-  lines: SaleLine[],
+  lines: Pick<SaleLine, "id" | "itemId" | "qty">[],
   stock: Record<string, { qty: number; unitCostNzd: number }[]>
 ): { byLine: Record<string, number | null>; total: number | null; short: string[] } {
   const remaining: Record<string, { qty: number; unitCostNzd: number }[]> = {};

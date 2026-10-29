@@ -149,7 +149,7 @@ function orderDto(
 ): ShopOrder {
     const progress = row.status === "confirmed" ? progressOf(sale) : null;
     // Bank details are only shared once the owner has confirmed the order, and only until it's paid.
-    const awaitingPayment = progress != null && progress.paymentStatus !== "paid" && !progress.completed;
+    const awaitingPayment = progress != null && progress.paymentStatus !== "paid";
     return {
         id: row.id,
         orderNumber: row.orderNumber,
