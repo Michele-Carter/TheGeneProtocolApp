@@ -920,6 +920,23 @@ async function takeSaleStock(tx: Tx, saleId: string, customerName: string, data:
     return { status: "completed" as const, cogsNzd: Math.round(cogs * 10000) / 10000, costDetail, completedAt: occurredAt };
 }
 
+// Saving a customer order takes its items out of stock straight away, so Inventory shows what's really left.
+// If there isn't enough of every item it's saved open with nothing taken, and goes out on a later save.
+async function takeSaleStockIfEnough(tx: Tx, saleId: string, customerName: string, data: SaleInput) {
+    if (data.lines.length === 0) return null;
+    const need = new Map<string, number>();
+    for (const line of data.lines) need.set(line.itemId, (need.get(line.itemId) ?? 0) + line.qty);
+    await lockStock(tx);
+    const onHand = await tx
+        .select({ itemId: inventoryLots.itemId, qty: sql<number>`sum(${inventoryLots.qtyRemaining})::int` })
+        .from(inventoryLots)
+        .where(and(inArray(inventoryLots.itemId, [...need.keys()]), gt(inventoryLots.qtyRemaining, 0)))
+        .groupBy(inventoryLots.itemId);
+    const have = new Map(onHand.map((row) => [row.itemId, Number(row.qty)]));
+    if ([...need].some(([itemId, qty]) => (have.get(itemId) ?? 0) < qty)) return null;
+    return takeSaleStock(tx, saleId, customerName, data, businessDate(data.orderDate));
+}
+
 async function handleSales(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
     const action = typeof req.query?.action === "string" ? req.query.action : null;
@@ -998,17 +1015,23 @@ async function handleSales(req: any, res: any, db: Db) {
         if (req.method === "POST") {
             const customer = await resolveSaleCustomer(db, data.customerName, null);
             data = { ...data, customerName: customer.name };
-            const [row] = await db
-                .insert(sales)
-                .values({
-                    id: crypto.randomUUID(),
-                    customerId: customer.id,
-                    customerName: customer.name,
-                    orderDate: data.orderDate,
-                    status: "open",
-                    data,
-                })
-                .returning();
+            const saleId = crypto.randomUUID();
+            const row = await db.transaction(async (tx) => {
+                const stock = await takeSaleStockIfEnough(tx, saleId, customer.name, data);
+                const [inserted] = await tx
+                    .insert(sales)
+                    .values({
+                        id: saleId,
+                        customerId: customer.id,
+                        customerName: customer.name,
+                        orderDate: data.orderDate,
+                        status: "open",
+                        data,
+                        ...stock,
+                    })
+                    .returning();
+                return inserted;
+            });
             return sendJson(res, 201, (await saleDtos(db, [row]))[0]);
         }
 
@@ -1020,11 +1043,24 @@ async function handleSales(req: any, res: any, db: Db) {
         }
         const customer = await resolveSaleCustomer(db, data.customerName, existing.customerId);
         data = { ...data, customerName: customer.name };
-        const [row] = await db
-            .update(sales)
-            .set({ customerId: customer.id, customerName: customer.name, orderDate: data.orderDate, data, updatedAt: new Date() })
-            .where(eq(sales.id, id!))
-            .returning();
+        let row: typeof sales.$inferSelect;
+        try {
+            row = await db.transaction(async (tx) => {
+                const [locked] = await tx.select().from(sales).where(eq(sales.id, id!)).for("update");
+                if (!locked) throw new InventoryError("Customer order not found");
+                if (locked.status === "completed") data = { ...data, lines: (locked.data as SaleInput).lines };
+                const stock = locked.status === "open" ? await takeSaleStockIfEnough(tx, locked.id, customer.name, data) : null;
+                const [updated] = await tx
+                    .update(sales)
+                    .set({ customerId: customer.id, customerName: customer.name, orderDate: data.orderDate, data, ...stock, updatedAt: new Date() })
+                    .where(eq(sales.id, id!))
+                    .returning();
+                return updated;
+            });
+        } catch (error) {
+            if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
+            throw error;
+        }
         await notifyIfShipped(db, row.id, existing.data as SaleInput, data);
         await notifyIfPaid(db, row.id, existing.data as SaleInput, data);
         return sendJson(res, 200, (await saleDtos(db, [row]))[0]);
