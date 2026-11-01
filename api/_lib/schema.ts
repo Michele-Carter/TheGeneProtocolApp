@@ -112,6 +112,8 @@ export const invItems = pgTable("inv_items", {
   shopVisible: boolean("shop_visible").notNull().default(false),
   // Shown in the shop as "Coming soon" and can't be ordered while it has no stock (scripts/coming-soon.sql).
   comingSoon: boolean("coming_soon").notNull().default(false),
+  // At or below its low-stock level, the shop shows "Only 3 left" instead of "Low stock" (scripts/stock-left.sql).
+  showStockLeft: boolean("show_stock_left").notNull().default(false),
   // A deal on this size: % off or buy X get Y free, with its ribbon (shared/specials.ts, scripts/specials.sql).
   special: jsonb("special").$type<Special | null>(),
   shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),

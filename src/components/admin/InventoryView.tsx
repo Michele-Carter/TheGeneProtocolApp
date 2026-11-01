@@ -12,7 +12,7 @@ import {
 } from "../../lib/adminApi";
 import type { ItemKind } from "../../../shared/landedCost";
 import CategoryPicker from "./CategoryPicker";
-import { SHOP_SECTIONS, itemSection, type ItemShopSection } from "../../../shared/shop";
+import { LOW_STOCK_DEFAULT, SHOP_SECTIONS, itemSection, type ItemShopSection } from "../../../shared/shop";
 import ProductImages from "./ProductImages";
 import { Card, ErrorNote, Field, NumberField, StatRow, dateButtonClass, inputClass, primaryButton, secondaryButton } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
@@ -560,6 +560,7 @@ function ItemDetail({
   const [date, setDate] = useState(todayIso());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [reorderLevel, setReorderLevel] = useState<number | null>(null);
+  const [showStockLeft, setShowStockLeft] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
   const adjustCardRef = useRef<HTMLDivElement>(null);
 
@@ -568,6 +569,7 @@ function ItemDetail({
       const d = await adminApi.inventoryItem(itemId, getToken);
       setDetail(d);
       setReorderLevel(d.item.reorderLevel);
+      setShowStockLeft(d.item.showStockLeft);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -655,7 +657,7 @@ function ItemDetail({
     setBusyAction("reorderLevel");
     setError(null);
     try {
-      await adminApi.updateItem(itemId, { reorderLevel }, getToken);
+      await adminApi.updateItem(itemId, { reorderLevel, showStockLeft }, getToken);
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -834,11 +836,26 @@ function ItemDetail({
                 <button
                   className={secondaryButton}
                   onClick={saveReorderLevel}
-                  disabled={busy || reorderLevel === detail.item.reorderLevel}
+                  disabled={busy || (reorderLevel === detail.item.reorderLevel && showStockLeft === detail.item.showStockLeft)}
                 >
                   {busyAction === "reorderLevel" && <Spinner size={13} />} Save
                 </button>
               </div>
+              <label className="flex items-start gap-2 mt-3 text-xs text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={showStockLeft}
+                  onChange={(e) => setShowStockLeft(e.target.checked)}
+                />
+                <span>
+                  Show how many are left in the shop
+                  <span className="block text-[11px] text-slate-500">
+                    At or below {reorderLevel ?? LOW_STOCK_DEFAULT} {reorderLevel == null && "(the shop's usual low level)"}, customers
+                    see e.g. "Only 2 left" instead of "Low stock".
+                  </span>
+                </span>
+              </label>
             </Card>
 
             <div ref={adjustCardRef}>

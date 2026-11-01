@@ -139,6 +139,7 @@ export interface InvItem {
   unit: string;
   catalogCode: string | null;
   reorderLevel: number | null;
+  showStockLeft: boolean; // at or below the low-stock level, the shop shows "Only 3 left"
   sellPriceNzd: number | null;
   shopVisible: boolean;
   comingSoon: boolean; // shown as "Coming soon", not orderable until it has stock
@@ -160,6 +161,7 @@ export type ItemPatch = Partial<
     | "unit"
     | "kind"
     | "reorderLevel"
+    | "showStockLeft"
     | "sellPriceNzd"
     | "shopVisible"
     | "comingSoon"

@@ -59,8 +59,8 @@ export function itemSection(item: { kind: string; shopSection: string | null }):
   return item.kind === "supply" ? "supplies" : "peptides";
 }
 
-// Customers see a label, not the exact count. Nothing is ever "out of stock": with none on hand it's a
-// "preorder" - it can still be ordered, and the owner confirms it once the stock arrives - or, for a new
+// Customers see a label, not the exact count (unless the owner chose "Only 3 left" for a low item).
+// Nothing is ever "out of stock": with none on hand it's a "preorder" - it can still be ordered, and the owner confirms it once the stock arrives - or, for a new
 // product the owner has marked as coming soon, "soon": shown but not orderable until its stock arrives.
 export type StockLevel = "in" | "low" | "preorder" | "soon";
 
@@ -70,6 +70,7 @@ export interface ShopVariant {
   label: string; // size, e.g. "10mg" ("" for a bundle or single-size item)
   priceNzd: number;
   stock: StockLevel;
+  left?: number; // how many are left, only when low and the owner chose to show it ("Only 3 left")
   maxQty: number; // most that can be ordered right now
   images: string[];
   coaUrl: string | null; // certificate of analysis: an image, a PDF, or the testing lab's page
