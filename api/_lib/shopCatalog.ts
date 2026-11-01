@@ -116,11 +116,13 @@ export async function loadCatalog(db: Db | Tx) {
             ...(special ? { special } : {}),
           });
         }
+        const stock = soon ? "soon" : stockLevel(units, item.reorderLevel);
         return {
           key,
           label: item.variant,
           priceNzd: item.sellPriceNzd!,
-          stock: soon ? "soon" : stockLevel(units, item.reorderLevel),
+          stock,
+          ...(stock === "low" && item.showStockLeft ? { left: units } : {}),
           // Not limited by stock: beyond it, it's a pre-order.
           maxQty: soon ? 0 : MAX_PER_LINE,
           images: item.images,

@@ -180,7 +180,10 @@ export default function ProductPage({
             <div>
               {/* Coming soon is shown as a ribbon on the photo instead. */}
               {(variant ? variant.stock : productStock(product)) !== "soon" && (
-                <StockBadge stock={variant ? variant.stock : productStock(product)} />
+                <StockBadge
+                  stock={variant ? variant.stock : productStock(product)}
+                  left={variant ? variant.left : single ? product.variants[0].left : undefined}
+                />
               )}
               {variant && inCart > 0 && (
                 <span className="ml-2 text-xs text-slate-400">{inCart} already in your cart</span>

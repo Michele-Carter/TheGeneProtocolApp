@@ -176,6 +176,7 @@ const itemPatchSchema = z.object({
     unit: z.string().trim().min(1, "Enter what it's counted as").max(30).optional(),
     kind: z.enum(["peptide", "supply"]).optional(),
     reorderLevel: z.number().int().min(0).nullable().optional(),
+    showStockLeft: z.boolean().optional(),
     sellPriceNzd: money.min(0).nullable().optional(),
     shopVisible: z.boolean().optional(),
     comingSoon: z.boolean().optional(),

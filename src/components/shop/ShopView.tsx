@@ -294,7 +294,7 @@ export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAcc
                 )}
                 <div className="flex flex-wrap items-end justify-between gap-x-1.5 gap-y-2">
                   {/* Coming soon is shown as a ribbon on the photo instead. */}
-                  {stock !== "soon" && <StockBadge stock={stock} />}
+                  {stock !== "soon" && <StockBadge stock={stock} left={single ? product.variants[0].left : undefined} />}
                   <div className="ml-auto flex-shrink-0">
                     {single && stock === "soon" ? null : single ? (
                       <button

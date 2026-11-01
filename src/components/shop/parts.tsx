@@ -27,7 +27,8 @@ const cardButton =
 export const cardPrimary = `${cardButton} theme-keep-bg border-gold-500 bg-gold-500 text-slate-950 hover:bg-gold-400 hover:border-gold-400`;
 export const cardSecondary = `${cardButton} border-slate-700 text-slate-300`;
 
-export function StockBadge({ stock }: { stock: StockLevel }) {
+// left: how many are left, for a low item whose owner shows the count ("Only 3 left").
+export function StockBadge({ stock, left }: { stock: StockLevel; left?: number }) {
   const style =
     stock === "in"
       ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
@@ -38,7 +39,15 @@ export function StockBadge({ stock }: { stock: StockLevel }) {
           : "text-sky-300 bg-sky-500/10 border-sky-500/30";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${style}`}>
-      {stock === "in" ? "In stock" : stock === "low" ? "Low stock" : stock === "soon" ? "Coming soon" : "Pre-order"}
+      {stock === "in"
+        ? "In stock"
+        : stock === "low"
+          ? left != null
+            ? `Only ${left} left`
+            : "Low stock"
+          : stock === "soon"
+            ? "Coming soon"
+            : "Pre-order"}
     </span>
   );
 }
