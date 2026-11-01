@@ -83,7 +83,7 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
   const [data, setData] = useState<SaleInput>(initialData);
   const [savedJson, setSavedJson] = useState(JSON.stringify(initialData));
   const [current, setCurrent] = useState<SaleRecord | null>(record);
-  const [busyAction, setBusyAction] = useState<null | "save" | "complete" | "reopen" | "delete">(null);
+  const [busyAction, setBusyAction] = useState<null | "save" | "reopen" | "delete">(null);
   const busy = busyAction != null;
   const [error, setError] = useState<string | null>(null);
 
@@ -292,36 +292,22 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
     return saved;
   };
 
-  const save = () => run("save", async () => void (await persist()));
-
-  const complete = () => {
-    if (draftStarted) {
-      setError(
-        editingLineId
-          ? "Finish editing the item in the entry box first — click “Update item” or “Cancel”."
-          : "There's an item in the entry box that hasn't been added — click “Add to order” (or clear it) first."
-      );
+  // Saving takes the items out of stock. Without enough of everything it's saved with nothing taken.
+  const save = () => {
+    if (
+      !completed &&
+      estimate.short.length > 0 &&
+      !window.confirm(
+        "There isn't enough stock for the items marked in red.\n\nSave anyway? Nothing will be taken out of stock until there's enough and you save again."
+      )
+    )
       return;
-    }
-    if (data.lines.length === 0) {
-      setError("Add at least one item before completing.");
-      return;
-    }
-    if (estimate.short.length > 0) {
-      setError("There isn't enough stock for every item — check the quantities marked in red.");
-      return;
-    }
-    const summary = data.lines.map((l) => `• ${l.qty} × ${l.name} ${l.variant}`.trim()).join("\n");
-    if (!window.confirm(`Complete this order and take these out of stock?\n\n${summary}`)) return;
-    run("complete", async () => {
-      const saved = dirty || !current ? await persist() : current;
-      apply(await adminApi.completeSale(saved.id, data.orderDate, getToken));
-    });
+    run("save", async () => void (await persist()));
   };
 
   const reopen = () => {
     if (!current) return;
-    if (!window.confirm("Reopen this order? Its items go back into stock (into the same batches they came from).")) return;
+    if (!window.confirm("Reopen this order to change its items? They go back into stock (into the same batches they came from) until you save again.")) return;
     run("reopen", async () => apply(await adminApi.reopenSale(current.id, getToken)));
   };
 
@@ -359,8 +345,12 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
             </h3>
             <p className="text-[11px] text-slate-500">
               {completed
-                ? "Completed — items have been taken out of stock and are locked. Payment, shipping and notes can still be edited."
-                : "Stock is only taken out when you complete the order."}
+                ? "Items have been taken out of stock and are locked — Reopen to change them. Payment, shipping and notes can still be edited."
+                : estimate.short.length > 0
+                  ? "Not enough stock for the items marked in red — nothing is taken out of stock until there is."
+                  : current && data.lines.length > 0 && !dirty
+                    ? "Not taken out of stock yet — press Save to take the items out."
+                    : "Saving takes the items out of stock."}
             </p>
           </div>
         </div>
@@ -379,13 +369,11 @@ export default function SaleEditor({ record, initialData, inventory, bundles, cu
               <button className={dangerButton} onClick={remove} disabled={busy}>
                 {busyAction === "delete" ? <Spinner /> : <Trash2 size={13} />} {current ? "Delete" : "Discard"}
               </button>
-              <button className={secondaryButton} onClick={complete} disabled={busy}>
-                {busyAction === "complete" ? <Spinner /> : <CheckCircle2 size={13} />} Complete order
-              </button>
             </>
           )}
-          <button className={primaryButton} onClick={save} disabled={busy || (!dirty && Boolean(current))}>
-            {busyAction === "save" ? <Spinner /> : <Save size={13} />} {dirty || !current ? "Save" : "Saved"}
+          {/* An open order with items can always be saved again, to take its stock once there's enough. */}
+          <button className={primaryButton} onClick={save} disabled={busy || (!dirty && completed)}>
+            {busyAction === "save" ? <Spinner /> : <Save size={13} />} {dirty || !completed ? "Save" : "Saved"}
           </button>
         </div>
       </div>
