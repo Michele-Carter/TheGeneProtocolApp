@@ -86,7 +86,9 @@ async function tgpCounts() {
            (select count(*) from inv_items where business_id = 'tgp')::int items,
            (select count(*) from sales where business_id = 'tgp')::int sales,
            (select count(*) from shop_orders where business_id = 'tgp')::int shop_orders,
-           (select count(*) from expenses where business_id = 'tgp')::int expenses,
+           -- Expenses, plus each stock removal (listed with them as stock written off).
+           ((select count(*) from expenses where business_id = 'tgp') +
+            (select count(distinct coalesce(ref_id, id)) from stock_movements where business_id = 'tgp' and type = 'adjust' and qty < 0))::int expenses,
            (select count(*) from bundles where business_id = 'tgp')::int bundles,
            (select coalesce(max(order_number), 0) from shop_orders where business_id = 'tgp')::int last_order,
            (select value::text from app_settings where business_id = 'tgp' and key = 'payment_details') payment`;

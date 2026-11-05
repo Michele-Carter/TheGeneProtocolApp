@@ -60,9 +60,9 @@ export function itemSection(item: { kind: string; shopSection: string | null }):
 }
 
 // Customers see a label, not the exact count (unless the owner chose "Only 3 left" for a low item).
-// Nothing is ever "out of stock": with none on hand it's a "preorder" - it can still be ordered, and the owner confirms it once the stock arrives - or, for a new
-// product the owner has marked as coming soon, "soon": shown but not orderable until its stock arrives.
-export type StockLevel = "in" | "low" | "preorder" | "soon";
+// With none free to sell it's "out" (out of stock) - or, for a new product the owner has marked as coming soon,
+// "soon". Neither can be ordered, and nothing can be ordered beyond what's in stock.
+export type StockLevel = "in" | "low" | "out" | "soon";
 
 // One buyable option: a size of a peptide (an inventory item) or a bundle.
 export interface ShopVariant {
@@ -98,7 +98,7 @@ export interface CartLine {
 export const LOW_STOCK_DEFAULT = 3;
 
 export function stockLevel(available: number, reorderLevel: number | null): StockLevel {
-  if (available <= 0) return "preorder";
+  if (available <= 0) return "out";
   return available <= (reorderLevel ?? LOW_STOCK_DEFAULT) ? "low" : "in";
 }
 
@@ -126,7 +126,7 @@ export interface ShopOrderLine {
   special?: Special; // the deal on it when it was sent - taken off with priceOrder (shared/specials.ts)
   storewide?: StorewideDeal; // the storewide sale on when it was sent - it gets that or its special, whichever saves more
   components?: { itemId: string; qty: number }[]; // bundles: per one bundle, as it was when ordered
-  preorder?: boolean; // more than was in stock when it was ordered - confirmed once the stock arrives
+  preorder?: boolean; // only on orders from before out of stock stopped orders: more than was in stock when sent
 }
 
 export interface ShopOrder {
@@ -154,10 +154,18 @@ export interface ShopOrder {
     tracking: string;
     sentDate: string | null;
     completed: boolean;
+    // What's on the order now - the owner may have changed it since it was sent. A bundle is one entry, with
+    // what's in it.
+    items: { name: string; contents: string; totalNzd: number }[];
+    discountNzd: number; // specials, storewide sale and any discount the owner gave
+    shippingNzd: number;
   } | null;
+  // The customer can still change it: waiting for confirmation, or confirmed but nothing paid (or said to be paid),
+  // not sent, and still the items they ordered (if the owner changed them, they ask the owner instead).
+  canChange: boolean;
 }
 
-export type NotificationKind = "confirmed" | "declined" | "sent" | "paid" | "cancelled";
+export type NotificationKind = "confirmed" | "declined" | "sent" | "paid" | "cancelled" | "updated";
 
 // ---- How customers pay ----
 

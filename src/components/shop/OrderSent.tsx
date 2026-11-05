@@ -5,13 +5,24 @@ import { money } from "../../lib/shopApi";
 import { priceOrder } from "../../../shared/specials";
 import { LineSaving, shopPrimary, shopSecondary } from "./parts";
 
-export default function OrderSent({ order, onBack, onViewOrders }: { order: ShopOrder; onBack: () => void; onViewOrders: () => void }) {
+// updated: the customer changed an order they'd already sent, rather than placing a new one.
+export default function OrderSent({
+  order,
+  updated = false,
+  onBack,
+  onViewOrders,
+}: {
+  order: ShopOrder;
+  updated?: boolean;
+  onBack: () => void;
+  onViewOrders: () => void;
+}) {
   const pricing = priceOrder(order.lines);
   return (
     <div className="max-w-xl mx-auto bg-slate-900/40 border border-slate-800 rounded-2xl p-6 md:p-8 space-y-6">
       <div className="text-center space-y-2">
         <CheckCircle2 size={36} className="mx-auto text-emerald-400" />
-        <h3 className="text-xl font-black text-white">Order #{order.orderNumber} sent</h3>
+        <h3 className="text-xl font-black text-white">Order #{order.orderNumber} {updated ? "updated" : "sent"}</h3>
         <p className="text-sm text-slate-400">
           Thanks! We'll check everything is in stock and confirm your order along with the shipping cost. Nothing has been
           charged - you'll get a notification (the bell) when it's confirmed.

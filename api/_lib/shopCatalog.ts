@@ -1,4 +1,4 @@
-import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, ne, sql } from "drizzle-orm";
 import type { Db } from "./business.js";
 import { appSettings, bundles, invItems, inventoryLots, sales, shopOrders } from "./schema.js";
 import { businessDateString } from "./dates.js";
@@ -25,7 +25,8 @@ export async function lockStock(tx: Tx) {
 
 // What can still be promised to new orders, per inventory item: stock on hand, minus what open customer
 // orders will take when they're completed, minus what's in shop orders still waiting for confirmation.
-export async function availableStock(db: Db | Tx): Promise<Map<string, number>> {
+// exceptOrderId: a waiting order the customer is changing - what it holds is theirs to keep or change.
+export async function availableStock(db: Db | Tx, exceptOrderId?: string): Promise<Map<string, number>> {
   const [onHandRows, openSales, pendingOrders] = await Promise.all([
     db
       .select({ itemId: inventoryLots.itemId, qty: sql<number>`sum(${inventoryLots.qtyRemaining})::int` })
@@ -33,7 +34,10 @@ export async function availableStock(db: Db | Tx): Promise<Map<string, number>> 
       .where(gt(inventoryLots.qtyRemaining, 0))
       .groupBy(inventoryLots.itemId),
     db.select({ data: sales.data }).from(sales).where(eq(sales.status, "open")),
-    db.select({ lines: shopOrders.lines }).from(shopOrders).where(eq(shopOrders.status, "submitted")),
+    db
+      .select({ lines: shopOrders.lines })
+      .from(shopOrders)
+      .where(and(eq(shopOrders.status, "submitted"), exceptOrderId ? ne(shopOrders.id, exceptOrderId) : undefined)),
   ]);
 
   const available = new Map<string, number>();
@@ -71,11 +75,12 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 
 // Everything in the shop, grouped into products (e.g. Retatrutide with its 5mg and 10mg sizes).
 // Only items and bundles marked "Show in shop" that have a price are included.
-export async function loadCatalog(db: Db | Tx) {
+// exceptOrderId: the waiting order the customer is changing (see availableStock).
+export async function loadCatalog(db: Db | Tx, exceptOrderId?: string) {
   const [items, bundleRows, available] = await Promise.all([
     db.select().from(invItems),
     db.select().from(bundles).where(and(eq(bundles.shopVisible, true), isNotNull(bundles.priceNzd))),
-    availableStock(db),
+    availableStock(db, exceptOrderId),
   ]);
   const itemsById = new Map(items.map((item) => [item.id, item]));
   const orderable = new Map<string, OrderableVariant>();
@@ -123,8 +128,7 @@ export async function loadCatalog(db: Db | Tx) {
           priceNzd: item.sellPriceNzd!,
           stock,
           ...(stock === "low" && item.showStockLeft ? { left: units } : {}),
-          // Not limited by stock: beyond it, it's a pre-order.
-          maxQty: soon ? 0 : MAX_PER_LINE,
+          maxQty: soon ? 0 : Math.min(units, MAX_PER_LINE),
           images: item.images,
           coaUrl: item.coaUrl,
           special,
@@ -194,7 +198,7 @@ export async function loadCatalog(db: Db | Tx) {
           label: option.label,
           priceNzd: bundle.priceNzd!,
           stock: stockLevel(units, null),
-          maxQty: MAX_PER_LINE,
+          maxQty: Math.min(units, MAX_PER_LINE),
           images: [],
           coaUrl: null,
           special,

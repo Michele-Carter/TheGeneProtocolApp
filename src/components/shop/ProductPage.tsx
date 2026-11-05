@@ -5,7 +5,7 @@ import { specialNudge, type StorewideDeal } from "../../../shared/specials";
 import type { Cart } from "../../hooks/useCart";
 import {
   CoaButton,
-  PREORDER_NOTE,
+  OUT_NOTE,
   SOON_NOTE,
   ProductImage,
   QtyStepper,
@@ -169,7 +169,7 @@ export default function ProductPage({
                   {product.variants.map((v) => (
                     <option key={v.key} value={v.key}>
                       {v.label}
-                      {v.stock === "preorder" ? " - pre-order" : ""}
+                      {v.stock === "out" ? " - out of stock" : ""}
                       {v.special && v.stock !== "soon" && !sameSpecialForAll(product) ? " - on special" : ""}
                     </option>
                   ))}
@@ -193,11 +193,11 @@ export default function ProductPage({
             <div className="flex flex-wrap items-center gap-3">
               <QtyStepper value={qty} max={Math.max(1, canAdd)} onChange={setQty} disabled={!variant || canAdd === 0} />
               <button className={`${shopPrimary} h-10 px-6`} onClick={add} disabled={!variant || canAdd === 0}>
-                {variant?.stock === "preorder" ? "Pre-order" : variant?.stock === "soon" ? "Coming soon" : "Add to cart"}
+                {variant?.stock === "out" ? "Out of stock" : variant?.stock === "soon" ? "Coming soon" : "Add to cart"}
               </button>
             </div>
             {nudge && <p className="text-xs font-bold text-gold-400">{nudge}</p>}
-            {variant && variant.stock === "preorder" && <p className="text-xs text-sky-300">{PREORDER_NOTE}</p>}
+            {variant && variant.stock === "out" && <p className="text-xs text-red-300">{OUT_NOTE}</p>}
             {variant && variant.stock === "soon" && <p className="text-xs text-violet-300">{SOON_NOTE}</p>}
 
             {added && (

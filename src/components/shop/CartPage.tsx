@@ -10,7 +10,7 @@ import AddressFields from "../AddressFields";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import { priceOrder, specialNudge, type StorewideSale } from "../../../shared/specials";
-import { PREORDER_NOTE, ProductImage, QtyStepper, SpecialTag, shopPrimary, shopSecondary, variantName } from "./parts";
+import { ProductImage, QtyStepper, SpecialTag, shopPrimary, shopSecondary, variantName } from "./parts";
 import { homeCountry } from "../../lib/locale";
 
 interface LineView {
@@ -41,7 +41,9 @@ export default function CartPage({
   const [me, setMe] = useState<MyDetails | null>(null);
   const [editingAddress, setEditingAddress] = useState(false);
   const [address, setAddress] = useState<ShippingAddress | null>(null);
-  const [notes, setNotes] = useState("");
+  // Changing an order: its note comes with it.
+  const [notes, setNotes] = useState(cart.editing?.notes ?? "");
+  const editing = cart.editing;
   const [busy, setBusy] = useState<null | "address" | "send">(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,7 +104,9 @@ export default function CartPage({
     setBusy("send");
     setError(null);
     try {
-      const order = await shopApi.sendOrder({ lines: cart.lines, notes }, getToken);
+      const order = editing
+        ? await shopApi.updateOrder(editing.orderId, { lines: cart.lines, notes }, getToken)
+        : await shopApi.sendOrder({ lines: cart.lines, notes }, getToken);
       onSent(order);
     } catch (e) {
       setError((e as Error).message);
@@ -118,6 +122,12 @@ export default function CartPage({
       <div className="text-center py-16 border border-dashed border-slate-800 rounded-2xl space-y-4">
         <ShoppingCart size={28} className="mx-auto text-slate-600" />
         <p className="text-sm text-slate-400">Your cart is empty.</p>
+        {editing && (
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Add something to order #{editing.orderNumber}, or if you don't want it any more, stop changing it and cancel
+            it from My Orders.
+          </p>
+        )}
         <button className={shopPrimary} onClick={onBack}>
           Browse the shop
         </button>
@@ -196,13 +206,14 @@ export default function CartPage({
                 {line.variant && line.qty > line.variant.maxQty && (
                   <p className="flex items-center gap-1.5 text-xs text-amber-300">
                     <AlertTriangle size={12} />
-                    {line.variant.maxQty === 0
+                    {line.variant.stock === "soon"
                       ? "Coming soon - this can't be ordered yet. Please remove it."
-                      : `At most ${line.variant.maxQty} per order - please reduce the quantity.`}
+                      : line.variant.maxQty === 0
+                        ? "Out of stock - please remove it."
+                        : `Only ${line.variant.maxQty} available - please reduce the quantity.`}
                   </p>
                 )}
                 {nudge && <p className="text-xs font-bold text-gold-400">{nudge}</p>}
-                {line.variant?.stock === "preorder" && <p className="text-xs text-sky-300">{PREORDER_NOTE}</p>}
               </div>
             </div>
             );
@@ -325,14 +336,17 @@ export default function CartPage({
             onClick={send}
             disabled={busy != null || !addressReady || problems.length > 0}
           >
-            {busy === "send" ? <Spinner size={14} /> : <Send size={14} />} Send order
+            {busy === "send" ? <Spinner size={14} /> : <Send size={14} />}{" "}
+            {editing ? `Update order #${editing.orderNumber}` : "Send order"}
           </button>
           <p className="text-xs text-slate-500 leading-relaxed">
             {!addressReady && me
               ? "Save your shipping address to send your order."
               : problems.length > 0
                 ? "Please fix the items marked above to send your order."
-                : "Nothing is charged now. We'll check your order, confirm it with the shipping cost, and let you know how to pay."}
+                : editing
+                  ? `This replaces what's on order #${editing.orderNumber}. Nothing is charged now - we'll confirm it again with the shipping cost.`
+                  : "Nothing is charged now. We'll check your order, confirm it with the shipping cost, and let you know how to pay."}
           </p>
         </div>
       </div>

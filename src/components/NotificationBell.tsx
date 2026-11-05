@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { BadgeCheck, Ban, Bell, CheckCircle2, Truck, XCircle } from "lucide-react";
+import { BadgeCheck, Ban, Bell, CheckCircle2, PencilLine, Truck, XCircle } from "lucide-react";
 import type { CustomerNotification, NotificationKind } from "../../shared/shop";
 import { formatDateTime } from "../lib/locale";
 
@@ -9,6 +9,7 @@ const ICONS: Record<NotificationKind, React.ReactNode> = {
   sent: <Truck size={14} className="text-gold-400" />,
   paid: <BadgeCheck size={14} className="text-emerald-400" />,
   cancelled: <Ban size={14} className="text-red-400" />,
+  updated: <PencilLine size={14} className="text-gold-400" />,
 };
 
 const when = (iso: string) =>

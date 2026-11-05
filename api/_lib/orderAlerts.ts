@@ -136,6 +136,30 @@ export function alertOrderCancelled(business: Business, order: { orderNumber: nu
     });
 }
 
+// The customer started changing a confirmed order: it's back waiting for confirmation, its items back in stock.
+export function alertOrderChanging(business: Business, order: { orderNumber: number; customerName: string }): Promise<void> {
+    return alertOwner(business, {
+        title: `Order #${order.orderNumber} is being changed`,
+        body: `${order.customerName || "The customer"} is changing this order, so it's back waiting for confirmation. You'll get another alert when they send their changes.`,
+        url: "/?open=new-orders",
+        tag: `order-${order.orderNumber}`,
+    });
+}
+
+// The customer sent their changed order: it's waiting for confirmation with its new items.
+export function alertOrderChanged(
+    business: Business,
+    order: { orderNumber: number; subtotalNzd: number; itemCount: number; customerName: string }
+): Promise<void> {
+    const items = `${order.itemCount} item${order.itemCount === 1 ? "" : "s"}`;
+    return alertOwner(business, {
+        title: `Order #${order.orderNumber} changed`,
+        body: `${order.customerName || "The customer"} changed this order - now ${items}, ${customerPrice(order.subtotalNzd, business)}. Tap to confirm it.`,
+        url: "/?open=new-orders",
+        tag: `order-${order.orderNumber}`,
+    });
+}
+
 // A customer's own notification (order confirmed, declined, cancelled, paid, a message from the shop...) on their
 // devices. Only ever shows their shop's name and logo. Tapping it opens My Orders (or wherever url points).
 export function alertCustomer(
