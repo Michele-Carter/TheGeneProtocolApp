@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import { del, put } from "@vercel/blob";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
@@ -15,7 +15,7 @@ import {
     undoAdjustment,
 } from "../_lib/inventory.js";
 import { calculateOrder, isExpenseLine, type OrderInput } from "../../shared/landedCost.js";
-import { EXPENSE_CATEGORIES, emptySale, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
+import { EXPENSE_CATEGORIES, STOCK_WRITE_OFF, emptySale, saleProfit, saleTotals, type SaleInput } from "../../shared/sales.js";
 import { expenseSummary, expenseTotals } from "../../shared/expenses.js";
 import {
     MAX_COA_BYTES,
@@ -1998,12 +1998,52 @@ async function handleSupplierCatalog(req: any, res: any, db: Db) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
+// Stock taken out without a sale (Personal use, Damaged, Sample / giveaway, stocktake losses...) cost the business
+// what that stock cost, so each removal is listed with the expenses. Built from the stock history every time, so
+// editing or deleting the adjustment changes it too. Stock added by an adjustment isn't income, so it's left out.
+async function stockWriteOffs(db: Db) {
+    const rows = await db
+        .select({ movement: stockMovements, name: invItems.name, variant: invItems.variant })
+        .from(stockMovements)
+        .innerJoin(invItems, and(eq(invItems.id, stockMovements.itemId), eq(invItems.businessId, stockMovements.businessId)))
+        .where(and(eq(stockMovements.type, "adjust"), lt(stockMovements.qty, 0)));
+
+    // One removal can take from several batches: its movements share the adjustment id in refId.
+    const byAdjustment = new Map<string, { movement: (typeof rows)[number]["movement"]; label: string; qty: number; cost: number }>();
+    for (const { movement, name, variant } of rows) {
+        const key = movement.refId ?? movement.id;
+        const group = byAdjustment.get(key) ?? { movement, label: [name, variant].filter(Boolean).join(" "), qty: 0, cost: 0 };
+        group.qty -= movement.qty;
+        group.cost -= movement.qty * movement.unitCostNzd;
+        byAdjustment.set(key, group);
+    }
+
+    return Array.from(byAdjustment, ([key, { movement, label, qty, cost }]) => ({
+        id: `stock-${key}`,
+        expenseDate: businessDateString(movement.occurredAt),
+        supplier: "",
+        category: STOCK_WRITE_OFF,
+        orderNumber: "",
+        notes: [movement.reason, movement.note].filter(Boolean).join(" - "),
+        detail: { items: [{ id: key, name: label, qty, unitCostNzd: cost / qty }], shippingNzd: 0, taxNzd: 0, discountNzd: 0 },
+        description: `${movement.reason || "Removed"}: ${qty} × ${label}`,
+        amountNzd: Math.round(cost * 100) / 100,
+        sourceOrderId: null,
+        stockItemId: movement.itemId,
+        createdAt: movement.occurredAt,
+        updatedAt: movement.occurredAt,
+    }));
+}
+
 async function handleExpenses(req: any, res: any, db: Db) {
     const id = typeof req.query?.id === "string" ? req.query.id : null;
 
     if (req.method === "GET") {
-        const rows = await db.select().from(expenses).orderBy(desc(expenses.expenseDate), desc(expenses.createdAt));
-        return sendJson(res, 200, rows);
+        const [rows, writeOffs] = await Promise.all([db.select().from(expenses), stockWriteOffs(db)]);
+        const all = [...rows.map((row) => ({ ...row, stockItemId: null })), ...writeOffs].sort(
+            (a, b) => b.expenseDate.localeCompare(a.expenseDate) || b.createdAt.getTime() - a.createdAt.getTime()
+        );
+        return sendJson(res, 200, all);
     }
 
     if ((req.method === "DELETE" || req.method === "PATCH") && id) {

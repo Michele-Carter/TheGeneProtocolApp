@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
-import { EXPENSE_CATEGORIES } from "../../../shared/sales";
+import { EXPENSE_CATEGORIES, STOCK_WRITE_OFF } from "../../../shared/sales";
 import { detailFromLegacy, expenseTotals, type ExpenseDetail, type ExpenseItem } from "../../../shared/expenses";
 import { adminApi, cash, todayIso, type ExpenseCategory, type ExpenseInput, type ExpenseRecord } from "../../lib/adminApi";
 import { Card, ErrorNote, Field, NumberField, dangerButton, dateButtonClass, inputClass, newId, primaryButton, secondaryButton } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import { formatDate, homeCurrency } from "../../lib/locale";
+
+// For totals and the filter: the categories you choose from, plus stock written off (listed automatically).
+const ALL_CATEGORIES: ExpenseCategory[] = [...EXPENSE_CATEGORIES, STOCK_WRITE_OFF];
 
 const blankItem = (): ExpenseItem => ({ id: newId(), name: "", qty: 1, unitCostNzd: 0 });
 
@@ -26,8 +29,8 @@ export default function ExpensesView() {
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<null | "save" | "delete">(null);
   const busy = busyAction != null;
-  // fromOrder: expenses created from a supply order are shown read-only (they're changed via the order).
-  const [form, setForm] = useState<{ id: string | null; fromOrder?: boolean; data: ExpenseInput } | null>(null);
+  // from: expenses made from a supply order or a stock removal are shown read-only (they're changed there).
+  const [form, setForm] = useState<{ id: string | null; from?: "order" | "stock"; data: ExpenseInput } | null>(null);
   const [year, setYear] = useState(todayIso().slice(0, 4));
   const [category, setCategory] = useState<ExpenseCategory | "all">("all");
 
@@ -59,7 +62,7 @@ export default function ExpensesView() {
 
   const totals = useMemo(() => {
     const month = todayIso().slice(0, 7);
-    const byCategory = EXPENSE_CATEGORIES.map((c) => ({
+    const byCategory = ALL_CATEGORIES.map((c) => ({
       category: c,
       total: inYear.filter((r) => r.category === c).reduce((t, r) => t + r.amountNzd, 0),
     })).filter((c) => c.total !== 0);
@@ -157,10 +160,10 @@ export default function ExpensesView() {
 
       {form && (
         <Card
-          title={form.fromOrder ? "Expense from a supply order" : form.id ? "Edit expense" : "New expense"}
+          title={form.from === "order" ? "Expense from a supply order" : form.from === "stock" ? "Stock written off" : form.id ? "Edit expense" : "New expense"}
           actions={
             <div className="flex items-center gap-2">
-              {!form.fromOrder && (
+              {!form.from && (
                 <button className={primaryButton} onClick={save} disabled={busy}>
                   {busyAction === "save" ? <Spinner /> : <Save size={13} />} Save expense
                 </button>
@@ -171,14 +174,21 @@ export default function ExpensesView() {
             </div>
           }
         >
-          {form.fromOrder && (
+          {form.from === "order" && (
             <p className="text-xs text-sky-300/90 bg-sky-950/30 border border-sky-900/50 rounded-lg px-3 py-2 mb-4">
               This was added automatically from the expense items on a supply order from {form.data.supplier || "a supplier"}
               {form.data.orderNumber ? ` (#${form.data.orderNumber})` : ""}, including their share of its shipping, tax and
               fees. To change it, open the order in Supply Orders, undo "received", edit it and receive it again.
             </p>
           )}
-          <fieldset disabled={form.fromOrder} className="contents">
+          {form.from === "stock" && (
+            <p className="text-xs text-sky-300/90 bg-sky-950/30 border border-sky-900/50 rounded-lg px-3 py-2 mb-4">
+              Stock you took out without selling it ({form.data.notes || "a stock adjustment"}), at what it cost you - so
+              it counts against your profit. To change it, open the item in Inventory and edit or delete the adjustment in
+              its History.
+            </p>
+          )}
+          <fieldset disabled={Boolean(form.from)} className="contents">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <Field label="Date">
               <StyledDatePicker
@@ -200,7 +210,7 @@ export default function ExpensesView() {
                 value={form.data.category}
                 onChange={(e) => setField("category", e.target.value as ExpenseCategory)}
               >
-                {EXPENSE_CATEGORIES.map((c) => (
+                {(form.from === "stock" ? ALL_CATEGORIES : EXPENSE_CATEGORIES).map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
@@ -295,15 +305,15 @@ export default function ExpensesView() {
             </div>
           )}
           <div className="flex flex-wrap gap-2 mt-4">
-            {!form.fromOrder && (
+            {!form.from && (
               <button className={primaryButton} onClick={save} disabled={busy}>
                 {busyAction === "save" ? <Spinner /> : <Save size={13} />} {busyAction === "save" ? "Saving…" : "Save expense"}
               </button>
             )}
             <button className={secondaryButton} onClick={() => setForm(null)} disabled={busy}>
-              {form.fromOrder ? "Close" : "Cancel"}
+              {form.from ? "Close" : "Cancel"}
             </button>
-            {form.id && !form.fromOrder && (
+            {form.id && !form.from && (
               <button className={`${dangerButton} ml-auto`} onClick={remove} disabled={busy}>
                 {busyAction === "delete" ? <Spinner /> : <Trash2 size={13} />} Delete
               </button>
@@ -327,7 +337,7 @@ export default function ExpensesView() {
           aria-label="Category"
         >
           <option value="all">All categories</option>
-          {EXPENSE_CATEGORIES.map((c) => (
+          {ALL_CATEGORIES.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>
@@ -372,7 +382,7 @@ export default function ExpensesView() {
                 setError(null);
                 setForm({
                   id: row.id,
-                  fromOrder: Boolean(row.sourceOrderId),
+                  from: row.sourceOrderId ? "order" : row.stockItemId ? "stock" : undefined,
                   data: {
                     expenseDate: row.expenseDate,
                     supplier: row.supplier,
@@ -391,7 +401,7 @@ export default function ExpensesView() {
               <span className="min-w-0">
                 <span className="block text-sm font-bold text-white truncate">{row.description}</span>
                 <span className="block text-[10px] text-slate-500 truncate">
-                  {[row.supplier, row.orderNumber && `#${row.orderNumber}`, row.sourceOrderId && "from supply order"]
+                  {[row.supplier, row.orderNumber && `#${row.orderNumber}`, row.sourceOrderId && "from supply order", row.stockItemId && "from stock adjustment"]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>

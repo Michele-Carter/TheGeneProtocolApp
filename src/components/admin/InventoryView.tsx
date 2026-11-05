@@ -913,7 +913,8 @@ function ItemDetail({
                 {direction === "out" && (
                   <p className="flex items-start gap-1.5 text-[11px] text-slate-500">
                     <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
-                    Removed from the oldest batch first.
+                    Removed from the oldest batch first. What it cost you shows in Expenses as stock written off, so it
+                    counts against your profit.
                   </p>
                 )}
                 <div className="flex gap-2">
