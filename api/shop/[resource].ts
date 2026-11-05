@@ -2,12 +2,13 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuthUserId } from "../_lib/auth.js";
 import { businessCountryName, serveAsBusiness, type BusinessRequest, type Db } from "../_lib/business.js";
-import { alertNewOrder, alertOrderCancelled, alertPaymentSent, pushKey, removeDevice, saveDevice, subscribeSchema } from "../_lib/orderAlerts.js";
+import { alertNewOrder, alertOrderCancelled, alertOrderChanged, alertOrderChanging, alertPaymentSent, pushKey, removeDevice, saveDevice, subscribeSchema } from "../_lib/orderAlerts.js";
 import { customerForUser } from "../_lib/customers.js";
 import { MessageError, conversation, markRead, sendMessage, sendMessageFile, unreadCount } from "../_lib/messages.js";
 import { parseJsonBody, sendJson } from "../_lib/http.js";
-import { appSettings, customers, notifications, pushSubscriptions, sales, shopOrders } from "../_lib/schema.js";
+import { appSettings, customers, invItems, notifications, pushSubscriptions, sales, shopOrders } from "../_lib/schema.js";
 import { activeSale, loadCatalog, lockStock, orderDemand } from "../_lib/shopCatalog.js";
+import { restoreSaleStock } from "../_lib/inventory.js";
 import { isAddressComplete, toAddress } from "../../shared/customers.js";
 import { saleTotals, type SaleInput } from "../../shared/sales.js";
 import { priceOrder, toDeal } from "../../shared/specials.js";
@@ -99,12 +100,22 @@ async function handleMe(req: any, res: any, db: Db, userId: string) {
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
-async function handleProducts(req: any, res: any, db: Db) {
+async function handleProducts(req: any, res: any, db: Db, userId: string) {
     if (req.method !== "GET") {
         res.setHeader("Allow", "GET");
         return sendJson(res, 405, { error: "Method not allowed" });
     }
-    const { products } = await loadCatalog(db);
+    // While a customer changes one of their waiting orders, what it holds is theirs to keep (see availableStock).
+    let editing: string | undefined;
+    if (typeof req.query?.editing === "string") {
+        const customer = await customerForUser(db, userId);
+        const [order] = await db
+            .select({ id: shopOrders.id })
+            .from(shopOrders)
+            .where(and(eq(shopOrders.id, req.query.editing), eq(shopOrders.customerId, customer.id), eq(shopOrders.status, "submitted")));
+        editing = order?.id;
+    }
+    const { products } = await loadCatalog(db, editing);
     return sendJson(res, 200, products);
 }
 
@@ -125,8 +136,32 @@ const orderSchema = z.object({
 
 class OrderError extends Error {}
 
-// The customer-facing view of a confirmed order's progress. Only payment and shipping status are shared -
-// never costs or profit.
+// What's on a customer order, as the customer sees it: each item, with a bundle's items (added together under its
+// name) shown as one entry. The same bundle twice in a row starts a new entry when an item comes round again.
+function orderItems(lines: SaleInput["lines"]): NonNullable<ShopOrder["progress"]>["items"] {
+    const items: NonNullable<ShopOrder["progress"]>["items"] = [];
+    let bundle: { name: string; itemIds: Set<string> } | null = null;
+    for (const line of lines) {
+        const label = `${line.qty}× ${[line.name, line.variant].filter(Boolean).join(" ")}`;
+        const total = line.qty * line.unitPriceNzd;
+        const last = items[items.length - 1];
+        if (line.bundleName && bundle?.name === line.bundleName && !bundle.itemIds.has(line.itemId)) {
+            last.contents += `, ${label}`;
+            last.totalNzd += total;
+            bundle.itemIds.add(line.itemId);
+        } else if (line.bundleName) {
+            items.push({ name: line.bundleName, contents: label, totalNzd: total });
+            bundle = { name: line.bundleName, itemIds: new Set([line.itemId]) };
+        } else {
+            items.push({ name: label, contents: "", totalNzd: total });
+            bundle = null;
+        }
+    }
+    return items;
+}
+
+// The customer-facing view of a confirmed order's progress. Only what they're charged, payment and shipping are
+// shared - never costs or profit.
 function progressOf(sale: typeof sales.$inferSelect | undefined): ShopOrder["progress"] {
     if (!sale) return null;
     const data = sale.data as SaleInput;
@@ -140,7 +175,80 @@ function progressOf(sale: typeof sales.$inferSelect | undefined): ShopOrder["pro
         tracking: data.shipping.tracking,
         sentDate: data.shipping.sentDate,
         completed: sale.status === "completed",
+        items: orderItems(data.lines),
+        discountNzd: data.discountNzd ?? 0,
+        shippingNzd: data.shippingChargedNzd ?? 0,
     };
+}
+
+// Whether the customer can still change an order themselves: until it's confirmed, or once confirmed while nothing
+// has been paid (or said to be paid), it hasn't been sent, and it still has the items they ordered - if the owner
+// has changed those, the customer asks the owner instead.
+function canChange(row: typeof shopOrders.$inferSelect, sale: typeof sales.$inferSelect | undefined): boolean {
+    if (row.status === "submitted") return true;
+    if (row.status !== "confirmed" || !sale || row.paymentReportedAt) return false;
+    const data = sale.data as SaleInput;
+    if (saleTotals(data).paymentStatus !== "unpaid" || data.shipping.status !== "not-sent") return false;
+    const ordered = orderDemand(row.lines);
+    const now = new Map<string, number>();
+    for (const line of data.lines) now.set(line.itemId, (now.get(line.itemId) ?? 0) + line.qty);
+    return now.size === ordered.size && Array.from(ordered).every(([itemId, qty]) => now.get(itemId) === qty);
+}
+
+// The lines of an order being sent (or changed), priced as the shop is now. Nothing can be ordered beyond what's
+// in stock, so every order sent can be confirmed as it is. exceptOrderId: the order being changed - what it holds
+// is the customer's to keep.
+async function checkedLines(tx: Db, wanted: Map<string, number>, exceptOrderId?: string): Promise<ShopOrderLine[]> {
+    const [{ orderable, available }, sale] = await Promise.all([loadCatalog(tx, exceptOrderId), activeSale(tx)]);
+
+    const lines: ShopOrderLine[] = [];
+    for (const [key, qty] of wanted) {
+        const variant = orderable.get(key);
+        if (!variant) {
+            throw new OrderError("Something in your cart is no longer available. Please refresh the shop and check your cart.");
+        }
+        lines.push({
+            key,
+            kind: variant.kind,
+            refId: variant.refId,
+            name: variant.name,
+            variant: variant.variant,
+            qty,
+            unitPriceNzd: variant.priceNzd,
+            ...(variant.special ? { special: variant.special } : {}),
+            ...(sale ? { storewide: toDeal(sale) } : {}),
+            ...(variant.components ? { components: variant.components } : {}),
+        });
+    }
+
+    // A bundle and the same item on its own, or two bundles sharing an item, all count together.
+    for (const [itemId, qty] of orderDemand(lines)) {
+        const left = Math.max(0, available.get(itemId) ?? 0);
+        if (qty <= left) continue;
+        const [item] = await tx.select().from(invItems).where(eq(invItems.id, itemId));
+        const name = item ? [item.name, item.variant].filter(Boolean).join(" ") : "An item in your cart";
+        throw new OrderError(
+            left === 0
+                ? `Sorry, ${name} is out of stock. Please remove it from your cart.`
+                : `Sorry, there ${left === 1 ? "is" : "are"} only ${left} of ${name} left. Please reduce the quantity in your cart.`
+        );
+    }
+    return lines;
+}
+
+// An order sent from the cart: its lines, merged so the same product added twice becomes one line.
+async function readOrder(req: any): Promise<{ wanted: Map<string, number>; notes: string } | { error: string }> {
+    let body: unknown;
+    try {
+        body = await parseJsonBody(req);
+    } catch {
+        return { error: "Invalid JSON body" };
+    }
+    const parsed = orderSchema.safeParse(body);
+    if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Please check your order" };
+    const wanted = new Map<string, number>();
+    for (const line of parsed.data.lines) wanted.set(line.key, (wanted.get(line.key) ?? 0) + line.qty);
+    return { wanted, notes: parsed.data.notes.trim() };
 }
 
 function orderDto(
@@ -167,6 +275,7 @@ function orderDto(
         cancelledBy: (row.cancelledBy as ShopOrder["cancelledBy"]) ?? null,
         paymentDetails: awaitingPayment && paymentDetails && hasPaymentDetails(paymentDetails) ? paymentDetails : null,
         progress,
+        canChange: canChange(row, sale),
     };
 }
 
@@ -232,64 +341,100 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
         return sendJson(res, 200, orderDto(row));
     }
 
-    if (req.method === "POST") {
-        let body: unknown;
+    // The customer wants to change an order: one that's confirmed but not paid goes back to waiting for confirmation
+    // (its items go back into stock, held for them), then they change it from their cart and send it again.
+    // A waiting order needs nothing doing here.
+    if (req.method === "POST" && id && req.query?.action === "change") {
         try {
-            body = await parseJsonBody(req);
-        } catch {
-            return sendJson(res, 400, { error: "Invalid JSON body" });
+            const result = await db.transaction(async (tx) => {
+                await lockStock(tx);
+                const [order] = await tx
+                    .select()
+                    .from(shopOrders)
+                    .where(and(eq(shopOrders.id, id), eq(shopOrders.customerId, customer.id)))
+                    .for("update");
+                if (!order) throw new OrderError("Order not found.");
+                if (order.status === "submitted") return { row: order, reopened: false };
+                const [sale] = order.saleId ? await tx.select().from(sales).where(eq(sales.id, order.saleId)).for("update") : [];
+                if (!canChange(order, sale)) throw new OrderError("This order can't be changed any more - please message us about it.");
+                await restoreSaleStock(tx, sale!.id);
+                await tx.delete(sales).where(eq(sales.id, sale!.id));
+                const [row] = await tx
+                    .update(shopOrders)
+                    .set({ status: "submitted", saleId: null, shippingNzd: null, adminMessage: "", decidedAt: null, updatedAt: new Date() })
+                    .where(eq(shopOrders.id, id))
+                    .returning();
+                return { row, reopened: true };
+            });
+            if (result.reopened) {
+                afterSave(() => alertOrderChanging(access.business, { orderNumber: result.row.orderNumber, customerName: customer.name }));
+            }
+            return sendJson(res, 200, orderDto(result.row));
+        } catch (error) {
+            if (error instanceof OrderError) return sendJson(res, 409, { error: error.message });
+            throw error;
         }
-        const parsed = orderSchema.safeParse(body);
-        if (!parsed.success) {
-            return sendJson(res, 400, { error: parsed.error.issues[0]?.message ?? "Please check your order" });
+    }
+
+    // The customer sends their changed order: it replaces what was on it, and waits for confirmation again.
+    if (req.method === "PATCH" && id) {
+        const read = await readOrder(req);
+        if ("error" in read) return sendJson(res, 400, { error: read.error });
+        try {
+            const row = await db.transaction(async (tx) => {
+                await lockStock(tx);
+                const [order] = await tx
+                    .select()
+                    .from(shopOrders)
+                    .where(and(eq(shopOrders.id, id), eq(shopOrders.customerId, customer.id)))
+                    .for("update");
+                if (!order || order.status !== "submitted") {
+                    throw new OrderError("This order can't be changed any more - it may have just been confirmed. Please check My Orders.");
+                }
+                const lines = await checkedLines(tx, read.wanted, order.id);
+                const address = toAddress(customer.shippingAddress);
+                const [updated] = await tx
+                    .update(shopOrders)
+                    .set({
+                        lines,
+                        subtotalNzd: priceOrder(lines).subtotalNzd,
+                        notes: read.notes,
+                        ...(isAddressComplete(address) ? { shippingAddress: address } : {}),
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(shopOrders.id, id))
+                    .returning();
+                return updated;
+            });
+            afterSave(() =>
+                alertOrderChanged(access.business, {
+                    orderNumber: row.orderNumber,
+                    subtotalNzd: Number(row.subtotalNzd),
+                    itemCount: row.lines.reduce((n, l) => n + l.qty, 0),
+                    customerName: customer.name,
+                })
+            );
+            return sendJson(res, 200, orderDto(row));
+        } catch (error) {
+            if (error instanceof OrderError) return sendJson(res, 409, { error: error.message });
+            throw error;
         }
+    }
+
+    if (req.method === "POST") {
+        const read = await readOrder(req);
+        if ("error" in read) return sendJson(res, 400, { error: read.error });
 
         const shippingAddress = toAddress(customer.shippingAddress);
         if (!isAddressComplete(shippingAddress)) {
             return sendJson(res, 400, { error: "Please add your shipping address before sending your order." });
         }
 
-        // The same product added twice becomes one line.
-        const wanted = new Map<string, number>();
-        for (const line of parsed.data.lines) wanted.set(line.key, (wanted.get(line.key) ?? 0) + line.qty);
-
         try {
             const row = await db.transaction(async (tx) => {
                 // One order at a time, so two customers can't both be promised the last vial.
                 await lockStock(tx);
-                const [{ orderable, available }, sale] = await Promise.all([loadCatalog(tx), activeSale(tx)]);
-
-                const lines: ShopOrderLine[] = [];
-                for (const [key, qty] of wanted) {
-                    const variant = orderable.get(key);
-                    if (!variant) {
-                        throw new OrderError(
-                            "Something in your cart is no longer available. Please refresh the shop and check your cart."
-                        );
-                    }
-                    lines.push({
-                        key,
-                        kind: variant.kind,
-                        refId: variant.refId,
-                        name: variant.name,
-                        variant: variant.variant,
-                        qty,
-                        unitPriceNzd: variant.priceNzd,
-                        ...(variant.special ? { special: variant.special } : {}),
-                        ...(sale ? { storewide: toDeal(sale) } : {}),
-                        ...(variant.components ? { components: variant.components } : {}),
-                    });
-                }
-
-                // More than is in stock is a pre-order: the order still goes through, and the owner confirms it
-                // once the stock has arrived.
-                for (const [itemId, qty] of orderDemand(lines)) {
-                    if (qty <= Math.max(0, available.get(itemId) ?? 0)) continue;
-                    for (const line of lines) {
-                        if (line.refId === itemId || line.components?.some((c) => c.itemId === itemId)) line.preorder = true;
-                    }
-                }
-
+                const lines = await checkedLines(tx, read.wanted);
                 const subtotal = priceOrder(lines).subtotalNzd;
                 const [created] = await tx
                     .insert(shopOrders)
@@ -301,7 +446,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
                         status: "submitted",
                         lines,
                         subtotalNzd: subtotal,
-                        notes: parsed.data.notes.trim(),
+                        notes: read.notes,
                         shippingAddress,
                     })
                     .returning();
@@ -326,7 +471,7 @@ async function handleOrders(req: any, res: any, db: Db, userId: string, { access
         }
     }
 
-    res.setHeader("Allow", "GET, POST");
+    res.setHeader("Allow", "GET, POST, PATCH");
     return sendJson(res, 405, { error: "Method not allowed" });
 }
 
@@ -475,7 +620,7 @@ export async function handleShopRequest(req: any, res: any, userId: string) {
                 case "me":
                     return await handleMe(req, res, db, userId);
                 case "products":
-                    return await handleProducts(req, res, db);
+                    return await handleProducts(req, res, db, userId);
                 case "sale":
                     return await handleSale(req, res, db);
                 case "orders":

@@ -42,7 +42,9 @@ export const shopApi = {
   updateMe: (data: { name: string; email: string; shippingAddress: ShippingAddress }, t: GetToken) =>
     shopFetch<MyDetails>("me", { method: "PUT", body: JSON.stringify(data) }, t),
 
-  products: (t: GetToken) => shopFetch<ShopProduct[]>("products", { method: "GET" }, t),
+  // editing: a waiting order the customer is changing - what it holds counts as theirs.
+  products: (t: GetToken, editing?: string) =>
+    shopFetch<ShopProduct[]>(editing ? `products?editing=${encodeURIComponent(editing)}` : "products", { method: "GET" }, t),
   sale: (t: GetToken) => shopFetch<{ sale: StorewideSale | null }>("sale", { method: "GET" }, t),
   orders: (t: GetToken) => shopFetch<ShopOrder[]>("orders", { method: "GET" }, t),
   sendOrder: (data: { lines: CartLine[]; notes: string }, t: GetToken) =>
@@ -55,6 +57,11 @@ export const shopApi = {
     ),
   cancelOrder: (id: string, t: GetToken) =>
     shopFetch<ShopOrder>(`orders?id=${encodeURIComponent(id)}&action=cancel`, { method: "POST", body: "{}" }, t),
+  // Start changing an order (a confirmed, unpaid one goes back to waiting), then send the changes with updateOrder.
+  changeOrder: (id: string, t: GetToken) =>
+    shopFetch<ShopOrder>(`orders?id=${encodeURIComponent(id)}&action=change`, { method: "POST", body: "{}" }, t),
+  updateOrder: (id: string, data: { lines: CartLine[]; notes: string }, t: GetToken) =>
+    shopFetch<ShopOrder>(`orders?id=${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }, t),
 
   notifications: (t: GetToken) =>
     shopFetch<{ unread: number; items: CustomerNotification[] }>("notifications", { method: "GET" }, t),

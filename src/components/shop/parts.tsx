@@ -36,7 +36,7 @@ export function StockBadge({ stock, left }: { stock: StockLevel; left?: number }
         ? "text-amber-300 bg-amber-500/10 border-amber-500/30"
         : stock === "soon"
           ? "text-violet-300 bg-violet-500/10 border-violet-500/30"
-          : "text-sky-300 bg-sky-500/10 border-sky-500/30";
+          : "text-red-300 bg-red-500/10 border-red-500/30";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${style}`}>
       {stock === "in"
@@ -47,7 +47,7 @@ export function StockBadge({ stock, left }: { stock: StockLevel; left?: number }
             : "Low stock"
           : stock === "soon"
             ? "Coming soon"
-            : "Pre-order"}
+            : "Out of stock"}
     </span>
   );
 }
@@ -55,8 +55,8 @@ export function StockBadge({ stock, left }: { stock: StockLevel; left?: number }
 // Under a coming-soon product.
 export const SOON_NOTE = "Coming soon - you'll be able to order this once it arrives.";
 
-// Under a pre-order: what happens next.
-export const PREORDER_NOTE = "Pre-order - we'll confirm your order once it arrives.";
+// Under an out of stock product.
+export const OUT_NOTE = "Out of stock - you'll be able to order this once more arrives.";
 
 // The certificate of analysis button that sits on a product photo. With a url it opens the COA (image, PDF or
 // the lab's page) in a new tab; with onClick it does that instead (e.g. go to the product to pick a size).
@@ -259,7 +259,7 @@ export function productStock(product: ShopProduct): StockLevel {
   const levels = product.variants.map((v) => v.stock);
   if (levels.includes("in")) return "in";
   if (levels.includes("low")) return "low";
-  if (levels.includes("preorder")) return "preorder";
+  if (levels.includes("out")) return "out";
   return "soon";
 }
 

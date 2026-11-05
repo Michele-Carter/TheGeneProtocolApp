@@ -53,6 +53,7 @@ import {
     notify,
     notifyIfPaid,
     notifyIfShipped,
+    notifyIfUpdated,
 } from "../_lib/notifications.js";
 import {
     appSettings,
@@ -1062,6 +1063,7 @@ async function handleSales(req: any, res: any, db: Db) {
             if (error instanceof InventoryError) return sendJson(res, 409, { error: error.message });
             throw error;
         }
+        await notifyIfUpdated(db, row.id, existing.data as SaleInput, data);
         await notifyIfShipped(db, row.id, existing.data as SaleInput, data);
         await notifyIfPaid(db, row.id, existing.data as SaleInput, data);
         return sendJson(res, 200, (await saleDtos(db, [row]))[0]);

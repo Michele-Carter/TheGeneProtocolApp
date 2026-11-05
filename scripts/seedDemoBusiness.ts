@@ -71,7 +71,7 @@ const products: P[] = [
   { name: "Ipamorelin", variant: "5mg", kind: "peptide", unit: "vial", price: 40, cats: ["Growth Hormone"], stock: 12, cost: 8 },
   // Low stock.
   { name: "GHK-Cu", variant: "50mg", kind: "peptide", unit: "vial", price: 55, cats: ["Longevity", "Skin"], stock: 3, cost: 10, extra: { reorderLevel: 5 } },
-  // No stock: sold as a pre-order.
+  // No stock: out of stock, can't be ordered.
   { name: "Retatrutide", variant: "10mg", kind: "peptide", unit: "vial", price: 150, cats: ["Weight Loss"], stock: 0, cost: 0 },
   // No stock and not orderable yet.
   { name: "MOTS-c", variant: "10mg", kind: "peptide", unit: "vial", price: 80, cats: ["Longevity"], stock: 0, cost: 0, extra: { comingSoon: true } },
@@ -199,8 +199,8 @@ const confirm = (order: any, shippingNzd: number, message = "") =>
 
 // Waiting to be confirmed.
 await send(0, [["BPC-157", "5mg", 2], ["Bacteriostatic Water", "10ml", 1]], "Please send ASAP, thanks!");
-// Waiting, with a pre-order (no stock yet).
-await send(1, [["Retatrutide", "10mg", 1]]);
+// Waiting, with the last of a low-stock item.
+await send(1, [["GHK-Cu", "50mg", 1]]);
 // Confirmed, waiting for the customer to pay.
 const awaiting = await send(2, [["Semaglutide", "5mg", 1], ["Insulin Syringes", "Pack of 10", 1]]);
 await confirm(awaiting, 10, "Thanks Sarah - payment details are below.");
@@ -217,8 +217,8 @@ const sent = await send(5, [["Ipamorelin", "5mg", 2]]);
 const sentConfirmed = await confirm(sent, 10);
 await admin("POST", { resource: "shop-orders", id: sent.id, action: "mark-paid" }, {});
 // Declined.
-const declined = await send(0, [["GHK-Cu", "50mg", 5]]);
-await admin("POST", { resource: "shop-orders", id: declined.id, action: "decline" }, { message: "Sorry, we only have 3 left - happy to send those instead?" });
+const declined = await send(0, [["GHK-Cu", "50mg", 2]]);
+await admin("POST", { resource: "shop-orders", id: declined.id, action: "decline" }, { message: "Sorry, those are spoken for - we'll have more in next week." });
 // Cancelled by the customer before it was confirmed.
 const cancelled = await send(1, [["TB-500", "5mg", 1]]);
 await shop(1, "POST", { resource: "orders", id: cancelled.id, action: "cancel" });
@@ -235,7 +235,7 @@ if (sentSale) {
     },
   });
 }
-console.log("  8 shop orders: 2 waiting (1 pre-order), awaiting payment, payment sent, paid, paid + sent, declined, cancelled");
+console.log("  8 shop orders: 2 waiting, awaiting payment, payment sent, paid, paid + sent, declined, cancelled");
 
 // ---- Orders entered by hand (not through the shop) ----
 const sale = (data: Record<string, unknown>) => admin("POST", { resource: "sales" }, { data });

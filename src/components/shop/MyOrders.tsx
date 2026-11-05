@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Landmark, MessageCircle, MessageSquare, Package, Send, Truck } from "lucide-react";
+import { Landmark, MessageCircle, MessageSquare, Package, PencilLine, Send, Truck } from "lucide-react";
 import type { ShopOrder } from "../../../shared/shop";
 import { money, shopApi } from "../../lib/shopApi";
+import { useCart } from "../../hooks/useCart";
 import { ErrorNote } from "../admin/ui";
 import LoadingSpinner, { Spinner } from "../LoadingSpinner";
 import { priceOrder } from "../../../shared/specials";
@@ -41,14 +42,18 @@ const date = (iso: string) => formatDate(iso, { day: "numeric", month: "short", 
 export default function MyOrders({
   onShop,
   onMessage,
+  onChangeOrder,
 }: {
   onShop: () => void;
   onMessage: (order: { id: string; number: number }) => void; // opens Messages about this order
+  onChangeOrder: () => void; // opens the cart, holding the order being changed
 }) {
   const { getToken } = useAuth();
+  const cart = useCart();
   const [orders, setOrders] = useState<ShopOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [changing, setChanging] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -74,6 +79,32 @@ export default function MyOrders({
     } finally {
       setCancelling(null);
       await load();
+    }
+  };
+
+  // Puts the order's items in the cart to change them. A confirmed order goes back to waiting for confirmation first.
+  const change = async (order: ShopOrder) => {
+    const message =
+      order.status === "confirmed"
+        ? `Change order #${order.orderNumber}?\n\nIt goes back to waiting for confirmation while you change it, and we'll confirm it again with the shipping cost.`
+        : `Change order #${order.orderNumber}?`;
+    if (!window.confirm(message + (cart.lines.length > 0 && !cart.editing ? "\n\nWhat's in your cart now will be replaced by this order's items." : ""))) {
+      return;
+    }
+    setChanging(order.id);
+    setError(null);
+    try {
+      const updated = await shopApi.changeOrder(order.id, getToken);
+      cart.startEditing(
+        { orderId: updated.id, orderNumber: updated.orderNumber, notes: updated.notes },
+        updated.lines.map((l) => ({ key: l.key, qty: l.qty }))
+      );
+      onChangeOrder();
+    } catch (e) {
+      setError((e as Error).message);
+      await load();
+    } finally {
+      setChanging(null);
     }
   };
 
@@ -134,27 +165,44 @@ export default function MyOrders({
             )}
 
             <div className="border-t border-slate-800 pt-3 space-y-1.5">
-              {order.lines.map((line, i) => (
-                <div key={line.key} className="flex justify-between gap-3 text-sm">
-                  <span className="text-slate-300">
-                    <span className="text-slate-500 tabular-nums">{line.qty}×</span> {[line.name, line.variant].filter(Boolean).join(" ")}
-                    {line.preorder && (
-                      <span className="ml-1.5 inline-flex px-1.5 py-px rounded-full border border-sky-500/30 bg-sky-500/10 text-[9px] font-bold uppercase tracking-wide text-sky-300 align-middle">
-                        Pre-order
+              {p
+                ? // Confirmed: what's on it now (we may have changed it since it was sent).
+                  p.items.map((item, i) => (
+                    <div key={i} className="flex justify-between gap-3 text-sm">
+                      <span className="text-slate-300 min-w-0">
+                        {item.name}
+                        {item.contents && <span className="block text-xs text-slate-500">{item.contents}</span>}
                       </span>
-                    )}
-                    <LineSaving line={line} saving={pricing.lines[i]} />
-                  </span>
-                  <span className="text-slate-200 tabular-nums">{money(pricing.lines[i].totalNzd)}</span>
-                </div>
-              ))}
+                      <span className="text-slate-200 tabular-nums">{money(item.totalNzd)}</span>
+                    </div>
+                  ))
+                : order.lines.map((line, i) => (
+                    <div key={line.key} className="flex justify-between gap-3 text-sm">
+                      <span className="text-slate-300">
+                        <span className="text-slate-500 tabular-nums">{line.qty}×</span> {[line.name, line.variant].filter(Boolean).join(" ")}
+                        {line.preorder && (
+                          <span className="ml-1.5 inline-flex px-1.5 py-px rounded-full border border-sky-500/30 bg-sky-500/10 text-[9px] font-bold uppercase tracking-wide text-sky-300 align-middle">
+                            Pre-order
+                          </span>
+                        )}
+                        <LineSaving line={line} saving={pricing.lines[i]} />
+                      </span>
+                      <span className="text-slate-200 tabular-nums">{money(pricing.lines[i].totalNzd)}</span>
+                    </div>
+                  ))}
             </div>
 
             <div className="border-t border-slate-800 pt-3 space-y-1 text-sm">
+              {p && p.discountNzd > 0.004 && (
+                <div className="flex justify-between text-emerald-400">
+                  <span>Discount</span>
+                  <span className="tabular-nums">-{money(p.discountNzd)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-slate-400">
                 <span>Shipping</span>
                 <span className="tabular-nums">
-                  {order.shippingNzd != null ? money(order.shippingNzd) : order.status === "submitted" ? "To be confirmed" : "—"}
+                  {p ? money(p.shippingNzd) : order.shippingNzd != null ? money(order.shippingNzd) : order.status === "submitted" ? "To be confirmed" : "—"}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -188,6 +236,11 @@ export default function MyOrders({
               <button className={shopSecondary} onClick={() => onMessage({ id: order.id, number: order.orderNumber })}>
                 <MessageCircle size={13} /> Ask about this order
               </button>
+              {order.canChange && (
+                <button className={shopSecondary} onClick={() => void change(order)} disabled={changing != null}>
+                  {changing === order.id ? <Spinner size={13} /> : <PencilLine size={13} />} Change my order
+                </button>
+              )}
               {order.status === "submitted" && (
                 <button className={shopSecondary} onClick={() => void cancel(order)} disabled={cancelling != null}>
                   {cancelling === order.id && <Spinner size={13} />} Cancel order

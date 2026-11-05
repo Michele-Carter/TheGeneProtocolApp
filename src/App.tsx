@@ -241,9 +241,14 @@ export default function App() {
   }, [activeTab]);
 
 
+  // A customer changing one of their orders: the shop opens at the cart, which now holds that order (just this once -
+  // any other way into the shop starts at the products).
+  const [shopStartsOnCart, setShopStartsOnCart] = useState(false);
+
   const navigateTab = useCallback((tab: ActiveTab) => {
     setIsMobileMenuOpen(false);
     setActiveTab(tab);
+    setShopStartsOnCart(false);
     if (tab === "protocol") {
       // Force ProtocolBuilder to remount so it resets to its hub sub-view,
       // even when activeTab was already "protocol" (deep in a sub-view).
@@ -269,6 +274,11 @@ export default function App() {
     },
     [navigateTab]
   );
+
+  const openCart = useCallback(() => {
+    navigateTab("shop");
+    setShopStartsOnCart(true);
+  }, [navigateTab]);
 
   const navigateAdmin = useCallback((section: AdminSection) => {
     setIsMobileMenuOpen(false);
@@ -367,9 +377,9 @@ export default function App() {
           </LibraryGate>
         );
       case "shop":
-        return <ShopView onOpenAccount={openAccount} isOwner={isAdmin} />;
+        return <ShopView onOpenAccount={openAccount} isOwner={isAdmin} startOnCart={shopStartsOnCart} />;
       case "account":
-        return <MyAccount initialTab={accountTab} onShop={() => navigateTab("shop")} onMessage={openMessages} />;
+        return <MyAccount initialTab={accountTab} onShop={() => navigateTab("shop")} onMessage={openMessages} onChangeOrder={openCart} />;
       case "recon":
         return <ReconstitutionCalc />;
       case "logs":

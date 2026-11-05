@@ -71,6 +71,22 @@ export async function notifyIfPaid(db: Db | Tx, saleId: string, before: SaleInpu
   });
 }
 
+// When the owner changes what a confirmed shop order charges (its items, prices, discount or shipping), tells the
+// customer the new total - My Orders shows what's on it now.
+export async function notifyIfUpdated(db: Db | Tx, saleId: string, before: SaleInput, after: SaleInput) {
+  const charged = (s: SaleInput) => JSON.stringify([s.lines.map((l) => [l.itemId, l.qty, l.unitPriceNzd]), saleTotals(s).total]);
+  if (charged(before) === charged(after)) return;
+  const [order] = await db.select().from(shopOrders).where(eq(shopOrders.saleId, saleId));
+  if (!order) return;
+  await notify(db, {
+    customerId: order.customerId,
+    shopOrderId: order.id,
+    kind: "updated",
+    title: `Order #${order.orderNumber} updated`,
+    body: `We've updated your order - the total is now ${money(saleTotals(after).total)}. See My Orders for what's on it.`,
+  });
+}
+
 // When the owner marks a customer order from the shop as sent, tells the customer it's on its way.
 export async function notifyIfShipped(db: Db | Tx, saleId: string, before: SaleInput, after: SaleInput) {
   const wasSent = before.shipping.status !== "not-sent";

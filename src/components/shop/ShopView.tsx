@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Check, Package, Search, ShoppingCart, X } from "lucide-react";
+import { Check, Package, PencilLine, Search, ShoppingCart, X } from "lucide-react";
 import type { AccountTab } from "../MyAccount";
 import { SHOP_SECTIONS, type ShopOrder, type ShopProduct, type ShopSection } from "../../../shared/shop";
 import type { StorewideSale } from "../../../shared/specials";
@@ -28,32 +28,43 @@ import {
   shopSecondary,
 } from "./parts";
 
-type Page = { name: "list" } | { name: "product"; id: string } | { name: "cart" } | { name: "sent"; order: ShopOrder };
+type Page = { name: "list" } | { name: "product"; id: string } | { name: "cart" } | { name: "sent"; order: ShopOrder; updated: boolean };
 
 // isOwner: the owner viewing their own shop - they see it as customers do, but without My orders and Cart (they
 // don't order from themselves; their own use comes off stock in Inventory).
-export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAccount: (tab: AccountTab) => void; isOwner?: boolean }) {
+// startOnCart: opens at the cart (a customer who just chose to change one of their orders).
+export default function ShopView({
+  onOpenAccount,
+  isOwner = false,
+  startOnCart = false,
+}: {
+  onOpenAccount: (tab: AccountTab) => void;
+  isOwner?: boolean;
+  startOnCart?: boolean;
+}) {
   const { getToken } = useAuth();
   const cart = useCart();
   const [products, setProducts] = useState<ShopProduct[] | null>(null);
   const [sale, setSale] = useState<StorewideSale | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState<Page>({ name: "list" });
+  const [page, setPage] = useState<Page>(startOnCart ? { name: "cart" } : { name: "list" });
   const [section, setSection] = useState<ShopSection | null>(null);
   const [category, setCategory] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [justAdded, setJustAdded] = useState<string | null>(null);
 
+  // While changing an order, what it holds counts as the customer's own.
+  const editingId = cart.editing?.orderId;
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [list, current] = await Promise.all([shopApi.products(getToken), shopApi.sale(getToken)]);
+      const [list, current] = await Promise.all([shopApi.products(getToken, editingId), shopApi.sale(getToken)]);
       setProducts(list);
       setSale(current.sale);
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [getToken]);
+  }, [getToken, editingId]);
 
   useEffect(() => {
     void load();
@@ -62,6 +73,14 @@ export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAcc
   const go = (next: Page) => {
     setPage(next);
     document.querySelector(".app-main-scroller")?.scrollTo({ top: 0 });
+  };
+
+  // Stops changing the order: the cart empties and the order stays as it was, waiting for confirmation.
+  const stopChanging = () => {
+    if (!cart.editing) return;
+    if (!window.confirm(`Stop changing order #${cart.editing.orderNumber}? It stays as it was, waiting for us to confirm it.`)) return;
+    cart.clear();
+    go({ name: "list" });
   };
 
   const inSection = useMemo(
@@ -122,6 +141,25 @@ export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAcc
           </div>
         )}
       </div>
+      {cart.editing && page.name !== "sent" && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 rounded-2xl border border-gold-500/30 bg-gold-500/5 text-sm">
+          <PencilLine size={15} className="text-gold-400 flex-shrink-0" />
+          <span className="flex-1 min-w-[12rem] text-slate-200">
+            You're changing <span className="font-bold text-white">order #{cart.editing.orderNumber}</span>. Add or remove
+            items, then press <span className="font-bold text-white">Update order</span> in your cart.
+          </span>
+          <div className="flex gap-2">
+            {page.name !== "cart" && (
+              <button className={shopSecondary} onClick={() => go({ name: "cart" })}>
+                Go to cart
+              </button>
+            )}
+            <button className={shopSecondary} onClick={stopChanging}>
+              Stop changing
+            </button>
+          </div>
+        </div>
+      )}
       {/* A storewide sale, while it's on (not on the "order sent" page). */}
       {sale && page.name !== "sent" && <SaleBanner sale={sale} />}
     </div>
@@ -151,9 +189,10 @@ export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAcc
           onOpenAccount={() => onOpenAccount("details")}
           onStockChanged={load}
           onSent={(order) => {
+            const updated = cart.editing != null;
             cart.clear();
             void load();
-            go({ name: "sent", order });
+            go({ name: "sent", order, updated });
           }}
         />
       </div>
@@ -164,7 +203,7 @@ export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAcc
     return (
       <div className="space-y-6">
         {header}
-        <OrderSent order={page.order} onBack={() => go({ name: "list" })} onViewOrders={() => onOpenAccount("orders")} />
+        <OrderSent order={page.order} updated={page.updated} onBack={() => go({ name: "list" })} onViewOrders={() => onOpenAccount("orders")} />
       </div>
     );
   }
@@ -302,10 +341,10 @@ export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAcc
                         onClick={() => quickAdd(product)}
                         disabled={cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty}
                         title={
-                          stock === "soon"
+                          stock === "soon" || stock === "out"
                             ? "Not available to order yet"
                             : cart.qtyOf(product.variants[0].key) >= product.variants[0].maxQty
-                              ? "That's the most you can order at once"
+                              ? "That's all we have in stock"
                               : undefined
                         }
                       >
@@ -313,8 +352,8 @@ export default function ShopView({ onOpenAccount, isOwner = false }: { onOpenAcc
                           <>
                             <Check size={13} /> Added
                           </>
-                        ) : stock === "preorder" ? (
-                          "Pre-order"
+                        ) : stock === "out" ? (
+                          "Out of stock"
                         ) : stock === "soon" ? (
                           "Coming soon"
                         ) : (

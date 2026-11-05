@@ -23,10 +23,12 @@ export default function MyAccount({
   initialTab = "orders",
   onShop,
   onMessage,
+  onChangeOrder,
 }: {
   initialTab?: AccountTab;
   onShop: () => void;
   onMessage: (order: { id: string; number: number }) => void;
+  onChangeOrder: () => void; // opens the cart holding an order being changed
 }) {
   const { getToken } = useAuth();
   const [tab, setTab] = useState<AccountTab>(initialTab);
@@ -93,7 +95,7 @@ export default function MyAccount({
 
       {tab === "orders" && (
         <div className="max-w-2xl">
-          <MyOrders onShop={onShop} onMessage={onMessage} />
+          <MyOrders onShop={onShop} onMessage={onMessage} onChangeOrder={onChangeOrder} />
         </div>
       )}
 
