@@ -53,6 +53,10 @@ export const EXPENSE_CATEGORIES = [
   "Other",
 ] as const;
 
+// Not chosen by hand: stock taken out without a sale (Personal use, Damaged, Sample / giveaway...) is listed
+// with the expenses under this category, at what that stock cost.
+export const STOCK_WRITE_OFF = "Stock written off";
+
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
 export interface SaleTotals {

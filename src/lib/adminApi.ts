@@ -1,5 +1,5 @@
 import type { CheckStatus, ItemKind, OrderInput } from "../../shared/landedCost";
-import type { EXPENSE_CATEGORIES, SaleInput, SaleTotals } from "../../shared/sales";
+import type { EXPENSE_CATEGORIES, STOCK_WRITE_OFF, SaleInput, SaleTotals } from "../../shared/sales";
 import type { ExpenseDetail } from "../../shared/expenses";
 import type { BundleInput } from "../../shared/bundles";
 import type { ShippingAddress } from "../../shared/customers";
@@ -39,7 +39,8 @@ export interface SaleRecord {
   sendTo: ShippingAddress | null; // where to post it (see api/admin sendToAddresses)
 }
 
-export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+// STOCK_WRITE_OFF is only on stock removals the server lists with the expenses - never chosen or saved by hand.
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number] | typeof STOCK_WRITE_OFF;
 
 export interface ExpenseInput {
   expenseDate: string;
@@ -56,6 +57,7 @@ export interface ExpenseRecord extends Omit<ExpenseInput, "detail"> {
   amountNzd: number; // derived total
   detail: ExpenseDetail | null; // null on expenses saved before items existed
   sourceOrderId: string | null; // created from expense lines on this supply order
+  stockItemId: string | null; // a stock removal (Personal use, Damaged...) of this item - changed from its stock history
   createdAt: string;
   updatedAt: string;
 }
