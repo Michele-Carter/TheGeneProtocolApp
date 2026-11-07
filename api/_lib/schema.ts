@@ -118,7 +118,7 @@ export const invItems = pgTable("inv_items", {
   special: jsonb("special").$type<Special | null>(),
   shopCategories: jsonb("shop_categories").$type<string[]>().notNull().default([]),
   shopDescription: text("shop_description").notNull().default(""),
-  shopSection: text("shop_section"), // "peptides" | "supplies"; null = by kind (shared/shop.ts itemSection)
+  shopSection: text("shop_section"), // "peptides" | "supplies" | an owner-named tab; null = by kind (shared/shop.ts itemSection)
   images: jsonb("images").$type<string[]>().notNull().default([]),
   // Certificate of analysis: an uploaded image/PDF, or a link to the testing lab's page (scripts/coa.sql).
   coaUrl: text("coa_url"),

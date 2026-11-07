@@ -296,7 +296,10 @@ export const adminApi = {
       }
     >(`orders?id=${q(id)}&action=unreceive`, { method: "POST", body: "{}" }, t),
 
-  createItem: (data: { kind: ItemKind; name: string; variant: string; unit: string }, t: GetToken) =>
+  createItem: (
+    data: { kind: ItemKind; name: string; variant: string; unit: string; shopSection?: ItemShopSection | null },
+    t: GetToken
+  ) =>
     adminFetch<InvItem>("items", { method: "POST", body: JSON.stringify(data) }, t),
   inventory: (t: GetToken) => adminFetch<InventorySummaryRow[]>("inventory", { method: "GET" }, t),
   inventoryItem: (id: string, t: GetToken) => adminFetch<InventoryDetail>(`inventory?id=${q(id)}`, { method: "GET" }, t),

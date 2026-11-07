@@ -43,9 +43,10 @@ export function normalizeCategories(categories: string[]): string[] {
 
 // ---- What customers see in the shop ----
 
-// The shop's tabs. Bundles always go under Bundles; items under Peptides or Supplies.
-export type ShopSection = "peptides" | "bundles" | "supplies";
-export type ItemShopSection = Exclude<ShopSection, "bundles">;
+// The shop's tabs. Bundles always go under Bundles; items under Peptides, Supplies, or a tab the owner
+// names themselves (e.g. "Skincare") - a custom tab's id is its name, and it exists while something is in it.
+export type ShopSection = string;
+export type ItemShopSection = string;
 
 export const SHOP_SECTIONS: { id: ShopSection; label: string }[] = [
   { id: "peptides", label: "Peptides" },
@@ -53,9 +54,35 @@ export const SHOP_SECTIONS: { id: ShopSection; label: string }[] = [
   { id: "supplies", label: "Supplies" },
 ];
 
+export const SECTION_NAME_MAX = 30;
+
+// A typed tab name as stored: trimmed, single-spaced, and "peptide"/"Supplies" etc. mean the built-in tabs.
+// Returns null for a blank name or "Bundles" (that tab is only for bundles).
+export function normalizeSection(raw: string): ItemShopSection | null {
+  const name = raw.trim().replace(/\s+/g, " ").slice(0, SECTION_NAME_MAX);
+  const lower = name.toLowerCase();
+  if (!name || lower === "bundles" || lower === "bundle") return null;
+  if (lower === "peptides" || lower === "peptide") return "peptides";
+  if (lower === "supplies" || lower === "supply") return "supplies";
+  return name;
+}
+
+export function sectionLabel(id: ShopSection): string {
+  return SHOP_SECTIONS.find((s) => s.id === id)?.label ?? id;
+}
+
+// Tabs in shop order: Peptides, Bundles, Supplies, then the owner's own tabs A-Z. No duplicates.
+export function orderSections(ids: ShopSection[]): ShopSection[] {
+  const unique = Array.from(new Set(ids));
+  const builtIn = SHOP_SECTIONS.map((s) => s.id).filter((id) => unique.includes(id));
+  const custom = unique.filter((id) => !SHOP_SECTIONS.some((s) => s.id === id)).sort((a, b) => a.localeCompare(b));
+  return [...builtIn, ...custom];
+}
+
 // Where an item shows: as set in admin, otherwise by whether it's stocked as a peptide or a supply.
 export function itemSection(item: { kind: string; shopSection: string | null }): ItemShopSection {
-  if (item.shopSection === "peptides" || item.shopSection === "supplies") return item.shopSection;
+  const set = item.shopSection ? normalizeSection(item.shopSection) : null;
+  if (set) return set;
   return item.kind === "supply" ? "supplies" : "peptides";
 }
 
