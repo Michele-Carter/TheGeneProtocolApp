@@ -17,6 +17,9 @@ function withName(value: unknown, name: string): unknown {
     return value;
 }
 
+const CODE_SUBTITLE =
+    "We've sent a code to your email - to continue, enter the code from that email. It can take a few minutes to arrive, so check your Junk and Spam folders too. For Outlook and Hotmail addresses it can take a couple of hours, because of the spam protection they use.";
+
 const SetBrandName = createContext<(name: string | null) => void>(() => {});
 
 // Set to the shop's name once it's known (null = PepBiz itself).
@@ -32,8 +35,24 @@ export function BrandedClerkProvider({
         // Manage account -> "Connected accounts" doesn't say what it's for: it links a Google account, so the person
         // can sign in with Google instead of an emailed code.
         const start = named.userProfile?.start;
+        // Emailed codes can be slow or land in Junk, especially at Outlook/Hotmail addresses - say so on every
+        // "enter the code" screen (shop customers and business owners alike). Replaces Clerk's own line under
+        // "Check your email"; Clerk still shows the email address underneath.
         return {
             ...named,
+            signUp: {
+                ...named.signUp,
+                emailCode: { ...named.signUp?.emailCode, subtitle: CODE_SUBTITLE },
+            },
+            signIn: {
+                ...named.signIn,
+                emailCode: { ...named.signIn?.emailCode, subtitle: CODE_SUBTITLE },
+                emailCodeMfa: { ...named.signIn?.emailCodeMfa, subtitle: CODE_SUBTITLE },
+            },
+            reverification: {
+                ...named.reverification,
+                emailCode: { ...named.reverification?.emailCode, subtitle: CODE_SUBTITLE },
+            },
             userProfile: {
                 ...named.userProfile,
                 start: {

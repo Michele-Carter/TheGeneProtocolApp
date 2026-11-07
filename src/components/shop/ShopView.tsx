@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Check, Package, PencilLine, Search, ShoppingCart, X } from "lucide-react";
+import { Check, ChevronDown, Package, PencilLine, Search, ShoppingCart, X } from "lucide-react";
 import type { AccountTab } from "../MyAccount";
-import { SHOP_SECTIONS, type ShopOrder, type ShopProduct, type ShopSection } from "../../../shared/shop";
+import { orderSections, sectionLabel, type ShopOrder, type ShopProduct, type ShopSection } from "../../../shared/shop";
 import type { StorewideSale } from "../../../shared/specials";
 import { shopApi } from "../../lib/shopApi";
 import { useCart } from "../../hooks/useCart";
@@ -93,8 +93,11 @@ export default function ShopView({
     [inSection]
   );
   const sectionCount = (id: ShopSection | null) => (products ?? []).filter((p) => id == null || p.section === id).length;
-  // Tabs with nothing in them are left out.
-  const sections = SHOP_SECTIONS.filter((s) => sectionCount(s.id) > 0);
+  // Only tabs with something in them: Peptides, Bundles, Supplies, then the owner's own tabs.
+  const sections = useMemo(
+    () => orderSections((products ?? []).map((p) => p.section)).map((id) => ({ id, label: sectionLabel(id) })),
+    [products]
+  );
   const chooseSection = (id: ShopSection | null) => {
     setSection(id);
     setCategory(null);
@@ -231,23 +234,27 @@ export default function ShopView({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {[null, ...categories].map((c) => (
-          <button
-            key={c ?? "all"}
-            onClick={() => setCategory(c)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition cursor-pointer ${
-              category === c
-                ? "border-gold-500 bg-gold-500 text-slate-950"
-                : "border-slate-800 text-slate-300 hover:text-white hover:border-slate-600"
-            }`}
-          >
-            {c ?? "All"}
-          </button>
-        ))}
-      </div>
-
       <div className="flex flex-wrap items-center gap-3">
+        {categories.length > 0 && (
+          <div className="relative w-full sm:w-56">
+            <select
+              value={category ?? ""}
+              onChange={(e) => setCategory(e.target.value || null)}
+              aria-label="Category"
+              className={`w-full appearance-none bg-slate-900/60 border rounded-xl py-2.5 pl-3.5 pr-9 text-sm font-bold focus:outline-none focus:border-gold-500/60 transition cursor-pointer ${
+                category ? "border-gold-500/60 text-gold-400" : "border-slate-800 text-slate-300"
+              }`}
+            >
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          </div>
+        )}
         <div className="relative flex-1 min-w-[12rem] max-w-md">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
           <input

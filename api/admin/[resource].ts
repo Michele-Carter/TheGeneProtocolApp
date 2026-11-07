@@ -26,6 +26,7 @@ import {
     formatNzAccountNumber,
     hasPaymentDetails,
     normalizeCategories,
+    normalizeSection,
     toPaymentDetails,
     type SetupStatus,
     type ShopOrderLine,
@@ -150,11 +151,29 @@ const receiveSchema = z.object({
     lots: z.record(z.string(), z.object({ lotNumber: z.string(), expiryDate: z.string().nullable() })).optional(),
 });
 
+// The shop tab an item shows under: "peptides", "supplies", or the name of the owner's own tab.
+// null = by kind (shared/shop.ts itemSection); left out leaves it as it is.
+const shopSectionField = z
+    .string()
+    .max(60)
+    .nullable()
+    .optional()
+    .transform((v, ctx) => {
+        if (v == null) return v;
+        const section = normalizeSection(v);
+        if (!section) {
+            ctx.addIssue({ code: "custom", message: "Enter a name for the category (not Bundles - that's only for bundles)" });
+            return z.NEVER;
+        }
+        return section;
+    });
+
 const itemCreateSchema = z.object({
     kind: z.enum(["peptide", "supply"]),
     name: z.string().trim().min(1),
     variant: z.string().default(""),
     unit: z.string().default("unit"),
+    shopSection: shopSectionField,
 });
 
 // A deal on an item size or a bundle (shared/specials.ts); null removes it, left out leaves it as it is.
@@ -184,7 +203,7 @@ const itemPatchSchema = z.object({
     special: specialField,
     shopCategories: z.array(z.string()).transform(normalizeCategories).optional(),
     shopDescription: z.string().optional(),
-    shopSection: z.enum(["peptides", "supplies"]).nullable().optional(),
+    shopSection: shopSectionField,
     // Also give every other size of this product (same name and kind) these categories and description.
     applyToSizes: z.boolean().optional(),
 });

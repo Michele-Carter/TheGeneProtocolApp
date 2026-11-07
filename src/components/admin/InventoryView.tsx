@@ -12,7 +12,8 @@ import {
 } from "../../lib/adminApi";
 import type { ItemKind } from "../../../shared/landedCost";
 import CategoryPicker from "./CategoryPicker";
-import { LOW_STOCK_DEFAULT, SHOP_SECTIONS, itemSection, type ItemShopSection } from "../../../shared/shop";
+import { LOW_STOCK_DEFAULT, itemSection, orderSections, sectionLabel, type ItemShopSection } from "../../../shared/shop";
+import SectionPicker from "./SectionPicker";
 import ProductImages from "./ProductImages";
 import { Card, ErrorNote, Field, NumberField, StatRow, dateButtonClass, inputClass, primaryButton, secondaryButton } from "./ui";
 import StyledDatePicker from "../StyledDatePicker";
@@ -24,7 +25,6 @@ import SpecialEditor, { fromDraft, toDraft, type SpecialDraft } from "./SpecialE
 import { dealText } from "../../../shared/specials";
 import { businessDay, formatDate, homeCurrency } from "../../lib/locale";
 
-type KindFilter = "all" | "peptide" | "supply";
 type View = "items" | "bundles";
 
 const ADJUST_REASONS_OUT = ["Stocktake correction", "Damaged / broken", "Sample / giveaway", "Personal use", "Expired", "Other"];
@@ -80,7 +80,7 @@ export default function InventoryView() {
   const [rows, setRows] = useState<InventorySummaryRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<KindFilter>("all");
+  const [category, setCategory] = useState<ItemShopSection | null>(null); // null = all
   const [hideEmpty, setHideEmpty] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("items");
@@ -102,22 +102,31 @@ export default function InventoryView() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (rows ?? []).filter((row) => {
-      if (kind !== "all" && row.item.kind !== kind) return false;
+      if (category != null && itemSection(row.item) !== category) return false;
       if (hideEmpty && row.onHand === 0) return false;
       if (!q) return true;
       return `${row.item.name} ${row.item.variant} ${row.item.catalogCode ?? ""}`.toLowerCase().includes(q);
     });
-  }, [rows, query, kind, hideEmpty]);
+  }, [rows, query, category, hideEmpty]);
+
+  // Every category in use. Peptides and Supplies always show, so the filter looks the same for a new business.
+  const categories = useMemo(
+    () => orderSections(["peptides", "supplies", ...(rows ?? []).map((r) => itemSection(r.item))]),
+    [rows]
+  );
 
   const totals = useMemo(() => {
     const all = rows ?? [];
     return {
       value: all.reduce((t, r) => t + r.valueNzd, 0),
-      peptideValue: all.filter((r) => r.item.kind === "peptide").reduce((t, r) => t + r.valueNzd, 0),
-      supplyValue: all.filter((r) => r.item.kind === "supply").reduce((t, r) => t + r.valueNzd, 0),
+      // Stock value per category: Peptides, Supplies, then the owner's own (e.g. Skincare).
+      byCategory: categories.map((id) => ({
+        id,
+        value: all.filter((r) => itemSection(r.item) === id).reduce((t, r) => t + r.valueNzd, 0),
+      })),
       low: all.filter(isLowStock).length,
     };
-  }, [rows]);
+  }, [rows, categories]);
 
   if (view === "items" && selectedId) {
     return (
@@ -152,10 +161,11 @@ export default function InventoryView() {
         <BundlesView inventory={rows ?? []} />
       ) : (
         <>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
         <Tile label="Stock value (at cost)" value={cash(totals.value)} />
-        <Tile label="Peptides" value={cash(totals.peptideValue)} />
-        <Tile label="Supplies" value={cash(totals.supplyValue)} />
+        {totals.byCategory.map((c) => (
+          <Tile key={c.id} label={sectionLabel(c.id)} value={cash(c.value)} />
+        ))}
         <Tile label="Low on stock" value={String(totals.low)} warn={totals.low > 0} />
       </div>
 
@@ -169,15 +179,15 @@ export default function InventoryView() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        {(["all", "peptide", "supply"] as KindFilter[]).map((k) => (
+        {[null, ...categories].map((c) => (
           <button
-            key={k}
-            onClick={() => setKind(k)}
+            key={c ?? "all"}
+            onClick={() => setCategory(c)}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-              kind === k ? "border-gold-500/60 text-gold-400 bg-gold-500/10" : "border-slate-800 text-slate-400 hover:text-white"
+              category === c ? "border-gold-500/60 text-gold-400 bg-gold-500/10" : "border-slate-800 text-slate-400 hover:text-white"
             }`}
           >
-            {k === "all" ? "All" : k === "peptide" ? "Peptides" : "Supplies"}
+            {c == null ? "All" : sectionLabel(c)}
           </button>
         ))}
         <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer ml-1">
@@ -239,7 +249,7 @@ export default function InventoryView() {
                       {row.item.name} <span className="text-slate-400 font-semibold">{row.item.variant}</span>
                     </div>
                     <div className="text-[10px] text-slate-500">
-                      {row.item.kind === "peptide" ? "Peptide" : "Supply"}
+                      {sectionLabel(itemSection(row.item))}
                       {row.item.catalogCode ? ` · ${row.item.catalogCode}` : ""}
                       {row.openLots > 1 ? ` · ${row.openLots} batches` : ""}
                     </div>
@@ -253,7 +263,7 @@ export default function InventoryView() {
                     <span className="text-slate-200 font-semibold">{cash(row.item.sellPriceNzd)}</span>
                     {row.item.shopVisible && (
                       <div className="text-[10px] text-emerald-400">
-                        In shop · {itemSection(row.item) === "supplies" ? "Supplies" : "Peptides"}
+                        In shop
                       </div>
                     )}
                     {row.item.special && <div className="text-[10px] font-bold text-gold-400">{dealText(row.item.special)}</div>}
@@ -301,7 +311,6 @@ function ShopCard({
   const [specialDraft, setSpecialDraft] = useState<SpecialDraft>(() => toDraft(item.special));
   const [categories, setCategories] = useState(item.shopCategories);
   const [description, setDescription] = useState(item.shopDescription);
-  const [section, setSection] = useState<ItemShopSection>(itemSection(item));
   const [images, setImages] = useState(item.images);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -324,8 +333,7 @@ function ShopCard({
     // Both through the same steps, so they compare in the same key order (the database reorders saved JSON).
     JSON.stringify(special.special ?? null) !== JSON.stringify(fromDraft(toDraft(item.special)).special ?? null) ||
     categories.join("\n") !== item.shopCategories.join("\n") ||
-    description !== item.shopDescription ||
-    section !== itemSection(item);
+    description !== item.shopDescription;
 
   const save = async () => {
     if (visible && price == null) {
@@ -348,7 +356,6 @@ function ShopCard({
           special: special.special,
           shopCategories: categories,
           shopDescription: description,
-          shopSection: section,
           applyToSizes: otherSizes.length > 0 && applyToSizes,
         },
         getToken
@@ -388,27 +395,6 @@ function ShopCard({
           </label>
           <div className="border-y border-slate-800 py-3">
             <SpecialEditor draft={specialDraft} onChange={setSpecialDraft} image={images[0]} unit={item.unit} />
-          </div>
-          <div className="space-y-1">
-            <span className="block text-[11px] font-bold text-white">Shows under</span>
-            <div className="flex gap-2">
-              {SHOP_SECTIONS.filter((s) => s.id !== "bundles").map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSection(s.id as ItemShopSection)}
-                  aria-pressed={section === s.id}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                    section === s.id
-                      ? "border-gold-500/60 text-gold-400 bg-gold-500/10"
-                      : "border-slate-800 text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-            <span className="block text-[11px] text-slate-500">The shop tab this appears in.</span>
           </div>
           <div className="space-y-1">
             <span className="block text-[11px] font-bold text-white">Categories</span>
@@ -458,16 +444,37 @@ function ShopCard({
 
 // Corrects an item's name, size, unit or type (e.g. a typo, or water added as a peptide). Stock, costs and history
 // stay as they are; past orders and sales show the corrected details too.
-function EditItemCard({ item, onCancel, onSaved }: { item: InvItem; onCancel: () => void; onSaved: (item: InvItem) => void }) {
+function EditItemCard({
+  item,
+  inventory,
+  onCancel,
+  onSaved,
+}: {
+  item: InvItem;
+  inventory: InventorySummaryRow[];
+  onCancel: () => void;
+  onSaved: (item: InvItem) => void;
+}) {
   const { getToken } = useAuth();
   const [name, setName] = useState(item.name);
   const [variant, setVariant] = useState(item.variant);
   const [unit, setUnit] = useState(item.unit);
   const [kind, setKind] = useState<ItemKind>(item.kind);
+  const [category, setCategory] = useState<ItemShopSection>(itemSection(item));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const knownCategories = useMemo(() => inventory.map((row) => itemSection(row.item)), [inventory]);
+  const hasOtherSizes = inventory.some(
+    (row) => row.item.id !== item.id && row.item.name === item.name && row.item.kind === item.kind
+  );
 
-  const changed = name.trim() !== item.name || variant.trim() !== item.variant || unit.trim() !== item.unit || kind !== item.kind;
+  const categoryChanged = category !== itemSection(item);
+  const changed =
+    name.trim() !== item.name ||
+    variant.trim() !== item.variant ||
+    unit.trim() !== item.unit ||
+    kind !== item.kind ||
+    categoryChanged;
 
   const save = async () => {
     if (!name.trim()) return setError("Enter a name.");
@@ -475,7 +482,19 @@ function EditItemCard({ item, onCancel, onSaved }: { item: InvItem; onCancel: ()
     setBusy(true);
     setError(null);
     try {
-      onSaved(await adminApi.updateItem(item.id, { name: name.trim(), variant: variant.trim(), unit: unit.trim(), kind }, getToken));
+      onSaved(
+        await adminApi.updateItem(
+          item.id,
+          {
+            name: name.trim(),
+            variant: variant.trim(),
+            unit: unit.trim(),
+            kind,
+            ...(categoryChanged ? { shopSection: category, applyToSizes: true } : {}),
+          },
+          getToken
+        )
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -503,7 +522,15 @@ function EditItemCard({ item, onCancel, onSaved }: { item: InvItem; onCancel: ()
           </Field>
         </div>
         <div>
-          <span className="block text-[11px] font-bold text-white mb-1.5">Type</span>
+          <span className="block text-[11px] font-bold text-white mb-1.5">Category</span>
+          <SectionPicker value={category} known={knownCategories} onChange={setCategory} />
+          <span className="block text-[11px] text-slate-500 mt-1">
+            Also the shop tab it shows under. Choose "New category" to make your own, e.g. Skincare
+            {hasOtherSizes ? " - every size of this product moves with it" : ""}.
+          </span>
+        </div>
+        <div>
+          <span className="block text-[11px] font-bold text-white mb-1.5">Ordered on</span>
           <div className="flex gap-2">
             {(["peptide", "supply"] as ItemKind[]).map((k) => (
               <button
@@ -514,10 +541,13 @@ function EditItemCard({ item, onCancel, onSaved }: { item: InvItem; onCancel: ()
                   kind === k ? "border-gold-500/60 text-gold-400 bg-gold-500/10" : "border-slate-800 text-slate-400 hover:text-white"
                 }`}
               >
-                {k === "peptide" ? "Peptide" : "Supply"}
+                {k === "peptide" ? "Peptide Orders" : "Supply Orders"}
               </button>
             ))}
           </div>
+          <span className="block text-[11px] text-slate-500 mt-1">
+            Which order page you buy more of it on. Doesn't change where it shows.
+          </span>
         </div>
         {item.catalogCode && (
           <p className="text-[11px] text-slate-500">
@@ -683,8 +713,9 @@ function ItemDetail({
           </h3>
           {item && (
             <p className="text-[11px] text-slate-500">
-              {item.kind === "peptide" ? "Peptide" : "Supply"}
-              {item.catalogCode ? ` · ${item.catalogCode}` : ""} · counted in {item.unit}s
+              {sectionLabel(itemSection(item))}
+              {item.catalogCode ? ` · ${item.catalogCode}` : ""} · counted in {item.unit}s · ordered on{" "}
+              {item.kind === "peptide" ? "Peptide" : "Supply"} Orders
             </p>
           )}
         </div>
@@ -698,6 +729,7 @@ function ItemDetail({
       {item && editingDetails && (
         <EditItemCard
           item={item}
+          inventory={inventory}
           onCancel={() => setEditingDetails(false)}
           onSaved={(updated) => {
             setDetail((d) => (d ? { ...d, item: updated } : d));

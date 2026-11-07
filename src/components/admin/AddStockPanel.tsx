@@ -6,6 +6,9 @@ import { Card, ErrorNote, Field, NumberField, dateButtonClass, inputClass, prima
 import StyledDatePicker from "../StyledDatePicker";
 import { Spinner } from "../LoadingSpinner";
 import { homeCurrency } from "../../lib/locale";
+import { itemSection, sectionLabel, type ItemShopSection } from "../../../shared/shop";
+import type { ItemKind } from "../../../shared/landedCost";
+import SectionPicker from "./SectionPicker";
 
 // Stock that didn't come from a supply order - e.g. a new business entering what it already has on hand.
 // Pick an existing product or type a new one; each entry becomes a batch at the cost given (used oldest first,
@@ -27,7 +30,11 @@ export default function AddStockPanel({
   const { getToken } = useAuth();
   const [name, setName] = useState("");
   const [variant, setVariant] = useState("");
-  const [kind, setKind] = useState<"peptide" | "supply">("peptide");
+  // A new product's category (also its shop tab). Kept for the next product, so several Skincare items can be
+  // added in a row.
+  const [category, setCategory] = useState<ItemShopSection>("peptides");
+  // For the owner's own categories: which order page it's bought on.
+  const [customKind, setCustomKind] = useState<ItemKind>("supply");
   const [qty, setQty] = useState<number | null>(null);
   const [unitCost, setUnitCost] = useState<number | null>(null);
   const [date, setDate] = useState(todayIso());
@@ -45,7 +52,15 @@ export default function AddStockPanel({
   );
   // The product this is for, if it's already in inventory (same name and size).
   const existing = name.trim() ? items.find((i) => same(i.name, name) && same(i.variant, variant)) : undefined;
-  const unit = existing?.unit ?? (kind === "peptide" ? "vial" : "unit");
+  // A new size of a product already in inventory goes with its other sizes (same category and order page).
+  const sibling = !existing && name.trim() ? items.find((i) => same(i.name, name)) : undefined;
+  const knownCategories = useMemo(() => items.map((i) => itemSection(i)), [items]);
+
+  const builtInKind: ItemKind | null = category === "peptides" ? "peptide" : category === "supplies" ? "supply" : null;
+  const kind: ItemKind = sibling?.kind ?? builtInKind ?? customKind;
+  // null = by kind, which already gives Peptides / Supplies.
+  const shopSection: ItemShopSection | null = sibling ? sibling.shopSection : builtInKind ? null : category;
+  const unit = existing?.unit ?? sibling?.unit ?? (kind === "peptide" ? "vial" : "unit");
 
   const submit = async () => {
     if (!name.trim()) return setError("Enter the product's name.");
@@ -56,7 +71,7 @@ export default function AddStockPanel({
     try {
       const itemId =
         existing?.id ??
-        (await adminApi.createItem({ kind, name: name.trim(), variant: variant.trim(), unit }, getToken)).id;
+        (await adminApi.createItem({ kind, name: name.trim(), variant: variant.trim(), unit, shopSection }, getToken)).id;
       await adminApi.adjust({ itemId, qty, reason, note: note.trim(), unitCostNzd: unitCost, date }, getToken);
       setAdded(`Added ${qty} ${unit}${qty === 1 ? "" : "s"} of ${[name.trim(), variant.trim()].filter(Boolean).join(" ")}.`);
       // Ready for the next product.
@@ -129,23 +144,42 @@ export default function AddStockPanel({
         {name.trim() &&
           (existing ? (
             <p className="text-[11px] text-slate-500">Adding to your existing product.</p>
+          ) : sibling ? (
+            <p className="text-[11px] text-slate-500">
+              New size of a product you already have - it goes under {sectionLabel(itemSection(sibling))} with its other
+              sizes.
+            </p>
           ) : (
-            <div>
-              <span className="block text-[11px] font-bold text-white mb-1">New product - what is it?</span>
-              <div className="flex gap-2">
-                {(["peptide", "supply"] as const).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setKind(k)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                      kind === k ? "border-gold-500/60 text-gold-400 bg-gold-500/10" : "border-slate-800 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {k === "peptide" ? "Peptide" : "Supply"}
-                  </button>
-                ))}
+            <div className="space-y-3">
+              <div>
+                <span className="block text-[11px] font-bold text-white mb-1">New product - what category is it?</span>
+                <SectionPicker value={category} known={knownCategories} onChange={setCategory} />
+                <span className="block text-[11px] text-slate-500 mt-1">
+                  Also the tab it shows under in your shop. Choose "New category" to make your own, e.g. Skincare.
+                </span>
               </div>
+              {!builtInKind && (
+                <div>
+                  <span className="block text-[11px] font-bold text-white mb-1">Ordered on</span>
+                  <div className="flex gap-2">
+                    {(["peptide", "supply"] as const).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setCustomKind(k)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                          customKind === k
+                            ? "border-gold-500/60 text-gold-400 bg-gold-500/10"
+                            : "border-slate-800 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {k === "peptide" ? "Peptide Orders" : "Supply Orders"}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="block text-[11px] text-slate-500 mt-1">Which order page you buy more of it on.</span>
+                </div>
+              )}
             </div>
           ))}
 
